@@ -142,7 +142,7 @@ namespace nCine
 			mappingStrings++;
 		}
 
-		LOGI("Parsed %u strings for %u mappings", numStrings, mappings_.size());
+		LOGI("Found %u mappings in %u lines", mappings_.size(), numStrings);
 
 		checkConnectedJoystics();
 	}
@@ -187,9 +187,9 @@ namespace nCine
 		checkConnectedJoystics();
 	}
 
-	void JoyMapping::addMappingsFromFile(const StringView& filename)
+	void JoyMapping::addMappingsFromFile(const StringView& path)
 	{
-		std::unique_ptr<Stream> fileHandle = fs::Open(filename, FileAccessMode::Read);
+		std::unique_ptr<Stream> fileHandle = fs::Open(path, FileAccessMode::Read);
 		const long int fileSize = fileHandle->GetSize();
 		if (fileSize == 0) {
 			return;
@@ -221,7 +221,7 @@ namespace nCine
 
 		} while (strchr(buffer, '\n') && (buffer = strchr(buffer, '\n') + 1) < fileBuffer.get() + fileSize);
 
-		LOGI("Joystick mapping file parsed: %u mappings in %u lines", numParsed, fileLine);
+		LOGI("Joystick mapping file \"%s\" parsed: %u mappings in %u lines", String::nullTerminatedView(path).data(), numParsed, fileLine);
 
 		fileBuffer.reset(nullptr);
 
@@ -467,8 +467,8 @@ namespace nCine
 		// Never search by name on Android, it can lead to wrong mapping
 		if (!mapping.isValid) {
 			const StringView joyNameView = joyName;
-			// Don't assign Android default mapping to internal NVIDIA Shield devices
-			if (joyNameView == "virtual-search"_s || joyNameView == "shield-ask-remote"_s) {
+			// Don't assign Android default mapping to internal NVIDIA Shield devices and WSA devices
+			if (joyNameView == "virtual-search"_s || joyNameView == "shield-ask-remote"_s || joyNameView == "virtual_keyboard"_s) {
 				return false;
 			}
 
@@ -512,6 +512,7 @@ namespace nCine
 			// Razer keyboards and mice, and VMware virtual devices on Linux/BSD are incorrectly recognized as joystick in some cases, don't assign XInput mapping to them
 			const StringView joyNameView = joyName;
 			if ((joyNameView.contains("Razer "_s) && (joyNameView.contains("Keyboard"_s) || joyNameView.contains("DeathAdder"_s))) ||
+				(joyNameView == "SynPS/2 Synaptics TouchPad"_s) ||
 				(joyNameView == "VMware Virtual USB Mouse"_s)) {
 				return false;
 			}
@@ -554,7 +555,7 @@ namespace nCine
 
 	const JoyMappedStateImpl& JoyMapping::joyMappedState(int joyId) const
 	{
-		if (joyId < 0 || joyId > MaxNumJoysticks) {
+		if (joyId < 0 || joyId >= MaxNumJoysticks) {
 			return nullMappedJoyState_;
 		} else {
 			return mappedJoyStates_[joyId];
@@ -750,7 +751,7 @@ namespace nCine
 
 	bool JoyMapping::parsePlatformName(const char* start, const char* end) const
 	{
-#if defined(DEATH_TARGET_EMSCRIPTEN) || defined(DEATH_TARGET_WINDOWS_RT)
+#if defined(DEATH_TARGET_EMSCRIPTEN) || defined(DEATH_TARGET_SWITCH) || defined(DEATH_TARGET_WINDOWS_RT)
 		return false;
 #else
 #	if defined(DEATH_TARGET_WINDOWS)
@@ -863,7 +864,7 @@ namespace nCine
 
 	int JoyMapping::hatStateToIndex(unsigned char hatState) const
 	{
-		int hatIndex = -1;
+		int hatIndex;
 
 		switch (hatState) {
 			case 1: hatIndex = 0; break;

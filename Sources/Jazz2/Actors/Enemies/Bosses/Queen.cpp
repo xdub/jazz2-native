@@ -57,9 +57,10 @@ namespace Jazz2::Actors::Bosses
 
 		// Invisible block above the queen
 		_block = std::make_shared<InvisibleBlock>();
-		_block->OnActivated({
-			.LevelHandler = _levelHandler
-		});
+		_block->OnActivated(ActorActivationDetails(
+			_levelHandler,
+			Vector3i((std::int32_t)_pos.X, (std::int32_t)_pos.Y, _renderer.layer() + 1)
+		));
 		_levelHandler->AddActor(_block);
 
 		async_return true;
@@ -134,13 +135,13 @@ namespace Jazz2::Actors::Bosses
 							_stateTime = Random().NextFloat(70.0f, 80.0f);
 
 							auto& players = _levelHandler->GetPlayers();
-							auto player = players[Random().Next(0, players.size())];
+							auto player = players[Random().Next(0, (std::uint32_t)players.size())];
 
 							std::shared_ptr<Brick> brick = std::make_shared<Brick>();
-							brick->OnActivated({
-								.LevelHandler = _levelHandler,
-								.Pos = Vector3i((int)(player->GetPos().X + Random().NextFloat(-50.0f, 50.0f)), (int)(_pos.Y - 200.0f), _renderer.layer() - 20)
-							});
+							brick->OnActivated(ActorActivationDetails(
+								_levelHandler,
+								Vector3i((std::int32_t)(player->GetPos().X + Random().NextFloat(-50.0f, 50.0f)), (std::int32_t)(_pos.Y - 200.0f), _renderer.layer() - 20)
+							));
 							_levelHandler->AddActor(brick);
 
 							_levelHandler->ShakeCameraView(20.0f);

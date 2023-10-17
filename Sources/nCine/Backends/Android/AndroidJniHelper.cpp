@@ -1,6 +1,7 @@
 #include "AndroidJniHelper.h"
 #include "AndroidApplication.h"
 #include "../../../Common.h"
+#include "../../Base/Algorithms.h"
 #include "../../Base/Timer.h"
 
 #include <cstring>
@@ -69,7 +70,6 @@ namespace nCine
 		} else {
 			const int getEnvStatus = javaVM_->GetEnv(reinterpret_cast<void**>(&jniEnv), JNI_VERSION_1_6);
 			if (getEnvStatus == JNI_EDETACHED) {
-				LOGW("GetEnv() cannot attach the JVM");
 				if (javaVM_->AttachCurrentThread(&jniEnv, nullptr) != 0) {
 					LOGW("AttachCurrentThread() cannot attach the JVM");
 				} else {
@@ -82,7 +82,7 @@ namespace nCine
 			}
 			
 			if (jniEnv == nullptr) {
-				LOGE("JNIEnv pointer is null");
+				LOGE("JNIEnv pointer is nullptr");
 			} else {
 				InitializeClasses();
 				AndroidJniWrap_Activity::init(state);
@@ -220,6 +220,16 @@ namespace nCine
 		return atoi(buffer);
 	}
 	
+	String AndroidJniClass_Version::deviceBrand()
+	{
+		char buffer[PROP_VALUE_MAX];
+		int length = __system_property_get("ro.product.brand", buffer);
+		if (length <= 0) {
+			return { };
+		}
+		return String(buffer);
+	}
+	
 	String AndroidJniClass_Version::deviceManufacturer()
 	{
 		char buffer[PROP_VALUE_MAX];
@@ -284,12 +294,12 @@ namespace nCine
 
 		if (strDeviceName) {
 			const char* deviceName = AndroidJniHelper::jniEnv->GetStringUTFChars(strDeviceName, 0);
-			strncpy(destination, deviceName, maxStringSize);
+			copyStringFirst(destination, maxStringSize, deviceName);
 			destination[maxStringSize - 1] = '\0';
 			AndroidJniHelper::jniEnv->ReleaseStringUTFChars(strDeviceName, deviceName);
 			AndroidJniHelper::jniEnv->DeleteLocalRef(strDeviceName);
 		} else {
-			strncpy(destination, static_cast<const char*>("Unknown"), maxStringSize);
+			copyStringFirst(destination, maxStringSize, static_cast<const char*>("Unknown"));
 		}
 		return (int(length) < maxStringSize) ? int(length) : maxStringSize;
 	}
@@ -301,7 +311,7 @@ namespace nCine
 
 		if (strDeviceDescriptor) {
 			const char* deviceName = AndroidJniHelper::jniEnv->GetStringUTFChars(strDeviceDescriptor, 0);
-			strncpy(destination, deviceName, maxStringSize);
+			copyStringFirst(destination, maxStringSize, deviceName);
 			destination[maxStringSize - 1] = '\0';
 			AndroidJniHelper::jniEnv->ReleaseStringUTFChars(strDeviceDescriptor, deviceName);
 			AndroidJniHelper::jniEnv->DeleteLocalRef(strDeviceDescriptor);
@@ -498,12 +508,12 @@ namespace nCine
 
 		if (strDisplayName) {
 			const char* displayName = AndroidJniHelper::jniEnv->GetStringUTFChars(strDisplayName, 0);
-			strncpy(destination, displayName, maxStringSize);
+			copyStringFirst(destination, maxStringSize, displayName);
 			destination[maxStringSize - 1] = '\0';
 			AndroidJniHelper::jniEnv->ReleaseStringUTFChars(strDisplayName, displayName);
 			AndroidJniHelper::jniEnv->DeleteLocalRef(strDisplayName);
 		} else {
-			strncpy(destination, static_cast<const char*>("Unknown"), maxStringSize);
+			copyStringFirst(destination, maxStringSize, static_cast<const char*>("Unknown"));
 		}
 		return (int(length) < maxStringSize) ? int(length) : maxStringSize;
 	}

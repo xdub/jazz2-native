@@ -78,7 +78,7 @@ endif()
 #set(NCINE_WITH_FIXED_BATCH_SIZE "0" CACHE PATH "Set custom fixed batch size (unsafe)")
 
 # Shared library options
-option(DEATH_LOG "Enable runtime logging" ON)
+option(DEATH_TRACE "Enable runtime event tracing" ON)
 
 # Check if we can use IFUNC for CPU dispatch. Linux with glibc and Android with API 18+ has it,
 # but e.g. Alpine Linux with musl doesn't, and on Android with API < 30 we don't get AT_HWCAP passed
@@ -100,6 +100,7 @@ extern \"C\" int(*fooDispatcher())() {
 int foo() __attribute__((ifunc(\"fooDispatcher\")));
 int main() { return foo() - 42; }\
 		" _DEATH_CPU_CAN_USE_IFUNC)
+	set(CMAKE_REQUIRED_QUIET OFF)
 	if(_DEATH_CPU_CAN_USE_IFUNC)
 		set(_DEATH_CPU_USE_IFUNC_DEFAULT ON)
 		# On GCC 4.8, if --coverage or -fprofile-arcs is enabled, the ifunc dispatchers cause a segfault.
@@ -137,3 +138,10 @@ option(DEATH_CPU_USE_RUNTIME_DISPATCH "Build with runtime dispatch for CPU-depen
 
 # Jazz² Resurrection options
 option(SHAREWARE_DEMO_ONLY "Show only Shareware Demo episode" OFF)
+
+if(EMSCRIPTEN)
+	# Multiplayer is not supported on Emscripten yet
+	set(WITH_MULTIPLAYER OFF)
+else()
+	option(WITH_MULTIPLAYER "Enable multiplayer support" OFF)
+endif()

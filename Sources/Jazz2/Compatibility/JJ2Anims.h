@@ -19,7 +19,7 @@ namespace Jazz2::Compatibility
 	class JJ2Anims // .j2a
 	{
 	public:
-		static constexpr uint16_t CacheVersion = 8;
+		static constexpr uint16_t CacheVersion = 9;
 
 		static bool Convert(const StringView& path, const StringView& targetPath, bool isPlus);
 
@@ -37,8 +37,8 @@ namespace Jazz2::Compatibility
 			std::unique_ptr<uint8_t[]> ImageData;
 			// TODO: Sprite mask
 			//std::unique_ptr<uint8_t[]> MaskData;
-			int ImageAddr;
-			int MaskAddr;
+			int32_t ImageAddr;
+			int32_t MaskAddr;
 			bool DrawTransparent;
 		};
 
@@ -46,7 +46,7 @@ namespace Jazz2::Compatibility
 			uint16_t FrameCount;
 			uint16_t FrameRate;
 			SmallVector<AnimFrameSection, 0> Frames;
-			int Set;
+			int32_t Set;
 			uint16_t Anim;
 
 			int16_t AdjustedSizeX, AdjustedSizeY;
@@ -56,7 +56,7 @@ namespace Jazz2::Compatibility
 		};
 
 		struct SampleSection {
-			int Set;
+			int32_t Set;
 			uint16_t IdInSet;
 			uint32_t SampleRate;
 			uint32_t DataSize;

@@ -4,13 +4,19 @@
 #include "SoundsOptionsSection.h"
 #include "ControlsOptionsSection.h"
 
+#include <Utf8.h>
+
 namespace Jazz2::UI::Menu
 {
 	OptionsSection::OptionsSection()
 	{
+		// TRANSLATORS: Menu item in Options section
 		_items.emplace_back(OptionsItem { OptionsItemType::Gameplay, _("Gameplay") });
+		// TRANSLATORS: Menu item in Options section
 		_items.emplace_back(OptionsItem { OptionsItemType::Graphics, _("Graphics") });
+		// TRANSLATORS: Menu item in Options section
 		_items.emplace_back(OptionsItem { OptionsItemType::Sounds, _("Sounds") });
+		// TRANSLATORS: Menu item in Options section
 		_items.emplace_back(OptionsItem { OptionsItemType::Controls, _("Controls") });
 	}
 
@@ -41,7 +47,7 @@ namespace Jazz2::UI::Menu
 		if (isSelected) {
 			float size = 0.5f + IMenuContainer::EaseOutElastic(_animation) * 0.6f;
 
-			_root->DrawElement("MenuGlow"_s, 0, centerX, item.Y, IMenuContainer::MainLayer, Alignment::Center, Colorf(1.0f, 1.0f, 1.0f, 0.4f * size), (item.Item.DisplayName.size() + 3) * 0.5f * size, 4.0f * size, true);
+			_root->DrawElement("MenuGlow"_s, 0, centerX, item.Y, IMenuContainer::MainLayer, Alignment::Center, Colorf(1.0f, 1.0f, 1.0f, 0.4f * size), (Utf8::GetLength(item.Item.DisplayName) + 3) * 0.5f * size, 4.0f * size, true);
 
 			_root->DrawStringShadow(item.Item.DisplayName, charOffset, centerX, item.Y, IMenuContainer::FontLayer + 10,
 				Alignment::Center, Font::RandomColor, size, 0.7f, 1.1f, 1.1f, 0.4f, 0.9f);

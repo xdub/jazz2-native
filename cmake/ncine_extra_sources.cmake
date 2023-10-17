@@ -91,7 +91,7 @@ endif()
 
 if(OPENAL_FOUND)
 	target_compile_definitions(${NCINE_APP} PRIVATE "WITH_AUDIO")
-	target_link_libraries(${NCINE_APP} PRIVATE OpenAL::AL)
+	target_link_libraries(${NCINE_APP} PRIVATE OpenAL::OpenAL)
 
 	list(APPEND HEADERS
 		${NCINE_SOURCE_DIR}/nCine/Audio/AudioBuffer.h
@@ -625,8 +625,20 @@ elseif(WINDOWS_PHONE OR WINDOWS_STORE)
 else()
 	list(APPEND HEADERS ${NCINE_SOURCE_DIR}/nCine/MainApplication.h)
 	list(APPEND SOURCES ${NCINE_SOURCE_DIR}/nCine/MainApplication.cpp)
-	
-	if(WIN32 AND NCINE_COPY_DEPENDENCIES)
+
+	if(NINTENDO_SWITCH)
+		nx_generate_nacp(${NCINE_APP}.nacp
+			NAME "${NCINE_APP_NAME}"
+			AUTHOR "${NCINE_APP_VENDOR}"
+			VERSION "${NCINE_VERSION}"
+		)
+
+		nx_create_nro(${NCINE_APP}
+			NACP "${NCINE_APP}.nacp"
+			ICON "${NCINE_SOURCE_DIR}/Icons/256px.png"
+			ROMFS "${NCINE_DATA_DIR}"
+		)
+	elseif(WIN32 AND NCINE_COPY_DEPENDENCIES)
 		set(WIN32_DEPENDENCIES "")
 
 		if(NCINE_WITH_ANGLE AND ANGLE_FOUND)
@@ -676,4 +688,25 @@ endif()
 if(SHAREWARE_DEMO_ONLY)
 	message(STATUS "Building the game only with Shareware Demo episode")
 	target_compile_definitions(${NCINE_APP} PUBLIC "SHAREWARE_DEMO_ONLY")
+endif()
+
+if(WITH_MULTIPLAYER)
+	message(STATUS "Building the game with multiplayer support")
+	target_compile_definitions(${NCINE_APP} PUBLIC "WITH_MULTIPLAYER")
+	
+	list(APPEND HEADERS
+		${NCINE_SOURCE_DIR}/Jazz2/Actors/RemoteActor.h
+		${NCINE_SOURCE_DIR}/Jazz2/Multiplayer/INetworkHandler.h
+		${NCINE_SOURCE_DIR}/Jazz2/Multiplayer/MultiLevelHandler.h
+		${NCINE_SOURCE_DIR}/Jazz2/Multiplayer/NetworkManager.h
+		${NCINE_SOURCE_DIR}/Jazz2/Multiplayer/PacketTypes.h
+		${NCINE_SOURCE_DIR}/Jazz2/Multiplayer/Peer.h
+		${NCINE_SOURCE_DIR}/Jazz2/Multiplayer/Backends/enet.h
+	)
+
+	list(APPEND SOURCES
+		${NCINE_SOURCE_DIR}/Jazz2/Actors/RemoteActor.cpp
+		${NCINE_SOURCE_DIR}/Jazz2/Multiplayer/MultiLevelHandler.cpp
+		${NCINE_SOURCE_DIR}/Jazz2/Multiplayer/NetworkManager.cpp
+	)
 endif()

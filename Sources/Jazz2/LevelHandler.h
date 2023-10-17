@@ -6,6 +6,7 @@
 #include "WeatherType.h"
 #include "Events/EventMap.h"
 #include "Events/EventSpawner.h"
+#include "Tiles/ITileMapOwner.h"
 #include "Tiles/TileMap.h"
 #include "Collisions/DynamicTreeBroadPhase.h"
 #include "UI/UpscaleRenderPass.h"
@@ -44,7 +45,7 @@ namespace Jazz2
 		class InGameMenu;
 	}
 
-	class LevelHandler : public ILevelHandler, public IStateHandler
+	class LevelHandler : public ILevelHandler, public IStateHandler, public Tiles::ITileMapOwner
 	{
 		friend class ContentResolver;
 #if defined(WITH_ANGELSCRIPT)
@@ -119,6 +120,7 @@ namespace Jazz2
 		void BeginLevelChange(ExitType exitType, const StringView& nextLevel) override;
 		void HandleGameOver() override;
 		bool HandlePlayerDied(const std::shared_ptr<Actors::ActorBase>& player) override;
+		void HandlePlayerWarped(const std::shared_ptr<Actors::ActorBase>& player, const Vector2f& prevPos, bool fast) override;
 		void SetCheckpoint(Vector2f pos) override;
 		void RollbackToCheckpoint() override;
 		void ActivateSugarRush() override;
@@ -127,7 +129,7 @@ namespace Jazz2
 		void ShowGems(int32_t count) override;
 		StringView GetLevelText(uint32_t textId, int32_t index = -1, uint32_t delimiter = 0) override;
 		void OverrideLevelText(uint32_t textId, const StringView& value) override;
-		void LimitCameraView(float left, float width) override;
+		void LimitCameraView(int left, int width) override;
 		void ShakeCameraView(float duration) override;
 		void SetWeather(WeatherType type, uint8_t intensity) override;
 		bool BeginPlayMusic(const StringView& path, bool setDefault = false, bool forceReload = false) override;
@@ -139,15 +141,13 @@ namespace Jazz2
 		float PlayerHorizontalMovement(int32_t index) override;
 		float PlayerVerticalMovement(int32_t index) override;
 
-		Vector2f GetCameraPos() {
-			return _cameraPos;
-		}
+		void OnAdvanceDestructibleTileAnimation(std::int32_t tx, std::int32_t ty, std::int32_t amount) override { }
+		void OnTileFrozen(std::int32_t x, std::int32_t y) override;
 
-		Vector2i GetViewSize() {
-			return _view->size();
-		}
+		Vector2f GetCameraPos() const override { return _cameraPos; }
+		Vector2i GetViewSize() const override { return _view->size(); }
 
-	private:
+	protected:
 		IRootController* _root;
 
 		class LightingRenderer : public SceneNode
@@ -300,7 +300,7 @@ namespace Jazz2
 		Vector2f _playerRequiredMovement;
 		Vector2f _playerFrozenMovement;
 		bool _playerFrozenEnabled;
-		int32_t _lastPressedNumericKey;
+		uint32_t _lastPressedNumericKey;
 
 		void OnLevelLoaded(const StringView& fullPath, const StringView& name, const StringView& nextLevel, const StringView& secretLevel,
 			std::unique_ptr<Tiles::TileMap>& tileMap, std::unique_ptr<Events::EventMap>& eventMap,

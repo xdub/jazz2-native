@@ -99,7 +99,7 @@ namespace nCine
 		}
 
 		unsigned char& byte = _storage[BIT_CHAR(bit)];
-		byte ^= (-value ^ byte) & BIT_IN_CHAR(bit);
+		byte ^= (-(unsigned char)value ^ byte) & BIT_IN_CHAR(bit);
 	}
 
 	void BitArray::Reset(const uint32_t bit)
@@ -355,8 +355,8 @@ namespace nCine
 
 	BitArray& BitArray::operator<<=(const uint32_t shifts)
 	{
-		int32_t i;
-		int32_t chars = shifts / CHAR_BIT;
+		uint32_t i;
+		uint32_t chars = shifts / CHAR_BIT;
 
 		if (shifts >= _size) {
 			this->ClearAll();
@@ -375,7 +375,7 @@ namespace nCine
 			}
 		}
 
-		for (i = 0; i < (int32_t)(shifts % CHAR_BIT); i++) {
+		for (i = 0; i < (shifts % CHAR_BIT); i++) {
 			for (uint32_t j = 0; j < BIT_CHAR(_size - 1); j++) {
 				_storage[j] <<= 1;
 

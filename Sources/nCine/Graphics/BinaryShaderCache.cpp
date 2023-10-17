@@ -17,7 +17,7 @@ namespace nCine
 	{
 		constexpr uint64_t HashSeed = 0x01000193811C9DC5;
 
-		unsigned int bufferSize = 0;
+		std::int32_t bufferSize = 0;
 		std::unique_ptr<std::uint8_t[]> bufferPtr;
 	}
 
@@ -30,7 +30,7 @@ namespace nCine
 		}
 
 		const IGfxCapabilities& gfxCaps = theServiceLocator().gfxCapabilities();
-#if defined(WITH_OPENGLES) && !defined(DEATH_TARGET_EMSCRIPTEN) && !defined(DEATH_TARGET_UNIX)
+#if defined(WITH_OPENGLES) && !defined(DEATH_TARGET_EMSCRIPTEN) && !defined(DEATH_TARGET_SWITCH) && !defined(DEATH_TARGET_UNIX)
 		const bool isSupported = gfxCaps.hasExtension(IGfxCapabilities::GLExtensions::ARB_GET_PROGRAM_BINARY) ||
 								 gfxCaps.hasExtension(IGfxCapabilities::GLExtensions::OES_GET_PROGRAM_BINARY);
 #else
@@ -41,7 +41,7 @@ namespace nCine
 			return;
 		}
 
-#if defined(WITH_OPENGLES) && !defined(DEATH_TARGET_EMSCRIPTEN) && !defined(DEATH_TARGET_UNIX)
+#if defined(WITH_OPENGLES) && !defined(DEATH_TARGET_EMSCRIPTEN) && !defined(DEATH_TARGET_SWITCH) && !defined(DEATH_TARGET_UNIX)
 		if (gfxCaps.hasExtension(IGfxCapabilities::GLExtensions::OES_GET_PROGRAM_BINARY)) {
 			_glGetProgramBinary = glGetProgramBinaryOES;
 			_glProgramBinary = glProgramBinaryOES;
@@ -59,20 +59,12 @@ namespace nCine
 		// For a stable hash, the OpenGL strings need to be copied so that padding bytes can be set to zero
 		char platformString[512];
 		std::memset(platformString, 0, sizeof(platformString));
-#if defined(DEATH_TARGET_WINDOWS)
-		strncpy_s(platformString, infoStrings.renderer, sizeof(platformString));
-#else
-		strncpy(platformString, infoStrings.renderer, sizeof(platformString));
-#endif
-		platformHash_ += fasthash64(platformString, strnlen(platformString, sizeof(platformString)), HashSeed);
+		int platformStringLength = copyStringFirst(platformString, infoStrings.renderer);
+		platformHash_ += fasthash64(platformString, platformStringLength, HashSeed);
 
 		std::memset(platformString, 0, sizeof(platformString));
-#if defined(DEATH_TARGET_WINDOWS)
-		strncpy_s(platformString, infoStrings.glVersion, sizeof(platformString));
-#else
-		strncpy(platformString, infoStrings.glVersion, sizeof(platformString));
-#endif
-		platformHash_ += fasthash64(platformString, strnlen(platformString, sizeof(platformString)), HashSeed);
+		platformStringLength = copyStringFirst(platformString, infoStrings.glVersion);
+		platformHash_ += fasthash64(platformString, platformStringLength, HashSeed);
 
 		path_ = path;
 		fs::CreateDirectories(path_);

@@ -1,9 +1,10 @@
 #include "String.h"
+#include "Array.h"
+#include "Pair.h"
+#include "StaticArray.h"
 
 #include <string>
 #include <cstring>
-
-#include "Pair.h"
 
 namespace Death::Containers
 {
@@ -74,10 +75,9 @@ namespace Death::Containers
 		// If the size is small enough for SSO, use that. Not using <= because we need to store the null terminator as well.
 		if (size < Implementation::SmallStringSize) {
 			// Apparently memcpy() can't be called with null pointers, even if size is zero. I call that bullying.
-			if (size) std::memcpy(_small.data, data, size);
-
-			// Otherwise allocate. Assuming the size is small enough -- this should have been checked in the caller already.
+			if (size != 0) std::memcpy(_small.data, data, size);
 		} else {
+			// Otherwise allocate. Assuming the size is small enough -- this should have been checked in the caller already.
 			std::memcpy(_large.data, data, size);
 		}
 	}
@@ -92,7 +92,7 @@ namespace Death::Containers
 		else delete[] _large.data;
 	}
 
-	inline Containers::Pair<const char*, std::size_t> String::dataInternal() const {
+	inline Pair<const char*, std::size_t> String::dataInternal() const {
 		if (_small.size & Implementation::SmallStringBit)
 			return { _small.data, _small.size & ~SmallSizeMask };
 		return { _large.data, _large.size & ~LargeSizeMask };
@@ -104,41 +104,45 @@ namespace Death::Containers
 		_small.size = Implementation::SmallStringBit;
 	}
 
-	String::String(const StringView view) : String { view._data, view._sizePlusFlags & ~Implementation::StringViewSizeMask } {}
+	String::String(const StringView view) : String{view._data, view._sizePlusFlags & ~Implementation::StringViewSizeMask} {}
 
-	String::String(const MutableStringView view) : String { view._data, view._sizePlusFlags & ~Implementation::StringViewSizeMask } {}
+	String::String(const MutableStringView view) : String{view._data, view._sizePlusFlags & ~Implementation::StringViewSizeMask} {}
 
-	String::String(const ArrayView<const char> view) : String { view.data(), view.size() } {}
+	String::String(const ArrayView<const char> view) : String{view.data(), view.size()} {}
 
-	String::String(const ArrayView<char> view) : String { view.data(), view.size() } {}
+	String::String(const ArrayView<char> view) : String{view.data(), view.size()} {}
 
-	String::String(const char* const data) : String { data, data ? std::strlen(data) : 0 } {}
+	String::String(const char* const data) : String{data, data ? std::strlen(data) : 0} {}
 
 	String::String(const char* const data, const std::size_t size)
+		: _large{}
 	{
+#if defined(DEATH_TARGET_32BIT)
 		// Compared to StringView construction which happens a lot this shouldn't, and the chance of strings > 1 GB on 32-bit
 		// is rare but possible and thus worth checking even in release
 		DEATH_ASSERT(size < std::size_t { 1 } << (sizeof(std::size_t) * 8 - 2), , "Containers::String: String expected to be smaller than 2^%zu bytes, got %zu", sizeof(std::size_t) * 8 - 2, size);
+#endif
 		DEATH_ASSERT(data || size == 0, , "Containers::String: Received a null string of size %zu", size);
 
 		construct(data, size);
 	}
 
-	String::String(AllocatedInitT, const StringView view) : String { AllocatedInit, view._data, view._sizePlusFlags & ~Implementation::StringViewSizeMask } {}
+	String::String(AllocatedInitT, const StringView view) : String{AllocatedInit, view._data, view._sizePlusFlags & ~Implementation::StringViewSizeMask} {}
 
-	String::String(AllocatedInitT, const MutableStringView view) : String { AllocatedInit, view._data, view._sizePlusFlags & ~Implementation::StringViewSizeMask } {}
+	String::String(AllocatedInitT, const MutableStringView view) : String{AllocatedInit, view._data, view._sizePlusFlags & ~Implementation::StringViewSizeMask} {}
 
-	String::String(AllocatedInitT, const ArrayView<const char> view) : String { AllocatedInit, view.data(), view.size() } {}
+	String::String(AllocatedInitT, const ArrayView<const char> view) : String{AllocatedInit, view.data(), view.size()} {}
 
-	String::String(AllocatedInitT, const ArrayView<char> view) : String { AllocatedInit, view.data(), view.size() } {}
+	String::String(AllocatedInitT, const ArrayView<char> view) : String{AllocatedInit, view.data(), view.size()} {}
 
-	String::String(AllocatedInitT, const char* const data) : String { AllocatedInit, data, data ? std::strlen(data) : 0 } {}
+	String::String(AllocatedInitT, const char* const data) : String{AllocatedInit, data, data ? std::strlen(data) : 0} {}
 
 	String::String(AllocatedInitT, const char* const data, const std::size_t size)
+		: _large{}
 	{
 		// Compared to StringView construction which happens a lot this shouldn't, and the chance of strings > 1 GB on 32-bit
 		// is rare but possible and thus worth checking even in release
-		DEATH_ASSERT(size < std::size_t { 1 } << (sizeof(std::size_t) * 8 - 2), , "Containers::String: String expected to be smaller than 2^%zu bytes, got %zu", sizeof(std::size_t) * 8 - 2, size);
+		DEATH_ASSERT(size < std::size_t{1} << (sizeof(std::size_t) * 8 - 2), , "Containers::String: String expected to be smaller than 2^%zu bytes, got %zu", sizeof(std::size_t) * 8 - 2, size);
 		DEATH_ASSERT(data || size == 0, , "Containers::String: Received a null string of size %zu", size);
 
 		_large.data = new char[size + 1];
@@ -149,7 +153,8 @@ namespace Death::Containers
 		_large.deleter = nullptr;
 	}
 
-	String::String(AllocatedInitT, String&& other) {
+	String::String(AllocatedInitT, String&& other)
+	{
 		// Allocate a copy if the other is a SSO
 		if (other.isSmall()) {
 			const std::size_t sizePlusOne = (other._small.size & ~SmallSizeMask) + 1;
@@ -171,8 +176,9 @@ namespace Death::Containers
 		other._large.deleter = nullptr;
 	}
 
-	String::String(AllocatedInitT, const String& other) {
-		const Containers::Pair<const char*, std::size_t> data = other.dataInternal();
+	String::String(AllocatedInitT, const String& other)
+	{
+		const Pair<const char*, std::size_t> data = other.dataInternal();
 		const std::size_t sizePlusOne = data.second() + 1;
 		_large.size = data.second();
 		_large.data = new char[sizePlusOne];
@@ -182,6 +188,7 @@ namespace Death::Containers
 	}
 
 	String::String(char* const data, const std::size_t size, void(*deleter)(char*, std::size_t)) noexcept
+		: _large{}
 	{
 		// Compared to StringView construction which happens a lot this shouldn't, the chance of strings > 1 GB on 32-bit
 		// is rare but possible and thus worth checking even in release; but most importantly checking for null
@@ -194,14 +201,16 @@ namespace Death::Containers
 		_large.deleter = deleter;
 	}
 
-	String::String(void(*deleter)(char*, std::size_t), std::nullptr_t, char* const data) noexcept : String {
+	String::String(void(*deleter)(char*, std::size_t), std::nullptr_t, char* const data) noexcept : String{
 		data,
 		// If data is null, strlen() would crash before reaching our assert inside the delegated-to constructor
 		data ? std::strlen(data) : 0,
 		deleter
 	} {}
 
-	String::String(ValueInitT, const std::size_t size) : _large {} {
+	String::String(ValueInitT, const std::size_t size)
+		: _large{}
+	{
 		// Compared to StringView construction which happens a lot this shouldn't, and the chance of strings > 1 GB on 32-bit
 		// is rare but possible and thus  worth checking even in release
 		DEATH_ASSERT(size < std::size_t { 1 } << (sizeof(std::size_t) * 8 - 2), , "Containers::String: String expected to be smaller than 2^%zu bytes, got %zu", sizeof(std::size_t) * 8 - 2, size);
@@ -225,7 +234,7 @@ namespace Death::Containers
 		construct(NoInit, size);
 	}
 
-	String::String(DirectInitT, const std::size_t size, const char c) : String { NoInit, size } {
+	String::String(DirectInitT, const std::size_t size, const char c) : String{NoInit, size} {
 		std::memset(size < Implementation::SmallStringSize ? _small.data : _large.data, c, size);
 	}
 
@@ -234,7 +243,7 @@ namespace Death::Containers
 	}
 
 	String::String(const String& other) {
-		const Containers::Pair<const char*, std::size_t> data = other.dataInternal();
+		const Pair<const char*, std::size_t> data = other.dataInternal();
 		construct(data.first(), data.second());
 	}
 
@@ -252,7 +261,7 @@ namespace Death::Containers
 	String& String::operator=(const String& other) {
 		destruct();
 
-		const Containers::Pair<const char*, std::size_t> data = other.dataInternal();
+		const Pair<const char*, std::size_t> data = other.dataInternal();
 		construct(data.first(), data.second());
 		return *this;
 	}
@@ -266,22 +275,22 @@ namespace Death::Containers
 	}
 
 	String::operator ArrayView<const char>() const noexcept {
-		const Containers::Pair<const char*, std::size_t> data = dataInternal();
+		const Pair<const char*, std::size_t> data = dataInternal();
 		return { data.first(), data.second() };
 	}
 
 	String::operator ArrayView<const void>() const noexcept {
-		const Containers::Pair<const char*, std::size_t> data = dataInternal();
+		const Pair<const char*, std::size_t> data = dataInternal();
 		return { data.first(), data.second() };
 	}
 
 	String::operator ArrayView<char>() noexcept {
-		const Containers::Pair<const char*, std::size_t> data = dataInternal();
+		const Pair<const char*, std::size_t> data = dataInternal();
 		return { const_cast<char*>(data.first()), data.second() };
 	}
 
 	String::operator ArrayView<void>() noexcept {
-		const Containers::Pair<const char*, std::size_t> data = dataInternal();
+		const Pair<const char*, std::size_t> data = dataInternal();
 		return { const_cast<char*>(data.first()), data.second() };
 	}
 
@@ -515,6 +524,14 @@ namespace Death::Containers
 		return StringView { *this }.split(delimiter);
 	}
 
+	Array<MutableStringView> String::split(const StringView delimiter) {
+		return MutableStringView { *this }.split(delimiter);
+	}
+
+	Array<StringView> String::split(const StringView delimiter) const {
+		return StringView { *this }.split(delimiter);
+	}
+
 	Array<MutableStringView> String::splitWithoutEmptyParts(const char delimiter) {
 		return MutableStringView { *this }.splitWithoutEmptyParts(delimiter);
 	}
@@ -544,6 +561,14 @@ namespace Death::Containers
 	}
 
 	StaticArray<3, StringView> String::partition(const char separator) const {
+		return StringView { *this }.partition(separator);
+	}
+
+	StaticArray<3, MutableStringView> String::partition(const StringView separator) {
+		return MutableStringView { *this }.partition(separator);
+	}
+
+	StaticArray<3, StringView> String::partition(const StringView separator) const {
 		return StringView { *this }.partition(separator);
 	}
 

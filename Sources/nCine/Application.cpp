@@ -43,6 +43,7 @@ extern "C"
 #endif
 
 #include "Application.h"
+#include "Base/Algorithms.h"
 #include "Base/Random.h"
 #include "IAppEventHandler.h"
 #include "ArrayIndexer.h"
@@ -51,7 +52,7 @@ extern "C"
 #include "Graphics/RenderQueue.h"
 #include "Graphics/ScreenViewport.h"
 #include "Graphics/GL/GLDebug.h"
-#include "Base/Timer.h" // for `sleep()`
+#include "Base/Timer.h"
 #include "Base/FrameTimer.h"
 #include "Graphics/SceneNode.h"
 #include "Input/IInputManager.h"
@@ -82,39 +83,36 @@ extern "C"
 using namespace Death::Containers::Literals;
 using namespace Death::IO;
 
-#if defined(DEATH_LOG)
+#if defined(DEATH_TRACE)
 
 #if defined(DEATH_TARGET_WINDOWS)
 #	include <Utf8.h>
 #elif defined(DEATH_TARGET_ANDROID)
 #	include <stdarg.h>
+#	include <time.h>
 #	include <android/log.h>
-#	include <IO/FileStream.h>
-extern std::unique_ptr<Death::IO::Stream> __logFile;
 #else
 #	include <cstdarg>
+#	if defined(DEATH_TARGET_SWITCH)
+#		include <time.h>
+#		include <switch.h>
+#	endif
 #endif
 
+#if defined(DEATH_TARGET_ANDROID) || defined(DEATH_TARGET_SWITCH)
+#	include <IO/FileStream.h>
+extern std::unique_ptr<Death::IO::Stream> __logFile;
+#endif
 #if defined(DEATH_TARGET_WINDOWS) && !defined(DEATH_TARGET_WINDOWS_RT)
 extern bool __showLogConsole;
 #endif
-#if defined(DEATH_TARGET_APPLE) || defined(DEATH_TARGET_UNIX) || (defined(DEATH_TARGET_WINDOWS) && !defined(DEATH_TARGET_WINDOWS_RT))
+#if defined(DEATH_TARGET_APPLE) || defined(DEATH_TARGET_EMSCRIPTEN) || defined(DEATH_TARGET_UNIX) || (defined(DEATH_TARGET_WINDOWS) && !defined(DEATH_TARGET_WINDOWS_RT))
 extern bool __hasVirtualTerminal;
 #endif
 
-inline int __strncpy(char* dest, int destSize, const char* source, int count)
+void DEATH_TRACE(TraceLevel level, const char* fmt, ...)
 {
-#if defined(DEATH_TARGET_WINDOWS) && !defined(DEATH_TARGET_MINGW)
-	strncpy_s(dest, destSize, source, count);
-#else
-	::strncpy(dest, source, std::min(destSize, count));
-#endif
-	return count;
-}
-
-void DEATH_LOG_CALLBACK(LogLevel level, const char* fmt, ...)
-{
-	constexpr std::int32_t MaxEntryLength = 4 * 1024;
+	constexpr std::int32_t MaxEntryLength = 4096;
 	char logEntry[MaxEntryLength];
 
 #if defined(DEATH_TARGET_ANDROID)
@@ -122,11 +120,11 @@ void DEATH_LOG_CALLBACK(LogLevel level, const char* fmt, ...)
 
 	// clang-format off
 	switch (level) {
-		case LogLevel::Fatal:	priority = ANDROID_LOG_FATAL; break;
-		case LogLevel::Error:	priority = ANDROID_LOG_ERROR; break;
-		case LogLevel::Warning:	priority = ANDROID_LOG_WARN; break;
-		case LogLevel::Info:	priority = ANDROID_LOG_INFO; break;
-		default:				priority = ANDROID_LOG_DEBUG; break;
+		case TraceLevel::Fatal:		priority = ANDROID_LOG_FATAL; break;
+		case TraceLevel::Error:		priority = ANDROID_LOG_ERROR; break;
+		case TraceLevel::Warning:	priority = ANDROID_LOG_WARN; break;
+		case TraceLevel::Info:		priority = ANDROID_LOG_INFO; break;
+		default:					priority = ANDROID_LOG_DEBUG; break;
 	}
 	// clang-format on
 
@@ -140,25 +138,65 @@ void DEATH_LOG_CALLBACK(LogLevel level, const char* fmt, ...)
 	if (__logFile != nullptr) {
 		const char* levelIdentifier;
 		switch (level) {
-			case LogLevel::Fatal:	levelIdentifier = "F"; break;
-			case LogLevel::Error:	levelIdentifier = "E"; break;
-			case LogLevel::Warning:	levelIdentifier = "W"; break;
-			case LogLevel::Info:	levelIdentifier = "I"; break;
-			default:				levelIdentifier = "D"; break;
+			case TraceLevel::Fatal:		levelIdentifier = "F"; break;
+			case TraceLevel::Error:		levelIdentifier = "E"; break;
+			case TraceLevel::Warning:	levelIdentifier = "W"; break;
+			case TraceLevel::Info:		levelIdentifier = "I"; break;
+			default:					levelIdentifier = "D"; break;
 		}
 
+		struct timespec currentTime;
+		clock_gettime(CLOCK_REALTIME, &currentTime);
+
+		time_t seconds = currentTime.tv_sec;
+		long milliseconds = (currentTime.tv_nsec / 1000000) % 1000;
+
+		struct tm localTime;
+		localtime_r(&seconds, &localTime);
+
 		FileStream* s = static_cast<FileStream*>(__logFile.get());
-		fprintf(s->GetHandle(), "[%s] %s\n", levelIdentifier, logEntry);
+		fprintf(s->GetHandle(), "%02d:%02d:%02d.%03ld [%s] %s\n", localTime.tm_hour, localTime.tm_min, localTime.tm_sec, milliseconds, levelIdentifier, logEntry);
+		fflush(s->GetHandle());
+	}
+#elif defined(DEATH_TARGET_SWITCH)
+	va_list args;
+	va_start(args, fmt);
+	std::int32_t length = vsnprintf(logEntry, MaxEntryLength, fmt, args);
+	va_end(args);
+
+	svcOutputDebugString(logEntry, length);
+
+	if (__logFile != nullptr) {
+		const char* levelIdentifier;
+		switch (level) {
+			case TraceLevel::Fatal:		levelIdentifier = "F"; break;
+			case TraceLevel::Error:		levelIdentifier = "E"; break;
+			case TraceLevel::Warning:	levelIdentifier = "W"; break;
+			case TraceLevel::Info:		levelIdentifier = "I"; break;
+			default:					levelIdentifier = "D"; break;
+		}
+
+		struct timespec currentTime;
+		clock_gettime(CLOCK_REALTIME, &currentTime);
+
+		time_t seconds = currentTime.tv_sec;
+		long milliseconds = (currentTime.tv_nsec / 1000000) % 1000;
+
+		struct tm localTime;
+		localtime_r(&seconds, &localTime);
+
+		FileStream* s = static_cast<FileStream*>(__logFile.get());
+		fprintf(s->GetHandle(), "%02d:%02d:%02d.%03ld [%s] %s\n", localTime.tm_hour, localTime.tm_min, localTime.tm_sec, milliseconds, levelIdentifier, logEntry);
 		fflush(s->GetHandle());
 	}
 #elif defined(DEATH_TARGET_WINDOWS_RT)
 	logEntry[0] = '[';
 	switch (level) {
-		case LogLevel::Fatal:	logEntry[1] = 'F'; break;
-		case LogLevel::Error:	logEntry[1] = 'E'; break;
-		case LogLevel::Warning:	logEntry[1] = 'W'; break;
-		case LogLevel::Info:	logEntry[1] = 'I'; break;
-		default:				logEntry[1] = 'D'; break;
+		case TraceLevel::Fatal:		logEntry[1] = 'F'; break;
+		case TraceLevel::Error:		logEntry[1] = 'E'; break;
+		case TraceLevel::Warning:	logEntry[1] = 'W'; break;
+		case TraceLevel::Info:		logEntry[1] = 'I'; break;
+		default:					logEntry[1] = 'D'; break;
 	}
 	logEntry[2] = ']';
 	logEntry[3] = ' ';
@@ -177,14 +215,12 @@ void DEATH_LOG_CALLBACK(LogLevel level, const char* fmt, ...)
 
 	::OutputDebugString(Death::Utf8::ToUtf16(logEntry));
 #else
-	constexpr char Reset[] = "\033[0m";
-	constexpr char Bold[] = "\033[1m";
-	constexpr char Faint[] = "\033[2m";
-	constexpr char Red[] = "\033[31m";
-	constexpr char Yellow[] = "\033[33m";
-	constexpr char DarkGray[] = "\033[90m";
-	constexpr char BrightRed[] = "\033[91m";
-	constexpr char BrightYellow[] = "\033[93m";
+	static const char Reset[] = "\033[0m";
+	static const char Bold[] = "\033[1m";
+	static const char Faint[] = "\033[2m";
+	static const char DarkGray[] = "\033[90m";
+	static const char BrightRed[] = "\033[91m";
+	static const char BrightYellow[] = "\033[93m";
 
 #	if defined(DEATH_TARGET_WINDOWS)
 	if (__showLogConsole) {
@@ -200,10 +236,10 @@ void DEATH_LOG_CALLBACK(LogLevel level, const char* fmt, ...)
 	va_end(args);
 
 	// Colorize the output
-#	if defined(DEATH_TARGET_APPLE) || defined(DEATH_TARGET_UNIX) || defined(DEATH_TARGET_WINDOWS)
+#	if defined(DEATH_TARGET_APPLE) || defined(DEATH_TARGET_EMSCRIPTEN) || defined(DEATH_TARGET_UNIX) || defined(DEATH_TARGET_WINDOWS)
 	const bool hasVirtualTerminal = __hasVirtualTerminal;
 #	else
-	constexpr bool hasVirtualTerminal = true;
+	constexpr bool hasVirtualTerminal = false;
 #	endif
 
 	std::int32_t logMsgFuncLength = 0;
@@ -222,45 +258,52 @@ void DEATH_LOG_CALLBACK(LogLevel level, const char* fmt, ...)
 	std::int32_t length2 = 0;
 	if (logMsgFuncLength > 0) {
 		if (hasVirtualTerminal) {
-			length2 += __strncpy(logEntryWithColors, MaxEntryLength - 1, Faint, countof(Faint) - 1);
-			if (level == LogLevel::Error || level == LogLevel::Fatal) {
-				length2 += __strncpy(logEntryWithColors + length2, MaxEntryLength - length2 - 1, Red, countof(Red) - 1);
+			length2 += nCine::copyStringFirst(logEntryWithColors, MaxEntryLength - 1, Faint, countof(Faint) - 1);
+			if (level == TraceLevel::Error || level == TraceLevel::Fatal) {
+				length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, BrightRed, countof(BrightRed) - 1);
+			} else if (level == TraceLevel::Warning) {
+				length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, BrightYellow, countof(BrightYellow) - 1);
 			}
-#	if !defined(DEATH_TARGET_EMSCRIPTEN)
-			else if (level == LogLevel::Warning) {
-				length2 += __strncpy(logEntryWithColors + length2, MaxEntryLength - length2 - 1, Yellow, countof(Yellow) - 1);
-			} else {
-				length2 += __strncpy(logEntryWithColors + length2, MaxEntryLength - length2 - 1, DarkGray, countof(DarkGray) - 1);
+#	if defined(DEATH_TARGET_EMSCRIPTEN)
+			else if (level == TraceLevel::Debug) {
+				length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, DarkGray, countof(DarkGray) - 1);
 			}
 #	endif
 		}
 
-		length2 += __strncpy(logEntryWithColors + length2, MaxEntryLength - length2 - 1, logEntry, logMsgFuncLength);
+		length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, logEntry, logMsgFuncLength);
 	}
 
 	if (hasVirtualTerminal) {
-		if (level != LogLevel::Debug) {
-			length2 += __strncpy(logEntryWithColors + length2, MaxEntryLength - length2 - 1, Reset, countof(Reset) - 1);
-		}
-		if (level == LogLevel::Error || level == LogLevel::Fatal) {
-			length2 += __strncpy(logEntryWithColors + length2, MaxEntryLength - length2 - 1, BrightRed, countof(BrightRed) - 1);
-			if (level == LogLevel::Fatal) {
-				length2 += __strncpy(logEntryWithColors + length2, MaxEntryLength - length2 - 1, Bold, countof(Bold) - 1);
-			}
-		} else if (level == LogLevel::Warning) {
-#	if !defined(DEATH_TARGET_EMSCRIPTEN)
-			length2 += __strncpy(logEntryWithColors + length2, MaxEntryLength - length2 - 1, BrightYellow, countof(BrightYellow) - 1);
+#	if defined(DEATH_TARGET_EMSCRIPTEN)
+		if (level != TraceLevel::Warning && level != TraceLevel::Debug) {
 #	else
-			length2 += __strncpy(logEntryWithColors + length2, MaxEntryLength - length2 - 1, Bold, countof(Bold) - 1);
+		if (level != TraceLevel::Debug) {
 #	endif
+			length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, Reset, countof(Reset) - 1);
 		}
+		if (level == TraceLevel::Error || level == TraceLevel::Fatal) {
+			length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, BrightRed, countof(BrightRed) - 1);
+			if (level == TraceLevel::Fatal) {
+				length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, Bold, countof(Bold) - 1);
+			}
+		}
+#	if defined(DEATH_TARGET_EMSCRIPTEN)
+		else if (level == TraceLevel::Info || level == TraceLevel::Warning) {
+			length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, Bold, countof(Bold) - 1);
+		}
+#	else
+		else if (level == TraceLevel::Warning) {
+			length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, BrightYellow, countof(BrightYellow) - 1);
+		}
+#	endif
 	}
 
-	length2 += __strncpy(logEntryWithColors + length2, MaxEntryLength - length2 - 1, logEntry + logMsgFuncLength, length - logMsgFuncLength);
+	length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, logEntry + logMsgFuncLength, length - logMsgFuncLength);
 
 	if (hasVirtualTerminal) {
-		if (level == LogLevel::Debug || level == LogLevel::Warning || level == LogLevel::Error || level == LogLevel::Fatal) {
-			length2 += __strncpy(logEntryWithColors + length2, MaxEntryLength - length2 - 1, Reset, countof(Reset) - 1);
+		if (level == TraceLevel::Debug || level == TraceLevel::Warning || level == TraceLevel::Error || level == TraceLevel::Fatal) {
+			length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, Reset, countof(Reset) - 1);
 		}
 	}
 
@@ -271,7 +314,7 @@ void DEATH_LOG_CALLBACK(LogLevel level, const char* fmt, ...)
 	logEntryWithColors[length2++] = '\n';
 	logEntryWithColors[length2] = '\0';
 
-	if (level == LogLevel::Error || level == LogLevel::Fatal) {
+	if (level == TraceLevel::Error || level == TraceLevel::Fatal) {
 		fputs(logEntryWithColors, stderr);
 	} else {
 		fputs(logEntryWithColors, stdout);
@@ -282,11 +325,11 @@ void DEATH_LOG_CALLBACK(LogLevel level, const char* fmt, ...)
 #		if defined(DEATH_DEBUG)
 		logEntry[0] = '[';
 		switch (level) {
-			case LogLevel::Fatal:	logEntry[1] = 'F'; break;
-			case LogLevel::Error:	logEntry[1] = 'E'; break;
-			case LogLevel::Warning:	logEntry[1] = 'W'; break;
-			case LogLevel::Info:	logEntry[1] = 'I'; break;
-			default:				logEntry[1] = 'D'; break;
+			case TraceLevel::Fatal:		logEntry[1] = 'F'; break;
+			case TraceLevel::Error:		logEntry[1] = 'E'; break;
+			case TraceLevel::Warning:	logEntry[1] = 'W'; break;
+			case TraceLevel::Info:		logEntry[1] = 'I'; break;
+			default:					logEntry[1] = 'D'; break;
 		}
 		logEntry[2] = ']';
 		logEntry[3] = ' ';
@@ -313,11 +356,11 @@ void DEATH_LOG_CALLBACK(LogLevel level, const char* fmt, ...)
 	uint32_t colorTracy;
 	// clang-format off
 	switch (level) {
-		case LogLevel::Fatal:	colorTracy = 0xec3e40; break;
-		case LogLevel::Error:	colorTracy = 0xff9b2b; break;
-		case LogLevel::Warning:	colorTracy = 0xf5d800; break;
-		case LogLevel::Info:	colorTracy = 0x01a46d; break;
-		default:				colorTracy = 0x377fc7; break;
+		case TraceLevel::Fatal:		colorTracy = 0xec3e40; break;
+		case TraceLevel::Error:		colorTracy = 0xff9b2b; break;
+		case TraceLevel::Warning:	colorTracy = 0xf5d800; break;
+		case TraceLevel::Info:		colorTracy = 0x01a46d; break;
+		default:					colorTracy = 0x377fc7; break;
 	}
 	// clang-format on
 
@@ -570,7 +613,7 @@ namespace nCine
 #else
 			const float frameTimeDuration = 1.0f / static_cast<float>(appCfg_.frameLimit);
 			while (frameTimer_->frameInterval() < frameTimeDuration) {
-				Timer::sleep(0.0f);
+				Timer::sleep(0);
 			}
 #endif
 		}

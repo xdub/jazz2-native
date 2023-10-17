@@ -23,10 +23,12 @@
 #include "Actors/Player.h"
 #include "Actors/SolidObjectBase.h"
 #include "Actors/Enemies/Bosses/BossBase.h"
+#include "Actors/Environment/IceBlock.h"
 
 #include <float.h>
 
 #include <Utf8.h>
+#include <Containers/StaticArray.h>
 
 using namespace nCine;
 
@@ -39,7 +41,7 @@ namespace Jazz2
 			_shakeDuration(0.0f), _waterLevel(FLT_MAX), _ambientLightTarget(1.0f), _weatherType(WeatherType::None),
 			_downsamplePass(this), _blurPass1(this), _blurPass2(this), _blurPass3(this), _blurPass4(this),
 			_pressedKeys((uint32_t)KeySym::COUNT), _pressedActions(0), _overrideActions(0), _playerFrozenEnabled(false),
-			_lastPressedNumericKey(-1)
+			_lastPressedNumericKey(UINT32_MAX)
 	{
 		constexpr float DefaultGravity = 0.3f;
 
@@ -78,11 +80,11 @@ namespace Jazz2
 
 			std::shared_ptr<Actors::Player> player = std::make_shared<Actors::Player>();
 			uint8_t playerParams[2] = { (uint8_t)levelInit.PlayerCarryOvers[i].Type, (uint8_t)i };
-			player->OnActivated({
-				.LevelHandler = this,
-				.Pos = Vector3i(spawnPosition.X + (i * 30), spawnPosition.Y - (i * 30), PlayerZ - i),
-				.Params = playerParams
-			});
+			player->OnActivated(Actors::ActorActivationDetails(
+				this,
+				Vector3i(spawnPosition.X + (i * 30), spawnPosition.Y - (i * 30), PlayerZ - i),
+				playerParams
+			));
 
 			Actors::Player* ptr = player.get();
 			_players.push_back(ptr);
@@ -194,7 +196,7 @@ namespace Jazz2
 
 		_levelTexts = std::move(levelTexts);
 
-#if defined(WITH_ANGELSCRIPT) || defined(DEATH_LOG)
+#if defined(WITH_ANGELSCRIPT) || defined(DEATH_TRACE)
 		// TODO: Allow script signing
 		if (PreferencesCache::AllowUnsignedScripts) {
 			const StringView foundDot = fullPath.findLastOr('.', fullPath.end());
@@ -332,7 +334,7 @@ namespace Jazz2
 
 			// Weather
 			if (_weatherType != WeatherType::None) {
-				uint32_t weatherIntensity = std::max((uint32_t)(_weatherIntensity * timeMult), 1u);
+				int32_t weatherIntensity = std::max((int32_t)(_weatherIntensity * timeMult), 1);
 				for (int32_t i = 0; i < weatherIntensity; i++) {
 					TileMap::DebrisFlags debrisFlags;
 					if ((_weatherType & WeatherType::OutdoorsOnly) == WeatherType::OutdoorsOnly) {
@@ -359,8 +361,8 @@ namespace Jazz2
 
 							TileMap::DestructibleDebris debris = { };
 							debris.Pos = debrisPos;
-							debris.Depth = MainPlaneZ - 100 + 200 * scale;
-							debris.Size = Vector2f(resBase->FrameDimensions.X, resBase->FrameDimensions.Y);
+							debris.Depth = MainPlaneZ - 100 + (uint16_t)(200 * scale);
+							debris.Size = Vector2f((float)resBase->FrameDimensions.X, (float)resBase->FrameDimensions.Y);
 							debris.Speed = Vector2f(speedX, speedY);
 							debris.Acceleration = Vector2f(0.0f, 0.0f);
 
@@ -398,8 +400,8 @@ namespace Jazz2
 
 							TileMap::DestructibleDebris debris = { };
 							debris.Pos = debrisPos;
-							debris.Depth = MainPlaneZ - 100 + 200 * scale;
-							debris.Size = Vector2f(resBase->FrameDimensions.X, resBase->FrameDimensions.Y);
+							debris.Depth = MainPlaneZ - 100 + (uint16_t)(200 * scale);
+							debris.Size = Vector2f((float)resBase->FrameDimensions.X, (float)resBase->FrameDimensions.Y);
 							debris.Speed = Vector2f(speedX, speedY);
 							debris.Acceleration = Vector2f(accel, -std::abs(accel));
 
@@ -772,11 +774,14 @@ namespace Jazz2
 		// Check for solid objects
 		if (self->GetState(Actors::ActorState::CollideWithSolidObjects)) {
 			Actors::ActorBase* colliderActor = nullptr;
-			FindCollisionActorsByAABB(self, aabb, [&](Actors::ActorBase* actor) -> bool {
+			FindCollisionActorsByAABB(self, aabb, [self, &colliderActor, &params](Actors::ActorBase* actor) -> bool {
 				if ((actor->GetState() & (Actors::ActorState::IsSolidObject | Actors::ActorState::IsDestroyed)) != Actors::ActorState::IsSolidObject) {
 					return true;
 				}
-
+				if (self->GetState(Actors::ActorState::ExcludeSimilar) && actor->GetState(Actors::ActorState::ExcludeSimilar)) {
+					// If both objects have ExcludeSimilar, ignore it
+					return true;
+				}
 				if (self->GetState(Actors::ActorState::CollideWithSolidObjectsBelow) &&
 					self->AABBInner.B > (actor->AABBInner.T + actor->AABBInner.B) * 0.5f) {
 					return true;
@@ -982,6 +987,18 @@ namespace Jazz2
 		return true;
 	}
 
+	void LevelHandler::HandlePlayerWarped(const std::shared_ptr<Actors::ActorBase>& player, const Vector2f& prevPos, bool fast)
+	{
+		if (fast) {
+			WarpCameraToTarget(player, true);
+		} else {
+			Vector2f pos = player->GetPos();
+			if (Vector2f(prevPos.X - pos.X, prevPos.Y - pos.Y).Length() > 250.0f) {
+				WarpCameraToTarget(player);
+			}
+		}
+	}
+
 	void LevelHandler::SetCheckpoint(Vector2f pos)
 	{
 		_checkpointFrames = ElapsedFrames();
@@ -1079,7 +1096,7 @@ namespace Jazz2
 		}
 
 		StringView text = _levelTexts[textId];
-		size_t textSize = text.size();
+		int32_t textSize = (int32_t)text.size();
 
 		if (textSize > 0 && index >= 0) {
 			int32_t delimiterCount = 0;
@@ -1097,7 +1114,7 @@ namespace Jazz2
 					delimiterCount++;
 				}
 
-				idx = cursor.second;
+				idx = (int32_t)cursor.second;
 			} while (idx < textSize);
 
 			if (delimiterCount == index) {
@@ -1204,6 +1221,34 @@ namespace Jazz2
 		}
 
 		return (_playerFrozenEnabled ? _playerFrozenMovement.Y : _playerRequiredMovement.Y);
+	}
+
+	void LevelHandler::OnTileFrozen(std::int32_t x, std::int32_t y)
+	{
+		bool iceBlockFound = false;
+		FindCollisionActorsByAABB(nullptr, AABBf(x - 1.0f, y - 1.0f, x + 1.0f, y + 1.0f), [&iceBlockFound](Actors::ActorBase* actor) -> bool {
+			if ((actor->GetState() & Actors::ActorState::IsDestroyed) != Actors::ActorState::None) {
+				return true;
+			}
+
+			Actors::Environment::IceBlock* iceBlock = dynamic_cast<Actors::Environment::IceBlock*>(actor);
+			if (iceBlock != nullptr) {
+				iceBlock->ResetTimeLeft();
+				iceBlockFound = true;
+				return false;
+			}
+
+			return true;
+		});
+
+		if (!iceBlockFound) {
+			std::shared_ptr<Actors::Environment::IceBlock> iceBlock = std::make_shared<Actors::Environment::IceBlock>();
+			iceBlock->OnActivated(Actors::ActorActivationDetails(
+				this,
+				Vector3i(x - 1, y - 2, ILevelHandler::MainPlaneZ)
+			));
+			AddActor(iceBlock);
+		}
 	}
 
 	void LevelHandler::ResolveCollisions(float timeMult)
@@ -1345,7 +1390,7 @@ namespace Jazz2
 		device.updateListener(Vector3f(_cameraPos.X, _cameraPos.Y, 0.0f), Vector3f(speed.X, speed.Y, 0.0f));
 	}
 
-	void LevelHandler::LimitCameraView(float left, float width)
+	void LevelHandler::LimitCameraView(int left, int width)
 	{
 		_levelBounds.X = left;
 		if (width > 0.0f) {
@@ -1359,7 +1404,7 @@ namespace Jazz2
 			_viewBoundsTarget = _viewBounds;
 		} else {
 			Rectf bounds = Rectf((float)_levelBounds.X, (float)_levelBounds.Y, (float)_levelBounds.W, (float)_levelBounds.H);
-			float viewWidth = _view->size().X;
+			float viewWidth = (float)_view->size().X;
 			if (bounds.W < viewWidth) {
 				bounds.X -= (viewWidth - bounds.W);
 				bounds.W = viewWidth;
@@ -1431,7 +1476,7 @@ namespace Jazz2
 		}
 #endif
 
-		return false;
+		return result;
 	}
 
 	void LevelHandler::UpdatePressedActions()
@@ -1482,7 +1527,7 @@ namespace Jazz2
 				}
 			}
 			if (!found) {
-				_lastPressedNumericKey = -1;
+				_lastPressedNumericKey = UINT32_MAX;
 			}
 		}
 
@@ -1662,6 +1707,7 @@ namespace Jazz2
 
 		if (notInitialized) {
 			_target = std::make_unique<Texture>(nullptr, Texture::Format::RGB8, width, height);
+			_target->setWrap(SamplerWrapping::ClampToEdge);
 			_view = std::make_unique<Viewport>(_target.get(), Viewport::DepthStencilFormat::None);
 			_view->setRootNode(this);
 			_view->setCamera(_camera.get());

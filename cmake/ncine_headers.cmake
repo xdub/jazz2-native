@@ -13,13 +13,16 @@ set(HEADERS
 	${NCINE_SOURCE_DIR}/Shared/Utf8.h
 	${NCINE_SOURCE_DIR}/Shared/Containers/Array.h
 	${NCINE_SOURCE_DIR}/Shared/Containers/ArrayView.h
+	${NCINE_SOURCE_DIR}/Shared/Containers/DateTime.h
 	${NCINE_SOURCE_DIR}/Shared/Containers/GrowableArray.h
 	${NCINE_SOURCE_DIR}/Shared/Containers/Pair.h
 	${NCINE_SOURCE_DIR}/Shared/Containers/Reference.h
 	${NCINE_SOURCE_DIR}/Shared/Containers/SmallVector.h
+	${NCINE_SOURCE_DIR}/Shared/Containers/StaticArray.h
 	${NCINE_SOURCE_DIR}/Shared/Containers/String.h
 	${NCINE_SOURCE_DIR}/Shared/Containers/StringStlView.h
 	${NCINE_SOURCE_DIR}/Shared/Containers/StringView.h
+	${NCINE_SOURCE_DIR}/Shared/Containers/Tags.h
 	${NCINE_SOURCE_DIR}/Shared/IO/AndroidAssetStream.h
 	${NCINE_SOURCE_DIR}/Shared/IO/FileStream.h
 	${NCINE_SOURCE_DIR}/Shared/IO/FileSystem.h
@@ -296,6 +299,7 @@ list(APPEND HEADERS
 	${NCINE_SOURCE_DIR}/Jazz2/Events/EventMap.h
 	${NCINE_SOURCE_DIR}/Jazz2/Events/EventSpawner.h
 	${NCINE_SOURCE_DIR}/Jazz2/Scripting/FindAngelScript.h
+	${NCINE_SOURCE_DIR}/Jazz2/Scripting/JJ2PlusDefinitions.h
 	${NCINE_SOURCE_DIR}/Jazz2/Scripting/LevelScriptLoader.h
 	${NCINE_SOURCE_DIR}/Jazz2/Scripting/RegisterArray.h
 	${NCINE_SOURCE_DIR}/Jazz2/Scripting/RegisterRef.h

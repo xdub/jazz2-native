@@ -1,5 +1,5 @@
 // Copyright © 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016,
-//             2017, 2018, 2019, 2020, 2021, 2022
+//             2017, 2018, 2019, 2020, 2021, 2022, 2023
 //           Vladimír Vondruš <mosra@centrum.cz> and contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -71,7 +71,7 @@ namespace Death::Containers
 		 * @brief Construct a value-initialized pair
 		 *
 		 * Trivial types are zero-initialized, default constructor called
-		 * otherwise. This is the same as @ref Pair().
+		 * otherwise. This is the same as the default constructor.
 		 */
 		constexpr explicit Pair(ValueInitT) noexcept(std::is_nothrow_constructible<F>::value && std::is_nothrow_constructible<S>::value) :
 			_first(), _second() {}
@@ -89,7 +89,7 @@ namespace Death::Containers
 		 */
 		template<class F_ = F, class = typename std::enable_if<std::is_standard_layout<F_>::value && std::is_standard_layout<S>::value && std::is_trivial<F_>::value && std::is_trivial<S>::value>::type> explicit Pair(NoInitT) noexcept {}
 
-		template<class F_ = F, class S_ = S, class = typename std::enable_if<std::is_constructible<F_, NoInitT>::value && std::is_constructible<S_, NoInitT>::value>::type> explicit Pair(NoInitT) noexcept(std::is_nothrow_constructible<F, NoInitT>::value && std::is_nothrow_constructible<S, NoInitT>::value) : _first { NoInit }, _second { NoInit } {}
+		template<class F_ = F, class S_ = S, class = typename std::enable_if<std::is_constructible<F_, NoInitT>::value && std::is_constructible<S_, NoInitT>::value>::type> explicit Pair(NoInitT) noexcept(std::is_nothrow_constructible<F, NoInitT>::value && std::is_nothrow_constructible<S, NoInitT>::value) : _first{NoInit}, _second{NoInit} {}
 
 		/**
 		 * @brief Default constructor
@@ -100,81 +100,87 @@ namespace Death::Containers
 #if defined(DEATH_MSVC2015_COMPATIBILITY)
 			// Otherwise it complains that _first and _second isn't initialized in a constexpr context. Does it not see the delegation?! OTOH
 			// MSVC doesn't seem to be affected by the emplaceConstructorExplicitInCopyInitialization() bug in GCC and Clang, so I can use {} here I think.
-			_first {}, _second {}
+			_first{}, _second{}
 #else
-			Pair { ValueInit }
+			Pair{ValueInit}
 #endif
-		{ }
+		{}
 
-		/**
-		 * @brief Constructor
-		 *
-		 * @see @ref pair(F&&, S&&)
-		 */
+		/** @brief Constructor */
 		constexpr /*implicit*/ Pair(const F& first, const S& second) noexcept(std::is_nothrow_copy_constructible<F>::value && std::is_nothrow_copy_constructible<S>::value) :
 			// Can't use {} on GCC 4.8, see constructHelpers.h for details and  PairTest::copyMoveConstructPlainStruct() for a test.
 #if defined(DEATH_TARGET_GCC) && !defined(DEATH_TARGET_CLANG) && __GNUC__ < 5
 			_first(first), _second(second)
 #else
-			_first { first }, _second { second }
+			_first{first}, _second{second}
 #endif
-		{ }
+		{}
+
 		/** @overload */
 		constexpr /*implicit*/ Pair(const F& first, S&& second) noexcept(std::is_nothrow_copy_constructible<F>::value && std::is_nothrow_move_constructible<S>::value) :
 			// Can't use {} on GCC 4.8, see constructHelpers.h for details and PairTest::copyMoveConstructPlainStruct() for a test.
 #if defined(DEATH_TARGET_GCC) && !defined(DEATH_TARGET_CLANG) && __GNUC__ < 5
 			_first(first), _second(std::move(second))
 #else
-			_first { first }, _second { std::move(second) }
+			_first{first}, _second{std::move(second)}
 #endif
-		{ }
+		{}
+
 		/** @overload */
 		constexpr /*implicit*/ Pair(F&& first, const S& second) noexcept(std::is_nothrow_move_constructible<F>::value && std::is_nothrow_copy_constructible<S>::value) :
 			// Can't use {} on GCC 4.8, see constructHelpers.h for details and PairTest::copyMoveConstructPlainStruct() for a test.
 #if defined(DEATH_TARGET_GCC) && !defined(DEATH_TARGET_CLANG) && __GNUC__ < 5
 			_first(std::move(first)), _second(second)
 #else
-			_first { std::move(first) }, _second { second }
+			_first{std::move(first)}, _second{second}
 #endif
-		{ }
+		{}
+
 		/** @overload */
 		constexpr /*implicit*/ Pair(F&& first, S&& second) noexcept(std::is_nothrow_move_constructible<F>::value && std::is_nothrow_move_constructible<S>::value) :
 			// Can't use {} on GCC 4.8, see constructHelpers.h for details and PairTest::copyMoveConstructPlainStruct() for a test.
 #if defined(DEATH_TARGET_GCC) && !defined(DEATH_TARGET_CLANG) && __GNUC__ < 5
 			_first(std::move(first)), _second(std::move(second))
 #else
-			_first { std::move(first) }, _second { std::move(second) }
+			_first{std::move(first)}, _second{std::move(second)}
 #endif
-		{ }
+		{}
 
-		/**
-		 * @brief Copy-construct a pair from external representation
-		 *
-		 * @see @ref Containers-Pair-stl, @ref pair(T&&)
-		 */
-		template<class T, class = decltype(Implementation::PairConverter<F, S, T>::from(std::declval<const T&>()))> /*implicit*/ Pair(const T& other) noexcept(std::is_nothrow_copy_constructible<F>::value && std::is_nothrow_copy_constructible<S>::value) : Pair { Implementation::PairConverter<F, S, T>::from(other) } {}
+		/** @brief Copy-construct a pair from another of different type */
+		template<class OtherF, class OtherS, class = typename std::enable_if<std::is_constructible<F, const OtherF&>::value&& std::is_constructible<S, const OtherS&>::value>::type> constexpr explicit Pair(const Pair<OtherF, OtherS>& other) noexcept(std::is_nothrow_constructible<F, const OtherF&>::value && std::is_nothrow_constructible<S, const OtherS&>::value) :
+			// Explicit T() to avoid warnings for int-to-float conversion etc., as that's a desirable use case here (and the constructor
+			// is explicit because of that). Using () instead of {} alone doesn't help as Clang still warns for float-to-double conversion.
+			// Can't use {} on GCC 4.8, see constructHelpers.h for details and PairTest::copyMoveConstructPlainStruct() for a test.
+#if defined(DEATH_TARGET_GCC) && !defined(DEATH_TARGET_CLANG) && __GNUC__ < 5
+			_first(F(other._first)), _second(S(other._second))
+#else
+			_first{F(other._first)}, _second{S(other._second)}
+#endif
+		{}
 
-		/**
-		 * @brief Move-construct a pair from external representation
-		 *
-		 * @see @ref Containers-Pair-stl, @ref pair(T&&)
-		 */
-		template<class T, class = decltype(Implementation::PairConverter<F, S, T>::from(std::declval<T&&>()))> /*implicit*/ Pair(T&& other) noexcept(std::is_nothrow_move_constructible<F>::value && std::is_nothrow_move_constructible<S>::value) : Pair { Implementation::PairConverter<F, S, T>::from(std::move(other)) } {}
+		/** @brief Move-construct a pair from another of different type */
+		template<class OtherF, class OtherS, class = typename std::enable_if<std::is_constructible<F, OtherF&&>::value&& std::is_constructible<S, OtherS&&>::value>::type> constexpr explicit Pair(Pair<OtherF, OtherS>&& other) noexcept(std::is_nothrow_constructible<F, OtherF&&>::value && std::is_nothrow_constructible<S, OtherS&&>::value) :
+			// Explicit T() to avoid conversion warnings, similar to above; GCC 4.8 special case also similarly to above although
+			// copyMoveConstructPlainStruct() cannot really test it (see there for details).
+#if defined(DEATH_TARGET_GCC) && !defined(DEATH_TARGET_CLANG) && __GNUC__ < 5
+			_first(F(std::move(other._first))), _second(S(std::move(other._second)))
+#else
+			_first{F(std::move(other._first))}, _second{S(std::move(other._second))}
+#endif
+		{}
 
-		/**
-		 * @brief Copy-convert the pair to external representation
-		 *
-		 * @see @ref Containers-Pair-stl
-		 */
+		/** @brief Copy-construct a pair from external representation */
+		template<class T, class = decltype(Implementation::PairConverter<F, S, T>::from(std::declval<const T&>()))> /*implicit*/ Pair(const T& other) noexcept(std::is_nothrow_copy_constructible<F>::value && std::is_nothrow_copy_constructible<S>::value) : Pair{Implementation::PairConverter<F, S, T>::from(other)} {}
+
+		/** @brief Move-construct a pair from external representation */
+		template<class T, class = decltype(Implementation::PairConverter<F, S, T>::from(std::declval<T&&>()))> /*implicit*/ Pair(T&& other) noexcept(std::is_nothrow_move_constructible<F>::value && std::is_nothrow_move_constructible<S>::value) : Pair{Implementation::PairConverter<F, S, T>::from(std::move(other))} {}
+
+		/** @brief Copy-convert the pair to external representation */
 		template<class T, class = decltype(Implementation::PairConverter<F, S, T>::to(std::declval<const Pair<F, S>&>()))> /*implicit*/ operator T() const& {
 			return Implementation::PairConverter<F, S, T>::to(*this);
 		}
 
-		/**
-		 * @brief Move-convert the pair to external representation
-		 *
-		 * @see @ref Containers-Pair-stl
-		 */
+		/** @brief Move-convert the pair to external representation */
 		template<class T, class = decltype(Implementation::PairConverter<F, S, T>::to(std::declval<Pair<F, S>&&>()))> /*implicit*/ operator T()&& {
 			return Implementation::PairConverter<F, S, T>::to(std::move(*this));
 		}

@@ -10,11 +10,14 @@ namespace Jazz2::UI::Menu
 #if (defined(DEATH_TARGET_WINDOWS) && !defined(DEATH_TARGET_WINDOWS_RT)) || defined(DEATH_TARGET_UNIX)
 		EnableDiscordIntegration,
 #endif
-#if !defined(DEATH_TARGET_ANDROID) && !defined(DEATH_TARGET_IOS) && !defined(DEATH_TARGET_WINDOWS_RT)
+#if !defined(DEATH_TARGET_ANDROID) && !defined(DEATH_TARGET_IOS) && !defined(DEATH_TARGET_SWITCH) && !defined(DEATH_TARGET_WINDOWS_RT)
 		EnableRgbLights,
 #endif
 #if defined(WITH_ANGELSCRIPT)
 		AllowUnsignedScripts,
+#endif
+#if defined(DEATH_TARGET_APPLE) || defined(DEATH_TARGET_WINDOWS) || defined(DEATH_TARGET_UNIX)
+		BrowseSourceDirectory,
 #endif
 #if !defined(DEATH_TARGET_EMSCRIPTEN)
 		RefreshCache,

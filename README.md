@@ -76,6 +76,14 @@ Jazz² Resurrection is reimplementation of the game **Jazz Jackrabbit 2** releas
 
 `‹Storage›` *is usually internal storage on your device.* `Content` *directory is included directly in APK file, no action is needed. The game requires **Android 5.0** (or newer) and GPU with **OpenGL ES 3.0** support. Cache is recreated during intro cinematics on the first startup.*
 
+### Nintendo Switch
+* Download the game
+* Install `Jazz2.nro` package (custom firmware is needed)
+* Copy contents of original *Jazz Jackrabbit 2* directory to `/Games/Jazz2/Source/` on SD card
+* Run the newly installed application with enabled full RAM access
+
+*Cache is recreated during intro cinematics on the first startup, so it can't be skipped. It may take more time, so white screen could be shown longer than expected.*
+
 ### Web (Emscripten)
 * Go to http://deat.tk/jazz2/wasm/
 * Import episodes from original *Jazz Jackrabbit 2* directory in main menu to unlock additional content
@@ -118,8 +126,15 @@ Jazz² Resurrection is reimplementation of the game **Jazz Jackrabbit 2** releas
   * Can be disabled with `NCINE_DOWNLOAD_DEPENDENCIES` option, then download [build dependencies](https://github.com/deathkiller/jazz2-libraries) manually to `./Libs/`
 * Build the project with *CMake*
 
+### Nintendo Switch
+* Install [devkitPro toolchain](https://devkitpro.org/wiki/devkitPro_pacman)
+* Build the project with *CMake* and devkitPro toolchain
+```bash
+cmake -D CMAKE_TOOLCHAIN_FILE=${DEVKITPRO}/cmake/Switch.cmake -D NCINE_PREFERRED_BACKEND=SDL2 -D NCINE_WITH_GLEW=OFF
+```
+
 ### Web (Emscripten)
-* Install Emscripten SDK (preferably to `../emsdk/`)
+* Install [Emscripten SDK](https://emscripten.org/docs/getting_started/downloads.html) (preferably to `../emsdk/`)
 ```bash
 cd ..
 git clone https://github.com/emscripten-core/emsdk.git
@@ -136,6 +151,9 @@ cd emsdk
 * Build dependencies will be downloaded automatically by *CMake*
   * Can be disabled with `NCINE_DOWNLOAD_DEPENDENCIES` option, then download [build dependencies](https://github.com/deathkiller/jazz2-libraries) manually to `.\Libs\`
 * Run *CMake* to create [Microsoft Visual Studio 2019](https://www.visualstudio.com/) (or newer) solution
+```bash
+cmake -D CMAKE_SYSTEM_NAME=WindowsStore -D CMAKE_SYSTEM_VERSION="10.0"
+```
 
 
 ## License

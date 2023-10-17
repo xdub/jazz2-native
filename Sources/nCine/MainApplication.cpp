@@ -18,12 +18,21 @@
 #if defined(DEATH_TARGET_EMSCRIPTEN)
 #	include <emscripten/emscripten.h>
 #endif
+#if defined(DEATH_TARGET_SWITCH)
+#	include <switch.h>
+#endif
 
 #include "tracy.h"
 
+using namespace Death::Containers::Literals;
 using namespace Death::IO;
 
-#if defined(DEATH_LOG) && defined(DEATH_TARGET_WINDOWS) && !defined(DEATH_TARGET_WINDOWS_RT)
+#if defined(DEATH_TRACE) && defined(DEATH_TARGET_SWITCH)
+
+#	include <IO/FileStream.h>
+std::unique_ptr<Death::IO::Stream> __logFile;
+
+#elif defined(DEATH_TRACE) && defined(DEATH_TARGET_WINDOWS) && !defined(DEATH_TARGET_WINDOWS_RT)
 
 #if !defined(ENABLE_VIRTUAL_TERMINAL_PROCESSING)
 #	define ENABLE_VIRTUAL_TERMINAL_PROCESSING 0x0004
@@ -43,27 +52,27 @@ static bool CreateLogConsole(const StringView& title)
 	if (::AttachConsole(ATTACH_PARENT_PROCESS)) {
 		HANDLE consoleHandleOut = ::GetStdHandle(STD_OUTPUT_HANDLE);
 		if (consoleHandleOut != INVALID_HANDLE_VALUE) {
-			freopen_s(&fDummy, "CONOUT$", "w", stdout);
-			setvbuf(stdout, NULL, _IONBF, 0);
+			::freopen_s(&fDummy, "CONOUT$", "w", stdout);
+			::setvbuf(stdout, NULL, _IONBF, 0);
 		}
 
 		HANDLE consoleHandleError = ::GetStdHandle(STD_ERROR_HANDLE);
 		if (consoleHandleError != INVALID_HANDLE_VALUE) {
-			freopen_s(&fDummy, "CONOUT$", "w", stderr);
-			setvbuf(stderr, NULL, _IONBF, 0);
+			::freopen_s(&fDummy, "CONOUT$", "w", stderr);
+			::setvbuf(stderr, NULL, _IONBF, 0);
 		}
 
 		HANDLE consoleHandleIn = ::GetStdHandle(STD_INPUT_HANDLE);
 		if (consoleHandleIn != INVALID_HANDLE_VALUE) {
-			freopen_s(&fDummy, "CONIN$", "r", stdin);
-			setvbuf(stdin, NULL, _IONBF, 0);
+			::freopen_s(&fDummy, "CONIN$", "r", stdin);
+			::setvbuf(stdin, NULL, _IONBF, 0);
 		}
 
 		return true;
 	} else if (::AllocConsole()) {
-		freopen_s(&fDummy, "CONOUT$", "w", stdout);
-		freopen_s(&fDummy, "CONOUT$", "w", stderr);
-		freopen_s(&fDummy, "CONIN$", "r", stdin);
+		::freopen_s(&fDummy, "CONOUT$", "w", stdout);
+		::freopen_s(&fDummy, "CONOUT$", "w", stderr);
+		::freopen_s(&fDummy, "CONIN$", "r", stdin);
 
 		HANDLE hConOut = ::CreateFile(L"CONOUT$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 		HANDLE hConIn = ::CreateFile(L"CONIN$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -125,7 +134,7 @@ static bool EnableVirtualTerminalProcessing()
 	return true;
 }
 
-#elif defined(DEATH_LOG) && (defined(DEATH_TARGET_APPLE) || defined(DEATH_TARGET_UNIX))
+#elif defined(DEATH_TRACE) && (defined(DEATH_TARGET_APPLE) || defined(DEATH_TARGET_EMSCRIPTEN) || defined(DEATH_TARGET_UNIX))
 
 #include <unistd.h>
 
@@ -147,10 +156,30 @@ namespace nCine
 			return EXIT_FAILURE;
 		}
 
-#if defined(DEATH_TARGET_WINDOWS)
+#if defined(DEATH_TARGET_SWITCH)
+		socketInitializeDefault();
+		nxlinkStdio();
+		romfsInit();
+
+		// Initialize the default gamepad
+		padConfigureInput(1, HidNpadStyleSet_NpadStandard);
+		PadState pad;
+		padInitializeDefault(&pad);
+		hidInitializeTouchScreen();
+
+#	if defined(DEATH_TRACE)
+		// Try to open log file as early as possible
+		// TODO: Hardcoded path
+		fs::CreateDirectories("sdmc:/Games/Jazz2/"_s);
+		__logFile = fs::Open("sdmc:/Games/Jazz2/Jazz2.log"_s, FileAccessMode::Write);
+		if (!__logFile->IsValid()) {
+			__logFile = nullptr;
+		}
+#	endif
+#elif defined(DEATH_TARGET_WINDOWS)
 		// Force set current directory, so everything is loaded correctly, because it's not usually intended
 		wchar_t pBuf[MAX_PATH];
-		DWORD pBufLength = ::GetModuleFileName(nullptr, pBuf, countof(pBuf));
+		DWORD pBufLength = ::GetModuleFileName(NULL, pBuf, countof(pBuf));
 		if (pBufLength > 0) {
 			wchar_t* lastSlash = wcsrchr(pBuf, L'\\');
 			if (lastSlash == nullptr) {
@@ -177,12 +206,15 @@ namespace nCine
 #endif
 		app.shutdownCommon();
 
-#if defined(DEATH_LOG) && defined(DEATH_TARGET_WINDOWS) && !defined(DEATH_TARGET_WINDOWS_RT)
+#if defined(DEATH_TRACE) && defined(DEATH_TARGET_WINDOWS) && !defined(DEATH_TARGET_WINDOWS_RT)
 		if (__showLogConsole) {
 			DestroyLogConsole();
 		}
 #endif
-
+#if defined(DEATH_TARGET_SWITCH)
+		romfsExit();
+		socketExit();
+#endif
 		return EXIT_SUCCESS;
 	}
 
@@ -194,9 +226,22 @@ namespace nCine
 #endif
 		wasSuspended_ = shouldSuspend();
 
-#if defined(DEATH_LOG)
+#if defined(DEATH_TRACE)
 #	if defined(DEATH_TARGET_APPLE)
 		__hasVirtualTerminal = isatty(1);
+#	elif defined(DEATH_TARGET_EMSCRIPTEN)
+		char* userAgent = (char*)EM_ASM_PTR({
+			return (typeof navigator !== 'undefined' && navigator !== null &&
+					typeof navigator.userAgent !== 'undefined' && navigator.userAgent !== null
+						? stringToNewUTF8(navigator.userAgent) : 0);
+		});
+		if (userAgent != nullptr) {
+			// Only Chrome supports ANSI escape sequences for now
+			__hasVirtualTerminal = (::strcasestr(userAgent, "chrome") != nullptr);
+			free(userAgent);
+		} else {
+			__hasVirtualTerminal = false;
+		}
 #	elif defined(DEATH_TARGET_WINDOWS) && !defined(DEATH_TARGET_WINDOWS_RT)
 		__showLogConsole = false;
 		for (int i = 0; i < argc; i++) {
@@ -206,14 +251,14 @@ namespace nCine
 			}
 		}
 		if (__showLogConsole) {
-			CreateLogConsole(NCINE_APP_NAME ": Console");
+			CreateLogConsole(NCINE_APP_NAME " Console");
 			__hasVirtualTerminal = EnableVirtualTerminalProcessing();
 		} else {
 			__hasVirtualTerminal = false;
 		}
 #	elif defined(DEATH_TARGET_UNIX)
-		setvbuf(stdout, nullptr, _IONBF, 0);
-		setvbuf(stderr, nullptr, _IONBF, 0);
+		::setvbuf(stdout, nullptr, _IONBF, 0);
+		::setvbuf(stderr, nullptr, _IONBF, 0);
 
 		// Xcode's console reports that it is a TTY, but it doesn't support colors, but TERM is not defined
 		__hasVirtualTerminal = isatty(1) && std::getenv("TERM");
@@ -319,7 +364,7 @@ namespace nCine
 					SdlInputManager::parseEvent(event);
 					break;
 			}
-#if !defined(DEATH_TARGET_EMSCRIPTEN)
+#	if !defined(DEATH_TARGET_EMSCRIPTEN)
 			if (shouldSuspend()) {
 				SDL_WaitEvent(&event);
 				SDL_PushEvent(&event);
@@ -328,16 +373,16 @@ namespace nCine
 					SDL_PushEvent(&event);
 				}
 			}
-#endif
+#	endif
 		}
 	}
 #elif defined(WITH_GLFW)
 	void MainApplication::processEvents()
 	{
 		// GLFW does not seem to correctly handle Emscripten focus and blur events
-#if !defined(DEATH_TARGET_EMSCRIPTEN)
+#	if !defined(DEATH_TARGET_EMSCRIPTEN)
 		setFocus(GlfwInputManager::hasFocus());
-#endif
+#	endif
 
 		if (shouldSuspend()) {
 			glfwWaitEvents();

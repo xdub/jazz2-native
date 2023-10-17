@@ -228,9 +228,14 @@ namespace Jazz2
 		static constexpr int32_t ColorsPerPalette = 256;
 		static constexpr int32_t InvalidValue = INT_MAX;
 
+		static ContentResolver& Get();
+
 		~ContentResolver();
 		
 		void Release();
+
+		bool IsHeadless() const;
+		void SetHeadless(bool value);
 
 		void BeginLoading();
 		void EndLoading();
@@ -261,6 +266,8 @@ namespace Jazz2
 			return _contentPath;
 #elif defined(DEATH_TARGET_ANDROID)
 			return "asset::"_s;
+#elif defined(DEATH_TARGET_SWITCH)
+			return "romfs:/"_s;
 #elif defined(DEATH_TARGET_WINDOWS)
 			return "Content\\"_s;
 #else
@@ -271,6 +278,9 @@ namespace Jazz2
 		StringView GetCachePath() const {
 #if defined(DEATH_TARGET_ANDROID) || defined(DEATH_TARGET_APPLE) || defined(DEATH_TARGET_UNIX) || defined(DEATH_TARGET_WINDOWS_RT)
 			return _cachePath;
+#elif defined(DEATH_TARGET_SWITCH)
+			// Switch has some issues with UTF-8 characters, so use "Jazz2" instead
+			return "sdmc:/Games/Jazz2/Cache/"_s;
 #elif defined(DEATH_TARGET_WINDOWS)
 			return "Cache\\"_s;
 #else
@@ -281,14 +291,15 @@ namespace Jazz2
 		StringView GetSourcePath() const {
 #if defined(DEATH_TARGET_ANDROID) || defined(DEATH_TARGET_APPLE) || defined(DEATH_TARGET_UNIX) || defined(DEATH_TARGET_WINDOWS_RT)
 			return _sourcePath;
+#elif defined(DEATH_TARGET_SWITCH)
+			// Switch has some issues with UTF-8 characters, so use "Jazz2" instead
+			return "sdmc:/Games/Jazz2/Source/"_s;
 #elif defined(DEATH_TARGET_WINDOWS)
 			return "Source\\"_s;
 #else
 			return "Source/"_s;
 #endif
 		}
-
-		static ContentResolver& Get();
 
 	private:
 		ContentResolver();
@@ -309,6 +320,7 @@ namespace Jazz2
 		void MigrateGraphics(const StringView& path);
 #endif
 
+		bool _isHeadless;
 		bool _isLoading;
 		uint32_t _palettes[PaletteCount * ColorsPerPalette];
 		HashMap<String, std::unique_ptr<Metadata>> _cachedMetadata;

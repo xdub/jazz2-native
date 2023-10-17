@@ -14,8 +14,10 @@
 
 #include "../Containers/SmallVector.h"
 #include "../Containers/String.h"
+#include "../Containers/StringView.h"
 
 #if defined(DEATH_TARGET_WINDOWS) || defined(DEATH_TARGET_CYGWIN)
+#	pragma comment(lib, "Ws2_32")
 #	pragma push_macro("WIN32_LEAN_AND_MEAN")
 #	pragma push_macro("NOMINMAX")
 #	if !defined(WIN32_LEAN_AND_MEAN)
@@ -27,7 +29,6 @@
 #	include <ws2tcpip.h>
 #	pragma pop_macro("WIN32_LEAN_AND_MEAN")
 #	pragma pop_macro("NOMINMAX")
-#	pragma comment(lib, "Ws2_32")
 #else
 #	include <errno.h>
 #	include <fcntl.h>
@@ -41,27 +42,28 @@
 
 namespace Death::IO::Http
 {
+	using Containers::Literals::operator"" _s;
+
 	enum class InternetProtocol : std::uint8_t {
 		V4,
 		V6
 	};
 
 	struct Uri final {
-		Containers::String scheme;
-		Containers::String host;
-		Containers::String port;
-		Containers::String path;
-		Containers::String query;
-		Containers::String fragment;
+		Containers::String Scheme;
+		Containers::String Host;
+		Containers::String Port;
+		Containers::String Path;
+		Containers::String Query;
+		Containers::String Fragment;
 	};
 
 	struct HttpVersion final {
-		std::uint16_t major;
-		std::uint16_t minor;
+		std::uint16_t Major;
+		std::uint16_t Minor;
 	};
 
-	struct Status final
-	{
+	struct HttpStatus final	{
 		// RFC 7231, 6. Response Status Codes
 		enum Code : std::uint16_t {
 			Continue = 100,
@@ -133,17 +135,17 @@ namespace Death::IO::Http
 			ResponseCorrupted = 1000
 		};
 
-		HttpVersion httpVersion;
-		std::uint16_t code;
-		Containers::String reason;
+		HttpVersion Version;
+		std::uint16_t Code;
+		Containers::String Reason;
 	};
 
 	using HeaderField = std::pair<Containers::String, Containers::String>;
 
 	struct Response final {
-		Status status;
-		Containers::SmallVector<HeaderField, 0> headerFields;
-		Containers::SmallVector<std::uint8_t, 0> body;
+		HttpStatus Status;
+		Containers::SmallVector<HeaderField, 0> HeaderFields;
+		Containers::SmallVector<std::uint8_t, 0> Body;
 	};
 
 #if defined(DEATH_TARGET_WINDOWS) || defined(DEATH_TARGET_CYGWIN)
@@ -165,15 +167,17 @@ namespace Death::IO::Http
 			_started = true;
 		}
 
-		~WinSock()
-		{
-			if (_started) WSACleanup();
-		}
-
-		WinSock(WinSock&& other) noexcept :
-			_started { other._started }
+		WinSock(WinSock&& other) noexcept
+			: _started { other._started }
 		{
 			other._started = false;
+		}
+
+		~WinSock()
+		{
+			if (_started) {
+				WSACleanup();
+			}
 		}
 
 		WinSock& operator=(WinSock&& other) noexcept
@@ -215,8 +219,8 @@ namespace Death::IO::Http
 		static constexpr Type invalid = -1;
 #endif
 
-		explicit Socket(const InternetProtocol internetProtocol) :
-			endpoint { socket(GetAddressFamily(internetProtocol), SOCK_STREAM, IPPROTO_TCP) }
+		explicit Socket(const InternetProtocol internetProtocol)
+			: endpoint { socket(GetAddressFamily(internetProtocol), SOCK_STREAM, IPPROTO_TCP) }
 		{
 			if (endpoint == invalid) {
 				return;
@@ -224,20 +228,20 @@ namespace Death::IO::Http
 
 #if defined(DEATH_TARGET_WINDOWS) || defined(DEATH_TARGET_CYGWIN)
 			ULONG mode = 1;
-			if (ioctlsocket(endpoint, FIONBIO, &mode) != 0) {
+			if (::ioctlsocket(endpoint, FIONBIO, &mode) != 0) {
 				Close();
 				endpoint = invalid;
 				return;
 			}
 #else
-			const auto flags = fcntl(endpoint, F_GETFL);
+			const auto flags = ::fcntl(endpoint, F_GETFL);
 			if (flags == -1) {
 				Close();
 				endpoint = invalid;
 				return;
 			}
 
-			if (fcntl(endpoint, F_SETFL, flags | O_NONBLOCK) == -1) {
+			if (::fcntl(endpoint, F_SETFL, flags | O_NONBLOCK) == -1) {
 				Close();
 				endpoint = invalid;
 				return;
@@ -246,7 +250,7 @@ namespace Death::IO::Http
 
 #if defined(DEATH_TARGET_APPLE)
 			const int value = 1;
-			if (setsockopt(endpoint, SOL_SOCKET, SO_NOSIGPIPE, &value, sizeof(value)) == -1) {
+			if (::setsockopt(endpoint, SOL_SOCKET, SO_NOSIGPIPE, &value, sizeof(value)) == -1) {
 				Close();
 				endpoint = invalid;
 				return;
@@ -254,15 +258,15 @@ namespace Death::IO::Http
 #endif
 		}
 
+		Socket(Socket&& other) noexcept
+			: endpoint { other.endpoint }
+		{
+			other.endpoint = invalid;
+		}
+
 		~Socket()
 		{
 			if (endpoint != invalid) Close();
-		}
-
-		Socket(Socket&& other) noexcept :
-			endpoint { other.endpoint }
-		{
-			other.endpoint = invalid;
 		}
 
 		Socket& operator=(Socket&& other) noexcept
@@ -287,15 +291,11 @@ namespace Death::IO::Http
 			}
 			if (result == -1) {
 				if (WSAGetLastError() == WSAEWOULDBLOCK && Select(SelectType::Write, timeout)) {
-					char socketErrorPointer[sizeof(int)];
-					socklen_t optionLength = sizeof(socketErrorPointer);
-					if (getsockopt(endpoint, SOL_SOCKET, SO_ERROR, socketErrorPointer, &optionLength) == -1) {
+					int socketError;
+					socklen_t optionLength = sizeof(socketError);
+					if (::getsockopt(endpoint, SOL_SOCKET, SO_ERROR, (char*)&socketError, &optionLength) == -1) {
 						return false;
 					}
-
-					int socketError;
-					std::memcpy(&socketError, socketErrorPointer, sizeof(socketErrorPointer));
-
 					return (socketError == 0);
 				}
 
@@ -310,7 +310,7 @@ namespace Death::IO::Http
 				if (errno == EINPROGRESS && Select(SelectType::Write, timeout)) {
 					int socketError;
 					socklen_t optionLength = sizeof(socketError);
-					if (getsockopt(endpoint, SOL_SOCKET, SO_ERROR, &socketError, &optionLength) == -1) {
+					if (::getsockopt(endpoint, SOL_SOCKET, SO_ERROR, &socketError, &optionLength) == -1) {
 						return false;
 					}
 
@@ -387,20 +387,17 @@ namespace Death::IO::Http
 									(type == SelectType::Read) ? &descriptorSet : nullptr,
 									(type == SelectType::Write) ? &descriptorSet : nullptr,
 									nullptr,
-									(timeout >= 0) ? &selectTimeout : nullptr);
+									timeout >= 0 ? &selectTimeout : nullptr);
 
 			while (count == -1 && WSAGetLastError() == WSAEINTR) {
 				count = ::select(0,
 									(type == SelectType::Read) ? &descriptorSet : nullptr,
 									(type == SelectType::Write) ? &descriptorSet : nullptr,
 									nullptr,
-									(timeout >= 0) ? &selectTimeout : nullptr);
+									timeout >= 0 ? &selectTimeout : nullptr);
 			}
-			if (count == -1) {
-				// Failed to select socket
-				return false;
-			} else if (count == 0) {
-				// Request timed out
+			if (count <= 0) {
+				// Failed to select socket or request timed out
 				return false;
 			}
 #else
@@ -412,20 +409,17 @@ namespace Death::IO::Http
 									(type == SelectType::Read) ? &descriptorSet : nullptr,
 									(type == SelectType::Write) ? &descriptorSet : nullptr,
 									nullptr,
-									(timeout >= 0) ? &selectTimeout : nullptr);
+									timeout >= 0 ? &selectTimeout : nullptr);
 
 			while (count == -1 && errno == EINTR) {
 				count = ::select(endpoint + 1,
 									(type == SelectType::Read) ? &descriptorSet : nullptr,
 									(type == SelectType::Write) ? &descriptorSet : nullptr,
 									nullptr,
-									(timeout >= 0) ? &selectTimeout : nullptr);
+									timeout >= 0 ? &selectTimeout : nullptr);
 			}
-			if (count == -1) {
-				// Failed to select socket
-				return false;
-			} else if (count == 0) {
-				// Request timed out
+			if (count <= 0) {
+				// Failed to select socket or request timed out
 				return false;
 			}
 #endif
@@ -435,7 +429,7 @@ namespace Death::IO::Http
 		void Close() noexcept
 		{
 #if defined(DEATH_TARGET_WINDOWS) || defined(DEATH_TARGET_CYGWIN)
-			closesocket(endpoint);
+			::closesocket(endpoint);
 #else
 			::close(endpoint);
 #endif
@@ -454,14 +448,14 @@ namespace Death::IO::Http
 	template <typename C>
 	constexpr bool IsWhiteSpaceChar(const C c) noexcept
 	{
-		return c == 0x20 || c == 0x09; // space or tab
+		return (c == 0x20 || c == 0x09);	// space or tab
 	};
 
 	// RFC 5234, Appendix B.1. Core Rules
 	template <typename C>
 	constexpr bool IsDigitChar(const C c) noexcept
 	{
-		return c >= 0x30 && c <= 0x39; // 0 - 9
+		return (c >= 0x30 && c <= 0x39);	// 0 - 9
 	}
 
 	// RFC 5234, Appendix B.1. Core Rules
@@ -469,8 +463,8 @@ namespace Death::IO::Http
 	constexpr bool IsAlphaChar(const C c) noexcept
 	{
 		return
-			(c >= 0x61 && c <= 0x7A) || // a - z
-			(c >= 0x41 && c <= 0x5A); // A - Z
+			(c >= 0x61 && c <= 0x7A) ||		// a - z
+			(c >= 0x41 && c <= 0x5A);		// A - Z
 	}
 
 	// RFC 7230, 3.2.6. Field Value Components
@@ -478,22 +472,22 @@ namespace Death::IO::Http
 	constexpr bool IsTokenChar(const C c) noexcept
 	{
 		return c == 0x21 || // !
-			c == 0x23 || // #
-			c == 0x24 || // $
-			c == 0x25 || // %
-			c == 0x26 || // &
-			c == 0x27 || // '
-			c == 0x2A || // *
-			c == 0x2B || // +
-			c == 0x2D || // -
-			c == 0x2E || // .
-			c == 0x5E || // ^
-			c == 0x5F || // _
-			c == 0x60 || // `
-			c == 0x7C || // |
-			c == 0x7E || // ~
-			IsDigitChar(c) ||
-			IsAlphaChar(c);
+			   c == 0x23 || // #
+			   c == 0x24 || // $
+			   c == 0x25 || // %
+			   c == 0x26 || // &
+			   c == 0x27 || // '
+			   c == 0x2A || // *
+			   c == 0x2B || // +
+			   c == 0x2D || // -
+			   c == 0x2E || // .
+			   c == 0x5E || // ^
+			   c == 0x5F || // _
+			   c == 0x60 || // `
+			   c == 0x7C || // |
+			   c == 0x7E || // ~
+			   IsDigitChar(c) ||
+			   IsAlphaChar(c);
 	};
 
 	// RFC 5234, Appendix B.1. Core Rules
@@ -514,7 +508,7 @@ namespace Death::IO::Http
 	Iterator SkipWhiteSpaces(const Iterator begin, const Iterator end)
 	{
 		auto i = begin;
-		for (i = begin; i != end; ++i) {
+		for (; i != end; ++i) {
 			if (!IsWhiteSpaceChar(*i)) {
 				break;
 			}
@@ -537,9 +531,9 @@ namespace Death::IO::Http
 	{
 		// HEXDIG
 		return (c >= 0x30 && c <= 0x39) ? static_cast<T>(c - 0x30) : // 0 - 9
-			(c >= 0x41 && c <= 0x46) ? static_cast<T>(c - 0x41) + T(10) : // A - Z
-			(c >= 0x61 && c <= 0x66) ? static_cast<T>(c - 0x61) + T(10) : // a - z, some services send lower-case hex digits
-			T(0);
+				(c >= 0x41 && c <= 0x46) ? static_cast<T>(c - 0x41) + T(10) : // A - Z
+				(c >= 0x61 && c <= 0x66) ? static_cast<T>(c - 0x61) + T(10) : // a - z, some services send lower-case hex digits
+				T(0);
 	}
 
 	// RFC 3986, 3. Syntax Components
@@ -557,7 +551,7 @@ namespace Death::IO::Http
 		for (; i != end && (IsAlphaChar(*i) || IsDigitChar(*i) || *i == '+' || *i == '-' || *i == '.'); ++i) {
 			// Try to find the end of scheme
 		}
-		result.scheme = Containers::String(begin, i - begin);
+		result.Scheme = Containers::String(begin, i - begin);
 
 		if (i == end || *i++ != ':') {
 			return { };
@@ -575,14 +569,14 @@ namespace Death::IO::Http
 		// RFC 3986, 3.5. Fragment
 		const auto fragmentPosition = authority.find('#');
 		if (fragmentPosition != nullptr) {
-			result.fragment = authority.suffix(fragmentPosition.begin() + 1);
+			result.Fragment = authority.suffix(fragmentPosition.begin() + 1);
 			authority = authority.prefix(fragmentPosition.begin());
 		}
 
 		// RFC 3986, 3.4. Query
 		const auto queryPosition = authority.find('?');
 		if (queryPosition != nullptr) {
-			result.query = authority.suffix(queryPosition.begin() + 1);
+			result.Query = authority.suffix(queryPosition.begin() + 1);
 			authority = authority.prefix(queryPosition.begin());
 		}
 
@@ -590,20 +584,20 @@ namespace Death::IO::Http
 		const auto pathPosition = authority.find('/');
 		if (pathPosition != nullptr) {
 			// RFC 3986, 3.3. Path
-			result.path = authority.suffix(pathPosition.begin());
+			result.Path = authority.suffix(pathPosition.begin());
 			authority = authority.prefix(pathPosition.begin());
 		} else {
-			result.path = "/";
+			result.Path = "/"_s;
 		}
 
 		// RFC 3986, 3.2.2. Host
 		const auto portPosition = authority.find(':');
 		if (portPosition != nullptr) {
 			// RFC 3986, 3.2.3. Port
-			result.port = authority.suffix(portPosition.begin() + 1);
-			result.host = authority.prefix(portPosition.begin());
+			result.Port = authority.suffix(portPosition.begin() + 1);
+			result.Host = authority.prefix(portPosition.begin());
 		} else {
-			result.host = authority;
+			result.Host = authority;
 		}
 
 		return result;
@@ -616,34 +610,34 @@ namespace Death::IO::Http
 		auto i = begin;
 
 		if (i == end || *i++ != 'H') {
-			return { i, HttpVersion{0, 0} };
+			return { i, HttpVersion { 0, 0 } };
 		}
 		if (i == end || *i++ != 'T') {
-			return { i, HttpVersion{0, 0} };
+			return { i, HttpVersion { 0, 0 } };
 		}
 		if (i == end || *i++ != 'T') {
-			return { i, HttpVersion{0, 0} };
+			return { i, HttpVersion { 0, 0 } };
 		}
 		if (i == end || *i++ != 'P') {
-			return { i, HttpVersion{0, 0} };
+			return { i, HttpVersion { 0, 0 } };
 		}
 		if (i == end || *i++ != '/') {
-			return { i, HttpVersion{0, 0} };
+			return { i, HttpVersion { 0, 0 } };
 		}
 		if (i == end) {
-			return { i, HttpVersion{0, 0} };
+			return { i, HttpVersion { 0, 0 } };
 		}
 		const auto majorVersion = DigitToUint<std::uint16_t>(*i++);
 
 		if (i == end || *i++ != '.') {
-			return { i, HttpVersion{0, 0} };
+			return { i, HttpVersion { 0, 0 } };
 		}
 		if (i == end) {
-			return { i, HttpVersion{0, 0} };
+			return { i, HttpVersion { 0, 0 } };
 		}
 		const auto minorVersion = DigitToUint<std::uint16_t>(*i++);
 
-		return { i, HttpVersion{majorVersion, minorVersion} };
+		return { i, HttpVersion { majorVersion, minorVersion } };
 	}
 
 	// RFC 7230, 3.1.2. Status Line
@@ -653,11 +647,9 @@ namespace Death::IO::Http
 		std::uint16_t result = 0;
 
 		auto i = begin;
-		while (i != end && IsDigitChar(*i))
+		while (i != end && IsDigitChar(*i)) {
 			result = static_cast<std::uint16_t>(result * 10U) + DigitToUint<std::uint16_t>(*i++);
-
-		//if (std::distance(begin, i) != 3)
-		//	throw ResponseError { "Invalid status code" };
+		}
 
 		return { i, result };
 	}
@@ -687,9 +679,6 @@ namespace Death::IO::Http
 			result.push_back(static_cast<char>(*i));
 		}
 
-		//if (result.empty())
-		//	throw ResponseError { "Invalid token" };
-
 		return { i, std::move(result) };
 	}
 
@@ -704,7 +693,7 @@ namespace Death::IO::Http
 			result.push_back(static_cast<char>(*i));
 		}
 
-		// trim white spaces
+		// Trim white spaces
 		result.erase(std::find_if(result.rbegin(), result.rend(), [](const char c) noexcept {
 			return !IsWhiteSpaceChar(c);
 		}).base(), result.end());
@@ -719,8 +708,7 @@ namespace Death::IO::Http
 		std::string result;
 
 		auto i = begin;
-
-		for (;;) {
+		while (true) {
 			const auto fieldValueResult = ParseFieldValue(i, end);
 			i = fieldValueResult.first;
 			result += fieldValueResult.second;
@@ -774,7 +762,7 @@ namespace Death::IO::Http
 
 	// RFC 7230, 3.1.2. Status Line
 	template <class Iterator>
-	std::pair<Iterator, Status> ParseStatusLine(const Iterator begin, const Iterator end)
+	std::pair<Iterator, HttpStatus> ParseStatusLine(const Iterator begin, const Iterator end)
 	{
 		const auto httpVersionResult = ParseHttpVersion(begin, end);
 		auto i = httpVersionResult.first;
@@ -800,7 +788,7 @@ namespace Death::IO::Http
 			return { i, { } };
 		}
 
-		return { i, Status {
+		return { i, HttpStatus {
 			httpVersionResult.second,
 			statusCodeResult.second,
 			std::move(reasonPhraseResult.second)
@@ -839,10 +827,14 @@ namespace Death::IO::Http
 	{
 		std::string result;
 		for (const auto& headerField : headerFields) {
-			if (headerField.first.empty())
+			if (headerField.first.empty()) {
 				continue;
+			}
 
-			result += headerField.first + ": " + headerField.second + "\r\n";
+			result += headerField.first;
+			result += ": ";
+			result += headerField.second;
+			result += "\r\n";
 		}
 
 		return result;
@@ -878,10 +870,9 @@ namespace Death::IO::Http
 		if (c) {
 			result += chars[static_cast<std::uint8_t>((charArray[0] & 0xFC) >> 2)];
 
-			if (c == 1)
+			if (c == 1) {
 				result += chars[static_cast<std::uint8_t>((charArray[0] & 0x03) << 4)];
-			else // c == 2
-			{
+			} else { // c == 2
 				result += chars[static_cast<std::uint8_t>(((charArray[0] & 0x03) << 4) + ((charArray[1] & 0xF0) >> 4))];
 				result += chars[static_cast<std::uint8_t>((charArray[1] & 0x0F) << 2)];
 			}
@@ -895,10 +886,10 @@ namespace Death::IO::Http
 	inline void EncodeHtml(const Uri& uri, const Containers::StringView& method, const Containers::ArrayView<uint8_t>& body, const Containers::SmallVectorImpl<HeaderField>& headerFields, Containers::SmallVectorImpl<std::uint8_t>& targetBuffer)
 	{
 		// RFC 7230, 5.3. Request Target
-		const Containers::String requestTarget = uri.path + (uri.query.empty() ? "" : "?" + uri.query);
+		const Containers::String requestTarget = uri.Path + (uri.Query.empty() ? Containers::String { } : "?"_s + uri.Query);
 		const auto headerData = EncodeRequestLine(method, requestTarget) +
 			// RFC 7230, 5.4. Host
-			"Host: " + uri.host + "\r\n" +
+			"Host: " + uri.Host + "\r\n" +
 			// RFC 7230, 3.3.2. Content-Length
 			"Content-Length: " + std::to_string(body.size()) + "\r\n" +
 			EncodeHeaderFields(headerFields) +
@@ -934,19 +925,19 @@ namespace Death::IO::Http
 		{
 			const auto stopTime = std::chrono::steady_clock::now() + timeout;
 
-			if (uri.scheme != "http") {
-				return { Status::NotImplemented };
+			if (uri.Scheme != "http") {
+				return { HttpStatus::NotImplemented };
 			}
 
 			addrinfo hints = { };
 			hints.ai_family = GetAddressFamily(internetProtocol);
 			hints.ai_socktype = SOCK_STREAM;
 
-			const char* port = (uri.port.empty() ? "80" : uri.port.data());
+			const char* port = (uri.Port.empty() ? "80" : uri.Port.data());
 
 			addrinfo* info;
-			if (getaddrinfo(uri.host.data(), port, &hints, &info) != 0) {
-				return { Status::ServiceUnavailable };
+			if (getaddrinfo(uri.Host.data(), port, &hints, &info) != 0) {
+				return { HttpStatus::ServiceUnavailable };
 			}
 
 			const std::unique_ptr<addrinfo, decltype(&freeaddrinfo)> addressInfo { info, freeaddrinfo };
@@ -959,18 +950,18 @@ namespace Death::IO::Http
 			const auto getRemainingMilliseconds = [](const std::chrono::steady_clock::time_point time) noexcept -> std::int64_t {
 				const auto now = std::chrono::steady_clock::now();
 				const auto remainingTime = std::chrono::duration_cast<std::chrono::milliseconds>(time - now);
-				return (remainingTime.count() > 0) ? remainingTime.count() : 0;
+				return (remainingTime.count() > 0 ? remainingTime.count() : 0);
 			};
 
-			if (!socket.Connect(addressInfo->ai_addr, static_cast<socklen_t>(addressInfo->ai_addrlen), (timeout.count() >= 0) ? getRemainingMilliseconds(stopTime) : -1)) {
-				return { Status::ServiceUnavailable };
+			if (!socket.Connect(addressInfo->ai_addr, static_cast<socklen_t>(addressInfo->ai_addrlen), (timeout.count() >= 0 ? getRemainingMilliseconds(stopTime) : -1))) {
+				return { HttpStatus::ServiceUnavailable };
 			}
 
 			auto remaining = requestData.size();
 			auto sendData = requestData.data();
 
 			while (remaining > 0) {
-				const auto size = socket.Send(sendData, remaining, (timeout.count() >= 0) ? getRemainingMilliseconds(stopTime) : -1);
+				const auto size = socket.Send(sendData, remaining, (timeout.count() >= 0 ? getRemainingMilliseconds(stopTime) : -1));
 				remaining -= size;
 				sendData += size;
 			}
@@ -987,9 +978,9 @@ namespace Death::IO::Http
 			std::size_t expectedChunkSize = 0U;
 			bool removeCrlfAfterChunk = false;
 
-			// read the response
+			// Read the response
 			while (true) {
-				const auto size = socket.Recv(tempBuffer.data(), tempBuffer.size(), (timeout.count() >= 0) ? getRemainingMilliseconds(stopTime) : -1);
+				const auto size = socket.Recv(tempBuffer.data(), tempBuffer.size(), (timeout.count() >= 0 ? getRemainingMilliseconds(stopTime) : -1));
 				if (size == 0) { // Disconnected
 					return response;
 				}
@@ -1008,9 +999,9 @@ namespace Death::IO::Http
 					auto statusLineResult = ParseStatusLine(headerBeginIterator, headerEndIterator);
 					auto i = statusLineResult.first;
 
-					response.status = std::move(statusLineResult.second);
+					response.Status = std::move(statusLineResult.second);
 
-					for (;;) {
+					while (true) {
 						auto headerFieldResult = ParseHeaderField(i, headerEndIterator);
 						i = headerFieldResult.first;
 
@@ -1022,24 +1013,25 @@ namespace Death::IO::Http
 
 						auto fieldValue = std::move(headerFieldResult.second.second);
 
-						if (fieldName == "transfer-encoding") {
+						if (fieldName == "transfer-encoding"_s) {
 							// RFC 7230, 3.3.1. Transfer-Encoding
-							if (fieldValue == "chunked") {
+							if (fieldValue == "chunked"_s) {
 								chunkedResponse = true;
 							} else {
 								return { };
 							}
-						} else if (fieldName == "content-length") {
+						} else if (fieldName == "content-length"_s) {
 							// RFC 7230, 3.3.2. Content-Length
 							contentLength = StringToUint<std::size_t>(fieldValue.cbegin(), fieldValue.cend());
 							contentLengthReceived = true;
-							response.body.reserve(contentLength);
+							response.Body.reserve(contentLength);
 						}
 
-						response.headerFields.push_back({ std::move(fieldName), std::move(fieldValue) });
+						response.HeaderFields.push_back({ std::move(fieldName), std::move(fieldValue) });
 
-						if (i == headerEndIterator)
+						if (i == headerEndIterator) {
 							break;
+						}
 					}
 
 					responseData.erase(responseData.begin(), headerEndIterator + 2);
@@ -1053,7 +1045,7 @@ namespace Death::IO::Http
 						while (true) {
 							if (expectedChunkSize > 0) {
 								const auto toWrite = std::min(expectedChunkSize, responseData.size());
-								response.body.insert(response.body.end(), responseData.begin(), responseData.begin() + static_cast<std::ptrdiff_t>(toWrite));
+								response.Body.insert(response.Body.end(), responseData.begin(), responseData.begin() + static_cast<std::ptrdiff_t>(toWrite));
 								responseData.erase(responseData.begin(), responseData.begin() + static_cast<std::ptrdiff_t>(toWrite));
 								expectedChunkSize -= toWrite;
 
@@ -1061,10 +1053,11 @@ namespace Death::IO::Http
 								if (responseData.empty()) break;
 							} else {
 								if (removeCrlfAfterChunk) {
-									if (responseData.size() < 2) break;
-
+									if (responseData.size() < 2) {
+										break;
+									}
 									if (!std::equal(crlf.begin(), crlf.end(), responseData.begin())) {
-										return { Status::ResponseCorrupted };
+										return { HttpStatus::ResponseCorrupted };
 									}
 
 									removeCrlfAfterChunk = false;
@@ -1077,15 +1070,16 @@ namespace Death::IO::Http
 								expectedChunkSize = HexStringToUint<std::size_t>(responseData.begin(), i);
 								responseData.erase(responseData.begin(), i + 2);
 
-								if (expectedChunkSize == 0)
+								if (expectedChunkSize == 0) {
 									return response;
+								}
 							}
 						}
 					} else {
-						response.body.insert(response.body.end(), responseData.begin(), responseData.end());
+						response.Body.insert(response.Body.end(), responseData.begin(), responseData.end());
 						responseData.clear();
 
-						if (contentLengthReceived && response.body.size() >= contentLength) {
+						if (contentLengthReceived && response.Body.size() >= contentLength) {
 							return response;
 						}
 					}

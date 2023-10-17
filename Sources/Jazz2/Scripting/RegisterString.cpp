@@ -7,6 +7,7 @@
 #include "../../nCine/Base/HashMap.h"
 
 #include <memory>
+#include <new>
 
 #if !defined(DEATH_TARGET_ANDROID) && !defined(_WIN32_WCE) && !defined(__psp2__)
 #	include <locale.h>		// setlocale()
@@ -59,7 +60,7 @@ namespace Jazz2::Scripting
 
 		int ReleaseStringConstant(const void* str)
 		{
-			if (str == 0) return asERROR;
+			if (str == nullptr) return asERROR;
 
 			int ret = asSUCCESS;
 
@@ -89,7 +90,7 @@ namespace Jazz2::Scripting
 			if (length) {
 				*length = (asUINT)string->size();
 			}
-			if (data) {
+			if (data != nullptr) {
 				memcpy(data, string->data(), string->size());
 			}
 			return asSUCCESS;

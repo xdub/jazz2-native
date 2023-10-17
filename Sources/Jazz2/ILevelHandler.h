@@ -71,6 +71,7 @@ namespace Jazz2
 		virtual void BeginLevelChange(ExitType exitType, const StringView& nextLevel) = 0;
 		virtual void HandleGameOver() = 0;
 		virtual bool HandlePlayerDied(const std::shared_ptr<Actors::ActorBase>& player) = 0;
+		virtual void HandlePlayerWarped(const std::shared_ptr<Actors::ActorBase>& player, const Vector2f& prevPos, bool fast) = 0;
 		virtual void SetCheckpoint(Vector2f pos) = 0;
 		virtual void RollbackToCheckpoint() = 0;
 		virtual void ActivateSugarRush() = 0;
@@ -79,7 +80,7 @@ namespace Jazz2
 		virtual void ShowGems(int32_t count) = 0;
 		virtual StringView GetLevelText(uint32_t textId, int32_t index = -1, uint32_t delimiter = 0) = 0;
 		virtual void OverrideLevelText(uint32_t textId, const StringView& value) = 0;
-		virtual void LimitCameraView(float left, float width) = 0;
+		virtual void LimitCameraView(int left, int width) = 0;
 		virtual void ShakeCameraView(float duration) = 0;
 		virtual void SetWeather(WeatherType type, uint8_t intensity) = 0;
 		virtual bool BeginPlayMusic(const StringView& path, bool setDefault = false, bool forceReload = false) = 0;

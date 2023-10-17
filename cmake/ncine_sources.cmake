@@ -2,6 +2,7 @@ set(SOURCES
 	${NCINE_SOURCE_DIR}/Shared/Environment.cpp
 	${NCINE_SOURCE_DIR}/Shared/Cpu.cpp
 	${NCINE_SOURCE_DIR}/Shared/Utf8.cpp
+	${NCINE_SOURCE_DIR}/Shared/Containers/DateTime.cpp
 	${NCINE_SOURCE_DIR}/Shared/Containers/SmallVector.cpp
 	${NCINE_SOURCE_DIR}/Shared/Containers/String.cpp
 	${NCINE_SOURCE_DIR}/Shared/Containers/StringView.cpp
@@ -225,6 +226,7 @@ list(APPEND SOURCES
 	${NCINE_SOURCE_DIR}/Jazz2/Compatibility/JJ2Tileset.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/Events/EventMap.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/Events/EventSpawner.cpp
+	${NCINE_SOURCE_DIR}/Jazz2/Scripting/JJ2PlusDefinitions.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/Scripting/LevelScriptLoader.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/Scripting/RegisterArray.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/Scripting/RegisterRef.cpp

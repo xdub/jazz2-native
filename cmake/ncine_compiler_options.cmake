@@ -1,5 +1,7 @@
-target_compile_features(${NCINE_APP} PUBLIC cxx_std_20)
+target_compile_features(${NCINE_APP} PUBLIC cxx_std_17)
 set_target_properties(${NCINE_APP} PROPERTIES CXX_EXTENSIONS OFF)
+
+include(CheckStructHasMember)
 
 target_compile_definitions(${NCINE_APP} PUBLIC "NCINE_VERSION=\"${NCINE_VERSION}\"")
 if(NCINE_OVERRIDE_CONTENT_PATH)
@@ -21,14 +23,19 @@ if(DEATH_CPU_USE_IFUNC)
 	target_compile_definitions(${NCINE_APP} PUBLIC "DEATH_CPU_USE_IFUNC")
 endif()
 
+check_struct_has_member("struct tm" tm_gmtoff time.h DEATH_USE_GMTOFF_IN_TM)
+if(DEATH_USE_GMTOFF_IN_TM)
+	target_compile_definitions(${NCINE_APP} PUBLIC "DEATH_USE_GMTOFF_IN_TM")
+endif()
+
 if(DEATH_DEBUG)
 	target_compile_definitions(${NCINE_APP} PUBLIC "DEATH_DEBUG")
 else()
 	target_compile_definitions(${NCINE_APP} PUBLIC "$<$<CONFIG:Debug>:DEATH_DEBUG>")
 endif()
-if(DEATH_LOG)
-	target_compile_definitions(${NCINE_APP} PUBLIC "DEATH_LOG")
-	message(STATUS "Runtime logging is enabled")
+if(DEATH_TRACE)
+	target_compile_definitions(${NCINE_APP} PUBLIC "DEATH_TRACE")
+	message(STATUS "Runtime event tracing is enabled")
 endif()
 if(NCINE_PROFILING)
 	target_compile_definitions(${NCINE_APP} PUBLIC "NCINE_PROFILING")
@@ -89,23 +96,29 @@ if(WIN32)
 		target_link_libraries(${NCINE_APP} PRIVATE ws2_32)
 		
 		# Try to use VC-LTL library
-		if(NOT VC_LTL_Root)
-			if(EXISTS "${NCINE_ROOT}/Libs/VC-LTL/_msvcrt.h")
-				set(VC_LTL_Root "${NCINE_ROOT}/Libs/VC-LTL")
+		if(MSVC)
+			if(NOT VC_LTL_Root)
+				if(EXISTS "${NCINE_ROOT}/Libs/VC-LTL/_msvcrt.h")
+					set(VC_LTL_Root "${NCINE_ROOT}/Libs/VC-LTL")
+				endif()
 			endif()
-		endif()
-		if(NOT VC_LTL_Root)
-			GET_FILENAME_COMPONENT(FOUND_FILE "[HKEY_CURRENT_USER\\Code\\VC-LTL;Root]" ABSOLUTE)
-			if (NOT ${FOUND_FILE} STREQUAL "registry")
-				set(VC_LTL_Root ${FOUND_FILE})
+			if(NOT VC_LTL_Root)
+				GET_FILENAME_COMPONENT(FOUND_FILE "[HKEY_CURRENT_USER\\Code\\VC-LTL;Root]" ABSOLUTE)
+				if (NOT ${FOUND_FILE} STREQUAL "registry")
+					set(VC_LTL_Root ${FOUND_FILE})
+				endif()
 			endif()
-		endif()
-		if(IS_DIRECTORY ${VC_LTL_Root})
-			message(STATUS "Found VC-LTL: ${VC_LTL_Root}")
-			target_compile_definitions(${NCINE_APP} PRIVATE "_DISABLE_DEPRECATE_LTL_MESSAGE")
-			set_target_properties(${NCINE_APP} PROPERTIES VS_GLOBAL_VC_LTL_Root ${VC_LTL_Root})
-			set_target_properties(${NCINE_APP} PROPERTIES VS_PROJECT_IMPORT "${NCINE_ROOT}/VC-LTL helper for Visual Studio.props")
-			set(VC_LTL_FOUND 1)
+			if(IS_DIRECTORY ${VC_LTL_Root})
+				message(STATUS "Found VC-LTL: ${VC_LTL_Root}")
+				target_compile_definitions(${NCINE_APP} PRIVATE "_DISABLE_DEPRECATE_LTL_MESSAGE")
+				set_target_properties(${NCINE_APP} PROPERTIES VS_GLOBAL_VC_LTL_Root ${VC_LTL_Root})
+				if(EXISTS "${NCINE_ROOT}/VC-LTL helper for Visual Studio.props")
+					set_target_properties(${NCINE_APP} PROPERTIES VS_PROJECT_IMPORT "${NCINE_ROOT}/VC-LTL helper for Visual Studio.props")
+				else()
+					set_target_properties(${NCINE_APP} PROPERTIES VS_PROJECT_IMPORT "${VC_LTL_Root}/VC-LTL helper for Visual Studio.props")
+				endif()
+				set(VC_LTL_FOUND 1)
+			endif()
 		endif()
 	endif()
 endif()
@@ -122,7 +135,6 @@ if(EMSCRIPTEN)
 		"SHELL:--bind")
 
 	set(EMSCRIPTEN_LINKER_OPTIONS_DEBUG
-		"SHELL:-s ASSERTIONS=1"
 		#"SHELL:-s SAFE_HEAP=1"
 		"SHELL:-s SAFE_HEAP_LOG=1"
 		"SHELL:-s STACK_OVERFLOW_CHECK=2"
@@ -135,6 +147,12 @@ if(EMSCRIPTEN)
 		list(APPEND EMSCRIPTEN_LINKER_OPTIONS "SHELL:-s BINARYEN_TRAP_MODE=clamp")
 	else()
 		list(APPEND EMSCRIPTEN_LINKER_OPTIONS "SHELL:-mnontrapping-fptoint")
+	endif()
+
+	if(DEATH_DEBUG)
+		list(APPEND EMSCRIPTEN_LINKER_OPTIONS "SHELL:-s ASSERTIONS=1")
+	else()
+		list(APPEND EMSCRIPTEN_LINKER_OPTIONS_DEBUG "SHELL:-s ASSERTIONS=1")
 	endif()
 	
 	# Include all files in specified directory
@@ -177,6 +195,10 @@ if(EMSCRIPTEN)
 	
 	target_link_libraries(${NCINE_APP} PUBLIC idbfs.js)
 	target_link_libraries(${NCINE_APP} PUBLIC websocket.js)
+endif()
+
+if(NINTENDO_SWITCH)
+	target_compile_definitions(${NCINE_APP} PUBLIC "DEATH_TARGET_SWITCH")
 endif()
 
 if(MSVC)
@@ -298,7 +320,12 @@ else() # GCC and LLVM
 		target_compile_options(${NCINE_APP} PRIVATE $<$<CONFIG:Debug>:-fvar-tracking-assignments>)
 
 		# Extra optimizations in release
-		target_compile_options(${NCINE_APP} PRIVATE $<$<CONFIG:Release>:-Ofast -funsafe-loop-optimizations -ftree-loop-if-convert-stores>)
+		if(NINTENDO_SWITCH)
+			# -Ofast is crashing on Nintendo Switch for some reason, use -O2 instead
+			target_compile_options(${NCINE_APP} PRIVATE $<$<CONFIG:Release>:-O2 -funsafe-loop-optimizations -ftree-loop-if-convert-stores>)
+		else()
+			target_compile_options(${NCINE_APP} PRIVATE $<$<CONFIG:Release>:-Ofast -funsafe-loop-optimizations -ftree-loop-if-convert-stores>)
+		endif()
 
 		if(NCINE_LINKTIME_OPTIMIZATION AND NOT (MINGW OR MSYS OR ANDROID))
 			target_compile_options(${NCINE_APP} PRIVATE $<$<CONFIG:Release>:-flto=auto>)

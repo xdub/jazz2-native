@@ -481,7 +481,7 @@ namespace Jazz2::Actors
 			_currentTransitionState = AnimState::Idle;
 
 			if (_currentTransitionCallback != nullptr) {
-				auto oldCallback = _currentTransitionCallback;
+				auto oldCallback = std::move(_currentTransitionCallback);
 				_currentTransitionCallback = nullptr;
 				oldCallback();
 			}
@@ -511,7 +511,7 @@ namespace Jazz2::Actors
 		}
 
 		if (_currentTransitionCallback != nullptr) {
-			auto oldCallback = _currentTransitionCallback;
+			auto oldCallback = std::move(_currentTransitionCallback);
 			_currentTransitionCallback = nullptr;
 			oldCallback();
 		}
@@ -520,6 +520,36 @@ namespace Jazz2::Actors
 		_currentTransitionState = AnimState::TransitionByName;
 		_currentTransitionCancellable = cancellable;
 		_currentTransitionCallback = callback;
+
+		RefreshAnimation();
+
+		return true;
+	}
+
+	bool ActorBase::SetTransition(const StringView& identifier, bool cancellable, std::function<void()>&& callback)
+	{
+		if (_metadata == nullptr) {
+			return false;
+		}
+
+		auto it = _metadata->Graphics.find(String::nullTerminatedView(identifier));
+		if (it == _metadata->Graphics.end()) {
+			if (callback != nullptr) {
+				callback();
+			}
+			return false;
+		}
+
+		if (_currentTransitionCallback != nullptr) {
+			auto oldCallback = std::move(_currentTransitionCallback);
+			_currentTransitionCallback = nullptr;
+			oldCallback();
+		}
+
+		_currentTransition = &it->second;
+		_currentTransitionState = AnimState::TransitionByName;
+		_currentTransitionCancellable = cancellable;
+		_currentTransitionCallback = std::move(callback);
 
 		RefreshAnimation();
 
@@ -538,7 +568,7 @@ namespace Jazz2::Actors
 		}
 
 		if (_currentTransitionCallback != nullptr) {
-			auto oldCallback = _currentTransitionCallback;
+			auto oldCallback = std::move(_currentTransitionCallback);
 			_currentTransitionCallback = nullptr;
 			oldCallback();
 		}
@@ -554,11 +584,39 @@ namespace Jazz2::Actors
 		return true;
 	}
 
+	bool ActorBase::SetTransition(AnimState state, bool cancellable, std::function<void()>&& callback)
+	{
+		AnimationCandidate candidates[AnimationCandidatesCount];
+		int count = FindAnimationCandidates(state, candidates);
+		if (count == 0) {
+			if (callback != nullptr) {
+				callback();
+			}
+			return false;
+		}
+
+		if (_currentTransitionCallback != nullptr) {
+			auto oldCallback = std::move(_currentTransitionCallback);
+			_currentTransitionCallback = nullptr;
+			oldCallback();
+		}
+
+		int index = (count > 1 ? nCine::Random().Next(0, count) : 0);
+		_currentTransition = candidates[index].Resource;
+		_currentTransitionState = state;
+		_currentTransitionCancellable = cancellable;
+		_currentTransitionCallback = std::move(callback);
+		
+		RefreshAnimation();
+
+		return true;
+	}
+
 	void ActorBase::CancelTransition()
 	{
 		if (_currentTransitionState != AnimState::Idle && _currentTransitionCancellable) {
 			if (_currentTransitionCallback != nullptr) {
-				auto oldCallback = _currentTransitionCallback;
+				auto oldCallback = std::move(_currentTransitionCallback);
 				_currentTransitionCallback = nullptr;
 				oldCallback();
 			}
@@ -595,7 +653,7 @@ namespace Jazz2::Actors
 			RefreshAnimation();
 
 			if (_currentTransitionCallback != nullptr) {
-				auto oldCallback = _currentTransitionCallback;
+				auto oldCallback = std::move(_currentTransitionCallback);
 				_currentTransitionCallback = nullptr;
 				oldCallback();
 			}

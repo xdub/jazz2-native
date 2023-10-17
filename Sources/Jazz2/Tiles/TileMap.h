@@ -1,5 +1,6 @@
 ﻿#pragma once
 
+#include "ITileMapOwner.h"
 #include "../ILevelHandler.h"
 #include "../PitType.h"
 #include "TileSet.h"
@@ -29,7 +30,7 @@ namespace Jazz2::Tiles
 	};
 
 	struct LayerDescription {
-		uint16_t Depth;
+		std::uint16_t Depth;
 		float SpeedX;
 		float SpeedY;
 		float AutoSpeedX;
@@ -60,15 +61,15 @@ namespace Jazz2::Tiles
 	DEFINE_ENUM_OPERATORS(LayerTileFlags);
 
 	struct LayerTile {
-		int32_t TileID;
-		uint16_t TileParams;
+		std::int32_t TileID;
+		std::uint16_t TileParams;
 		LayerTileFlags Flags;
-		uint8_t Alpha;
+		std::uint8_t Alpha;
 		SuspendType HasSuspendType;
 		TileDestructType DestructType;
-		int32_t DestructAnimation;		// Animation index for a destructible tile that uses an animation, but doesn't animate normally
-		int32_t DestructFrameIndex;		// Denotes the specific frame from the above animation that is currently active
-										// Collapsible: delay ("wait" parameter); trigger: trigger id
+		std::int32_t DestructAnimation;		// Animation index for a destructible tile that uses an animation, but doesn't animate normally
+		std::int32_t DestructFrameIndex;	// Denotes the specific frame from the above animation that is currently active
+											// Collapsible: delay ("wait" parameter); trigger: trigger id
 	};
 
 	struct TileMapLayer {
@@ -81,26 +82,27 @@ namespace Jazz2::Tiles
 	};
 
 	struct AnimatedTileFrame {
-		int TileID;
+		std::int32_t TileID;
 	};
 
 	struct AnimatedTile {
 		SmallVector<AnimatedTileFrame, 0> Tiles;
-		int Delay;
-		bool PingPong;
-		int PingPongDelay;
-		int CurrentTileIdx;
-		bool Forwards;
+		std::int16_t Delay;
+		std::int16_t DelayJitter;
+		std::int32_t PingPongDelay;
+		std::int32_t CurrentTileIdx;
 		float FrameDuration;
 		float FramesLeft;
+		bool IsPingPong;
+		bool Forwards;
 	};
 
 	class TileMap : public SceneNode
 	{
 	public:
-		static constexpr int TriggerCount = 32;
-		static constexpr int AnimatedTileMask = 0x80000000;
-		static constexpr int HardcodedOffset = 70;
+		static constexpr std::int32_t TriggerCount = 32;
+		static constexpr std::int32_t AnimatedTileMask = 0x80000000;
+		static constexpr std::int32_t HardcodedOffset = 70;
 
 		enum class DebrisFlags {
 			None = 0x00,
@@ -113,7 +115,7 @@ namespace Jazz2::Tiles
 
 		struct DestructibleDebris {
 			Vector2f Pos;
-			uint16_t Depth;
+			std::uint16_t Depth;
 
 			Vector2f Size;
 			Vector2f Speed;
@@ -140,7 +142,7 @@ namespace Jazz2::Tiles
 			DebrisFlags Flags;
 		};
 
-		TileMap(LevelHandler* levelHandler, const StringView& tileSetPath, uint16_t captionTileId, PitType pitType, bool applyPalette);
+		TileMap(ITileMapOwner* owner, const StringView& tileSetPath, std::uint16_t captionTileId, PitType pitType, bool applyPalette);
 
 		Vector2i Size();
 		Vector2i LevelBounds();
@@ -148,16 +150,17 @@ namespace Jazz2::Tiles
 		void OnUpdate(float timeMult) override;
 		bool OnDraw(RenderQueue& renderQueue) override;
 
-		bool IsTileEmpty(int tx, int ty);
+		bool IsTileEmpty(std::int32_t tx, std::int32_t ty);
 		bool IsTileEmpty(const AABBf& aabb, TileCollisionParams& params);
 		bool CanBeDestroyed(const AABBf& aabb, TileCollisionParams& params);
 		bool IsTileHurting(float x, float y);
 		SuspendType GetTileSuspendState(float x, float y);
+		bool AdvanceDestructibleTileAnimation(std::int32_t tx, std::int32_t ty, std::int32_t amount);
 
-		void AddTileSet(const StringView& tileSetPath, uint16_t offset, uint16_t count, const uint8_t* paletteRemapping = nullptr);
+		void AddTileSet(const StringView& tileSetPath, std::uint16_t offset, std::uint16_t count, const std::uint8_t* paletteRemapping = nullptr);
 		void ReadLayerConfiguration(Stream& s);
 		void ReadAnimatedTiles(Stream& s);
-		void SetTileEventFlags(int x, int y, EventType tileEvent, uint8_t* tileParams);
+		void SetTileEventFlags(std::int32_t x, std::int32_t y, EventType tileEvent, std::uint8_t* tileParams);
 
 		Color* GetCaptionTile() const
 		{
@@ -165,12 +168,12 @@ namespace Jazz2::Tiles
 		}
 
 		void CreateDebris(const DestructibleDebris& debris);
-		void CreateTileDebris(int tileId, int x, int y);
-		void CreateParticleDebris(const GraphicResource* res, Vector3f pos, Vector2f force, int currentFrame, bool isFacingLeft);
-		void CreateSpriteDebris(const GraphicResource* res, Vector3f pos, int count);
+		void CreateTileDebris(std::int32_t tileId, std::int32_t x, std::int32_t y);
+		void CreateParticleDebris(const GraphicResource* res, Vector3f pos, Vector2f force, std::int32_t currentFrame, bool isFacingLeft);
+		void CreateSpriteDebris(const GraphicResource* res, Vector3f pos, std::int32_t count);
 
-		bool GetTrigger(uint8_t triggerId);
-		void SetTrigger(uint8_t triggerId, bool newState);
+		bool GetTrigger(std::uint8_t triggerId);
+		void SetTrigger(std::uint8_t triggerId, bool newState);
 
 		void OnInitializeViewport();
 
@@ -183,8 +186,8 @@ namespace Jazz2::Tiles
 
 		struct TileSetPart {
 			std::unique_ptr<TileSet> Data;
-			int32_t Offset;
-			int32_t Count;
+			std::int32_t Offset;
+			std::int32_t Count;
 		};
 
 		class TexturedBackgroundPass : public SceneNode
@@ -211,8 +214,8 @@ namespace Jazz2::Tiles
 			bool _alreadyRendered;
 		};
 
-		LevelHandler* _levelHandler;
-		int _sprLayerIndex;
+		ITileMapOwner* _owner;
+		std::int32_t _sprLayerIndex;
 		PitType _pitType;
 
 		SmallVector<TileSetPart, 2> _tileSets;
@@ -224,37 +227,25 @@ namespace Jazz2::Tiles
 
 		SmallVector<DestructibleDebris, 0> _debrisList;
 		SmallVector<std::unique_ptr<RenderCommand>, 0> _renderCommands;
-		int _renderCommandsCount;
+		std::int32_t _renderCommandsCount;
 
-		int _texturedBackgroundLayer;
+		std::int32_t _texturedBackgroundLayer;
 		TexturedBackgroundPass _texturedBackgroundPass;
 
 		void DrawLayer(RenderQueue& renderQueue, TileMapLayer& layer);
-		static float TranslateCoordinate(float coordinate, float speed, float offset, int viewSize, bool isY);
+		static float TranslateCoordinate(float coordinate, float speed, float offset, std::int32_t viewSize, bool isY);
 		RenderCommand* RentRenderCommand(LayerRendererType type);
 
-		bool AdvanceDestructibleTileAnimation(LayerTile& tile, int tx, int ty, int& amount, const StringView& soundName);
+		bool AdvanceDestructibleTileAnimation(LayerTile& tile, std::int32_t tx, std::int32_t ty, std::int32_t& amount, const StringView& soundName);
 		void AdvanceCollapsingTileTimers(float timeMult);
-		void SetTileDestructibleEventParams(LayerTile& tile, TileDestructType type, uint16_t tileParams);
+		void SetTileDestructibleEventParams(LayerTile& tile, TileDestructType type, std::uint16_t tileParams);
 
 		void UpdateDebris(float timeMult);
 		void DrawDebris(RenderQueue& renderQueue);
 
 		void RenderTexturedBackground(RenderQueue& renderQueue, TileMapLayer& layer, float x, float y);
 
-		TileSet* ResolveTileSet(int& tileId);
-
-		inline int ResolveTileID(LayerTile& tile)
-		{
-			int tileId = tile.TileID;
-			if ((tile.Flags & LayerTileFlags::Animated) == LayerTileFlags::Animated) {
-				if (tileId >= _animatedTiles.size()) {
-					return 0;
-				}
-				auto& animTile = _animatedTiles[tileId];
-				tileId = animTile.Tiles[animTile.CurrentTileIdx].TileID;
-			}
-			return tileId;
-		}
+		TileSet* ResolveTileSet(std::int32_t& tileId);
+		std::int32_t ResolveTileID(LayerTile& tile);
 	};
 }

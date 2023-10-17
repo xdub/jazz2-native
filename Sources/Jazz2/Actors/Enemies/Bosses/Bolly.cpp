@@ -30,7 +30,7 @@ namespace Jazz2::Actors::Bosses
 		/*if (_turret != nullptr) {
 			_turret->SetState(ActorState::IsDestroyed, true);
 		}*/
-		for (int i = 0; i < countof(_chain); i++) {
+		for (int32_t i = 0; i < countof(_chain); i++) {
 			if (_chain[i] != nullptr) {
 				_chain[i]->SetState(ActorState::IsDestroyed, true);
 			}
@@ -56,11 +56,11 @@ namespace Jazz2::Actors::Bosses
 
 		_bottom = std::make_shared<BollyPart>();
 		uint8_t bottomParams[1] = { 1 };
-		_bottom->OnActivated({
-			.LevelHandler = _levelHandler,
-			.Pos = Vector3i((int)_pos.X, (int)_pos.Y, _renderer.layer() + 2),
-			.Params = bottomParams
-		});
+		_bottom->OnActivated(ActorActivationDetails(
+			_levelHandler,
+			Vector3i((std::int32_t)_pos.X, (std::int32_t)_pos.Y, _renderer.layer() + 2),
+			bottomParams
+		));
 		_levelHandler->AddActor(_bottom);
 
 		/*_turret = std::make_shared<BollyPart>();
@@ -72,14 +72,15 @@ namespace Jazz2::Actors::Bosses
 		});
 		_levelHandler->AddActor(_turret);*/
 
-		for (int i = 0; i < countof(_chain); i++) {
+		int32_t chainLength = (_levelHandler->Difficulty() < GameDifficulty::Hard ? NormalChainLength : HardChainLength);
+		for (int32_t i = 0; i < chainLength; i++) {
 			_chain[i] = std::make_shared<BollyPart>();
 			uint8_t chainParams[1] = { (uint8_t)((i % 3) == 2 ? 3 : 4) };
-			_chain[i]->OnActivated({
-				.LevelHandler = _levelHandler,
-				.Pos = Vector3i((int)_pos.X, (int)_pos.Y, _renderer.layer() - ((i % 3) == 2 ? 2 : 4)),
-				.Params = chainParams
-			});
+			_chain[i]->OnActivated(ActorActivationDetails(
+				_levelHandler,
+				Vector3i((std::int32_t)_pos.X, (std::int32_t)_pos.Y, _renderer.layer() - ((i % 3) == 2 ? 2 : 4)),
+				chainParams
+			));
 			_levelHandler->AddActor(_chain[i]);
 		}
 
@@ -166,14 +167,16 @@ namespace Jazz2::Actors::Bosses
 
 		float distance = 30.0f;
 		for (int i = 0; i < countof(_chain); i++) {
-			float angle = sinf(_chainPhase - i * 0.08f) * 1.2f + fPiOver2;
+			if (_chain[i] != nullptr) {
+				float angle = sinf(_chainPhase - i * 0.08f) * 1.2f + fPiOver2;
 
-			Vector2f piecePos = _pos;
-			piecePos.X += cosf(angle) * distance;
-			piecePos.Y += sinf(angle) * distance;
-			_chain[i]->MoveInstantly(piecePos, MoveType::Absolute | MoveType::Force);
+				Vector2f piecePos = _pos;
+				piecePos.X += cosf(angle) * distance;
+				piecePos.Y += sinf(angle) * distance;
+				_chain[i]->MoveInstantly(piecePos, MoveType::Absolute | MoveType::Force);
 
-			distance += _chain[i]->Size;
+				distance += _chain[i]->Size;
+			}
 		}
 
 		if (_noiseCooldown > 0.0f) {
@@ -246,9 +249,10 @@ namespace Jazz2::Actors::Bosses
 
 			SetFacingLeft(targetPos.X < _pos.X);
 
+			float speedMultiplier = (_levelHandler->Difficulty() < GameDifficulty::Hard ? 0.6f : 0.8f);
 			Vector2f speed = (targetPos - _pos).Normalized();
-			_speed.X = speed.X * 0.6f;
-			_speed.Y = speed.Y * 0.6f;
+			_speed.X = speed.X * speedMultiplier;
+			_speed.Y = speed.Y * speedMultiplier;
 		}
 	}
 
@@ -270,10 +274,10 @@ namespace Jazz2::Actors::Bosses
 			Vector2f diff = (targetPos - _pos).Normalized();
 
 			std::shared_ptr<Rocket> rocket = std::make_shared<Rocket>();
-			rocket->OnActivated({
-				.LevelHandler = _levelHandler,
-				.Pos = Vector3i((int)_pos.X + (IsFacingLeft() ? 10 : -10), (int)_pos.Y + 10, _renderer.layer() - 4)
-			});
+			rocket->OnActivated(ActorActivationDetails(
+				_levelHandler,
+				Vector3i((std::int32_t)_pos.X + (IsFacingLeft() ? 10 : -10), (std::int32_t)_pos.Y + 10, _renderer.layer() - 4)
+			));
 			rocket->_renderer.setRotation(atan2f(diff.Y, diff.X));
 			_levelHandler->AddActor(rocket);
 		}

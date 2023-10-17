@@ -13,7 +13,7 @@
 
 using namespace Death::IO;
 
-#if defined(DEATH_LOG)
+#if defined(DEATH_TRACE)
 std::unique_ptr<Death::IO::Stream> __logFile;
 #endif
 
@@ -142,11 +142,12 @@ namespace nCine
 				break;
 
 			case APP_CMD_START:
-				if (theAndroidApplication().isInitialized() == false) {
+				if (!theAndroidApplication().isInitialized()) {
 					theAndroidApplication().preInit();
 					LOGI("APP_CMD_START event received (first start)");
+				} else {
+					LOGI("APP_CMD_START event received");
 				}
-				LOGI("APP_CMD_START event received");
 				break;
 			case APP_CMD_RESUME:
 				LOGW("APP_CMD_RESUME event received");
@@ -198,12 +199,11 @@ namespace nCine
 
 	void AndroidApplication::preInit()
 	{
-		profileStartTime_ = TimeStamp::now();
-
-#if defined(DEATH_LOG)
+#if defined(DEATH_TRACE)
 		// Try to open log file as early as possible
 		StringView externalPath = externalDataPath();
 		if (!externalPath.empty()) {
+			// TODO: Hardcoded path
 			__logFile = fs::Open(fs::CombinePath(externalPath, "Jazz2.log"_s), FileAccessMode::Write);
 			if (!__logFile->IsValid()) {
 				__logFile = nullptr;
@@ -211,9 +211,22 @@ namespace nCine
 			}
 		}
 #endif
+		profileStartTime_ = TimeStamp::now();
 
 		AndroidJniHelper::AttachJVM(state_);
 		AndroidAssetStream::InitializeAssetManager(state_);
+		
+#if defined(DEATH_TARGET_ARM)
+#	if defined(DEATH_TARGET_32BIT)
+		LOGI("Running on %s %s (%s) as armeabi-v7a application", AndroidJniClass_Version::deviceBrand().data(), AndroidJniClass_Version::deviceModel().data(), AndroidJniClass_Version::deviceManufacturer().data());
+#	else
+		LOGI("Running on %s %s (%s) as arm64-v8a application", AndroidJniClass_Version::deviceBrand().data(), AndroidJniClass_Version::deviceModel().data(), AndroidJniClass_Version::deviceManufacturer().data());
+#	endif
+#elif defined(DEATH_TARGET_X86)
+		LOGI("Running on %s %s (%s) as x86 application", AndroidJniClass_Version::deviceBrand().data(), AndroidJniClass_Version::deviceModel().data(), AndroidJniClass_Version::deviceManufacturer().data());
+#else
+		LOGI("Running on %s %s (%s)", AndroidJniClass_Version::deviceBrand().data(), AndroidJniClass_Version::deviceModel().data(), AndroidJniClass_Version::deviceManufacturer().data());
+#endif
 
 		appEventHandler_ = createAppEventHandler_();
 		// Only `OnPreInit()` can modify the application configuration

@@ -1,6 +1,7 @@
 #if defined(WITH_SDL)
 
 #include "SdlInputManager.h"
+#include "../Base/Algorithms.h"
 #include "../Input/IInputEventHandler.h"
 #include "../Input/JoyMapping.h"
 #include "../Application.h"
@@ -148,13 +149,7 @@ namespace nCine
 				keyboardEvent_.mod = SdlKeys::keyModMaskToEnumMask(event.key.keysym.mod);
 				break;
 			case SDL_TEXTINPUT: {
-#if defined(DEATH_TARGET_WINDOWS)
-				strncpy_s(textInputEvent_.text, event.text.text, 4);
-#else
-				size_t textLength = std::min(sizeof(textInputEvent_.text) - 1, strlen(event.text.text));
-				strncpy(textInputEvent_.text, event.text.text, textLength);
-				textInputEvent_.text[textLength] = '\0';
-#endif
+				copyStringFirst(textInputEvent_.text, event.text.text, 4);
 				break;
 			}
 			case SDL_MOUSEBUTTONDOWN:
@@ -399,7 +394,7 @@ namespace nCine
 			joyConnectionEvent_.joyId = deviceIndex;
 			sdlJoysticks_[deviceIndex] = SDL_JoystickOpen(deviceIndex);
 
-#if defined(DEATH_LOG) && !defined(DEATH_TARGET_EMSCRIPTEN)
+#if defined(DEATH_TRACE) && !defined(DEATH_TARGET_EMSCRIPTEN)
 			SDL_Joystick* joy = sdlJoysticks_[deviceIndex];
 			const SDL_JoystickGUID joystickGuid = SDL_JoystickGetGUID(joy);
 			SDL_JoystickGetGUIDString(joystickGuid, joyGuidString_, 33);

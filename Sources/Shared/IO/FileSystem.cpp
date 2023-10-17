@@ -23,7 +23,6 @@
 #	include <pwd.h>
 #	include <dirent.h>
 #	include <fcntl.h>
-#	include <time.h>
 #	include <ftw.h>
 #
 #	if defined(DEATH_TARGET_UNIX)
@@ -33,21 +32,22 @@
 #	if defined(__linux__)
 #		include <sys/sendfile.h>
 #	endif
-#
-#	if defined(DEATH_TARGET_ANDROID)
-#		include "AndroidAssetStream.h"
+#	if defined(__FreeBSD__)
+#		include <sys/types.h>
+#		include <sys/sysctl.h>
 #	endif
 #endif
 
-#if defined(DEATH_TARGET_APPLE)
+#if defined(DEATH_TARGET_ANDROID)
+#	include "AndroidAssetStream.h"
+#elif defined(DEATH_TARGET_APPLE)
+#	include <objc/objc-runtime.h>
 #	include <mach-o/dyld.h>
-#endif
-
-#if defined(DEATH_TARGET_EMSCRIPTEN)
+#elif defined(DEATH_TARGET_EMSCRIPTEN)
 #	include <emscripten/emscripten.h>
-#endif
-
-#if defined(DEATH_TARGET_WINDOWS_RT)
+#elif defined(DEATH_TARGET_SWITCH)
+#	include <alloca.h>
+#elif defined(DEATH_TARGET_WINDOWS_RT)
 #	include <winrt/Windows.Foundation.h>
 #	include <winrt/Windows.Storage.h>
 #	include <winrt/Windows.System.h>
@@ -60,10 +60,6 @@ namespace Death::IO
 {
 	namespace
 	{
-#if !defined(DEATH_TARGET_WINDOWS)
-		static char buffer[FileSystem::MaxPathLength];
-#endif
-
 		static std::size_t GetPathRootLength(const StringView& path)
 		{
 			if (path.empty()) return 0;
@@ -74,8 +70,8 @@ namespace Death::IO
 
 			std::size_t i = 0;
 			std::size_t pathLength = path.size();
-			std::size_t volumeSeparatorLength = 2;  // Length to the colon "C:"
-			std::size_t uncRootLength = 2;          // Length to the start of the server name "\\"
+			std::size_t volumeSeparatorLength = 2;		// Length to the colon "C:"
+			std::size_t uncRootLength = 2;				// Length to the start of the server name "\\"
 
 			bool extendedSyntax = path.hasPrefix(ExtendedPathPrefix);
 			bool extendedUncSyntax = path.hasPrefix(UncExtendedPathPrefix);
@@ -113,30 +109,28 @@ namespace Death::IO
 					i++;
 				}
 			}
-
+			
 			return i;
 #else
+#	if defined(DEATH_TARGET_ANDROID)
+			if (path.hasPrefix(AndroidAssetStream::Prefix)) {
+				return AndroidAssetStream::Prefix.size();
+			}
+#	elif defined(DEATH_TARGET_SWITCH)
+			constexpr StringView RomfsPrefix = "romfs:/"_s;
+			constexpr StringView SdmcPrefix = "sdmc:/"_s;
+			if (path.hasPrefix(RomfsPrefix)) {
+				return RomfsPrefix.size();
+			}
+			if (path.hasPrefix(SdmcPrefix)) {
+				return SdmcPrefix.size();
+			}
+#	endif
 			return (path[0] == '/' || path[0] == '\\' ? 1 : 0);
 #endif
 		}
 
 #if defined(DEATH_TARGET_WINDOWS)
-		static FileSystem::FileDate NativeTimeToFileDate(const FILETIME* fileTime)
-		{
-			SYSTEMTIME sysTime;
-			::FileTimeToSystemTime(fileTime, &sysTime);
-
-			FileSystem::FileDate date = { };
-			date.Year = sysTime.wYear;
-			date.Month = sysTime.wMonth;
-			date.Day = sysTime.wDay;
-			date.Hour = sysTime.wHour;
-			date.Minute = sysTime.wMinute;
-			date.Second = sysTime.wSecond;
-			date.Ticks = static_cast<std::uint64_t>(fileTime->dwLowDateTime) | (static_cast<std::uint64_t>(fileTime->dwHighDateTime) << 32);
-			return date;
-		}
-
 		static bool DeleteDirectoryInternal(const ArrayView<wchar_t>& path, bool recursive, std::int32_t depth)
 		{
 			if (recursive) {
@@ -269,30 +263,48 @@ namespace Death::IO
 			return currentMode;
 		}
 
-		static FileSystem::FileDate NativeTimeToFileDate(const time_t* t)
-		{
-			FileSystem::FileDate date = { };
-
-			struct tm* local = localtime(t);
-			date.Year = local->tm_year + 1900;
-			date.Month = local->tm_mon + 1;
-			date.Day = local->tm_mday;
-			date.Hour = local->tm_hour;
-			date.Minute = local->tm_min;
-			date.Second = local->tm_sec;
-			date.Ticks = static_cast<uint64_t>(*t);
-
-			return date;
-		}
-
+#	if !defined(DEATH_TARGET_SWITCH)
 		static std::int32_t DeleteDirectoryInternalCallback(const char* fpath, const struct stat* sb, std::int32_t typeflag, struct FTW* ftwbuf)
 		{
 			return ::remove(fpath);
 		}
+#	endif
 
 		static bool DeleteDirectoryInternal(const StringView& path)
 		{
+#	if defined(DEATH_TARGET_SWITCH)
+			// nftw() is missing in libnx
+			auto nullTerminatedPath = String::nullTerminatedView(path);
+			DIR* d = ::opendir(nullTerminatedPath.data());
+			std::int32_t r = -1;
+			if (d != nullptr) {
+				r = 0;
+				struct dirent* p;
+				while (r == 0 && (p = ::readdir(d)) != nullptr) {
+					if (strcmp(p->d_name, ".") == 0 || strcmp(p->d_name, "..") == 0) {
+						continue;
+					}
+
+					String fileName = FileSystem::CombinePath(path, p->d_name);
+					struct stat sb;
+					if (CallStat(fileName.data(), sb)) {
+						if (S_ISDIR(sb.st_mode)) {
+							DeleteDirectoryInternal(fileName);
+						} else {
+							r = ::unlink(fileName.data());
+						}
+					}
+				}
+				::closedir(d);
+			}
+
+			if (r == 0) {
+				r = ::rmdir(nullTerminatedPath.data());
+			}
+			return (r == 0);
+#	else
 			return ::nftw(String::nullTerminatedView(path).data(), DeleteDirectoryInternalCallback, 64, FTW_DEPTH | FTW_PHYS) == 0;
+#	endif
 		}
 
 #	if defined(DEATH_TARGET_UNIX)
@@ -306,6 +318,7 @@ namespace Death::IO
 			do {
 				tempfd = ::open("/dev/null", O_RDWR | O_NOCTTY);
 			} while (tempfd == -1 && errno == EINTR);
+
 			if (tempfd == -1) {
 				return false;
 			}
@@ -325,8 +338,8 @@ namespace Death::IO
 
 		static void TryCloseAllFileDescriptors()
 		{
-			DIR* dir = ::opendir("/proc/self/fd/");
-			if (dir == nullptr) {
+			DIR* d = ::opendir("/proc/self/fd/");
+			if (d == nullptr) {
 				const long fd_max = ::sysconf(_SC_OPEN_MAX);
 				long fd;
 				for (fd = 0; fd <= fd_max; fd++) {
@@ -335,9 +348,9 @@ namespace Death::IO
 				return;
 			}
 
-			std::int32_t dfd = ::dirfd(dir);
+			std::int32_t dfd = ::dirfd(d);
 			struct dirent* ent;
-			while ((ent = ::readdir(dir))) {
+			while ((ent = ::readdir(d)) != nullptr) {
 				if (ent->d_name[0] >= '0' && ent->d_name[0] <= '9') {
 					const char* p = &ent->d_name[1];
 					std::int32_t fd = ent->d_name[0] - '0';
@@ -350,7 +363,7 @@ namespace Death::IO
 					::close(fd);
 				}
 			}
-			::closedir(dir);
+			::closedir(d);
 		}
 #	endif
 #endif
@@ -579,7 +592,7 @@ namespace Death::IO
 #endif
 	}
 
-#if !defined(DEATH_TARGET_WINDOWS)
+#if !defined(DEATH_TARGET_WINDOWS) && !defined(DEATH_TARGET_SWITCH)
 	String FileSystem::FindPathCaseInsensitive(const StringView& path)
 	{
 		if (Exists(path)) {
@@ -657,17 +670,11 @@ namespace Death::IO
 		std::size_t firstSize = first.size();
 		std::size_t secondSize = second.size();
 
-		if (firstSize == 0 || (secondSize != 0 && (second[0] == '/' || second[0] == '\\'
-#if defined(DEATH_TARGET_WINDOWS)
-			// Absolute filename on Windows
-			|| (secondSize > 2 && second[1] == ':' && (second[2] == '/' || second[2] == '\\'))
-#endif
-			))) {
-			return second;
-		}
-
 		if (secondSize == 0) {
 			return first;
+		}
+		if (firstSize == 0 || GetPathRootLength(second) > 0) {
+			return second;
 		}
 
 #	if defined(DEATH_TARGET_ANDROID)
@@ -701,7 +708,7 @@ namespace Death::IO
 			if (pathSize == 0) {
 				continue;
 			}
-			if (paths[i][0] == '/' || paths[i][0] == '\\') {
+			if (GetPathRootLength(paths[i]) > 0) {
 				resultSize = 0;
 				startIdx = i;
 			}
@@ -742,31 +749,6 @@ namespace Death::IO
 		return CombinePath(Containers::arrayView(paths));
 	}
 
-	String FileSystem::CombinePathAsAbsolute(const StringView& first, const StringView& second)
-	{
-		String returnedPath = CombinePath(first, second);
-#if defined(DEATH_TARGET_WINDOWS)
-		wchar_t buffer[MaxPathLength];
-		const wchar_t* resolvedPath = _wfullpath(buffer, Utf8::ToUtf16(returnedPath), countof(buffer));
-		if (resolvedPath == nullptr) {
-			return { };
-		}
-		return Utf8::FromUtf16(buffer);
-#else
-#	if defined(DEATH_TARGET_ANDROID)
-		if (returnedPath.hasPrefix(AndroidAssetStream::Prefix)) {
-			return returnedPath;
-		}
-#	endif
-
-		const char* resolvedPath = ::realpath(returnedPath.data(), buffer);
-		if (resolvedPath == nullptr) {
-			buffer[0] = '\0';
-		}
-		return buffer;
-#endif
-	}
-
 	StringView FileSystem::GetDirectoryName(const StringView& path)
 	{
 		if (path.empty()) return { };
@@ -780,15 +762,6 @@ namespace Death::IO
 		if (i <= pathRootLength) return { };
 		// Try to get the last path separator
 		while (i > pathRootLength && path[--i] != '/' && path[i] != '\\');
-		// Return nothing if only filename was specified as relative path
-		if (pathRootLength == 0 && i == 0) {
-#if defined(DEATH_TARGET_ANDROID)
-			if (path != AndroidAssetStream::Prefix && path.hasPrefix(AndroidAssetStream::Prefix)) {
-				return AndroidAssetStream::Prefix;
-			}
-#endif
-			return { };
-		}
 
 		return path.slice(0, i);
 	}
@@ -826,7 +799,7 @@ namespace Death::IO
 		for (char c : fileName.prefix(foundDot.begin())) {
 			if (c != '.') {
 				initialDots = false;
-				break; 
+				break;
 			}
 		}
 		if (initialDots) return fileName;
@@ -883,18 +856,139 @@ namespace Death::IO
 
 #if defined(DEATH_TARGET_WINDOWS)
 		wchar_t buffer[MaxPathLength];
-		const wchar_t* resolvedPath = _wfullpath(buffer, Utf8::ToUtf16(path), countof(buffer));
-		if (resolvedPath == nullptr) {
+		DWORD length = ::GetFullPathNameW(Utf8::ToUtf16(path), static_cast<DWORD>(arraySize(buffer)), buffer, nullptr);
+		if (length == 0) {
 			return { };
 		}
-		return Utf8::FromUtf16(buffer);
+		return Utf8::FromUtf16(buffer, length);
+#elif defined(DEATH_TARGET_SWITCH)
+		// realpath() is missing in libnx
+		char left[MaxPathLength];
+		char nextToken[MaxPathLength];
+		char result[MaxPathLength];
+		std::size_t resultLength = 0;
+#	if !defined(DEATH_TARGET_SWITCH)
+		std::int32_t symlinks = 0;
+#	endif
+
+		std::size_t pathRootLength = GetPathRootLength(path);
+		if (pathRootLength > 0) {
+			strncpy(result, path.data(), pathRootLength);
+			resultLength = pathRootLength;
+			if (path.size() == pathRootLength) {
+				return String { result, resultLength };
+			}
+
+			strncpy(left, path.data() + pathRootLength, sizeof(left));
+		} else {
+			if (::getcwd(result, sizeof(result)) == nullptr) {
+				return "."_s;
+			}
+			resultLength = strlen(result);
+			strncpy(left, path.data(), sizeof(left));
+		}
+		std::size_t leftLength = strlen(left);
+		if (leftLength >= sizeof(left) || resultLength >= MaxPathLength) {
+			// Path is too long
+			return path;
+		}
+
+		while (leftLength != 0) {
+			char* p = strchr(left, '/');
+			char* s = (p != nullptr ? p : left + leftLength);
+			std::size_t nextTokenLength = s - left;
+			if (nextTokenLength >= sizeof(nextToken)) {
+				// Path is too long
+				return path;
+			}
+			std::memcpy(nextToken, left, nextTokenLength);
+			nextToken[nextTokenLength] = '\0';
+			leftLength -= nextTokenLength;
+			if (p != nullptr) {
+				std::memmove(left, s + 1, leftLength + 1);
+				leftLength--;
+			}
+			if (result[resultLength - 1] != '/') {
+				if (resultLength + 1 >= MaxPathLength) {
+					return path;
+				}
+				result[resultLength++] = '/';
+			}
+			if (nextToken[0] == '\0' || strcmp(nextToken, ".") == 0) {
+				continue;
+			}
+			if (strcmp(nextToken, "..") == 0) {
+				if (resultLength > 1) {
+					result[resultLength - 1] = '\0';
+					char* q = strrchr(result, '/') + 1;
+					resultLength = q - result;
+				}
+				continue;
+			}
+
+			if (resultLength + nextTokenLength >= sizeof(result)) {
+				// Path is too long
+				return path;
+			}
+			std::memcpy(result + resultLength, nextToken, nextTokenLength);
+			resultLength += nextTokenLength;
+			result[resultLength] = '\0';
+
+			struct stat sb;
+			if (!CallStat(result, sb)) {
+				if (errno == ENOENT && p == nullptr) {
+					return String { result, resultLength };
+				}
+				return { };
+			}
+#	if !defined(DEATH_TARGET_SWITCH)
+			// readlink() is missing in libnx
+			if (S_ISLNK(sb.st_mode)) {
+				if (++symlinks > 8) {
+					// Too many symlinks
+					return { };
+				}
+				ssize_t symlinkLength = ::readlink(result, nextToken, sizeof(nextToken) - 1);
+				if (symlinkLength < 0) {
+					// Cannot resolve the symlink
+					return { };
+				}
+				nextToken[symlinkLength] = '\0';
+				if (nextToken[0] == '/') {
+					resultLength = 1;
+				} else if (resultLength > 1) {
+					result[resultLength - 1] = '\0';
+					char* q = strrchr(result, '/') + 1;
+					resultLength = q - result;
+				}
+
+				if (p != nullptr) {
+					if (nextToken[symlinkLength - 1] != '/') {
+						if (static_cast<std::size_t>(symlinkLength) + 1 >= sizeof(nextToken)) {
+							// Path is too long
+							return { };
+						}
+						nextToken[symlinkLength++] = '/';
+					}
+					strncpy(nextToken + symlinkLength, left, sizeof(nextToken) - symlinkLength);
+				}
+				strncpy(left, nextToken, sizeof(left));
+				leftLength = strlen(left);
+			}
+#	endif
+		}
+
+		if (resultLength > 1 && result[resultLength - 1] == '/') {
+			resultLength--;
+		}
+		return String { result, resultLength };
 #else
 #	if defined(DEATH_TARGET_ANDROID)
 		if (path.hasPrefix(AndroidAssetStream::Prefix)) {
 			return path;
 		}
 #	endif
-
+		char buffer[MaxPathLength];
 		const char* resolvedPath = ::realpath(String::nullTerminatedView(path).data(), buffer);
 		if (resolvedPath == nullptr) {
 			return { };
@@ -920,10 +1014,20 @@ namespace Death::IO
 			return { };
 		}
 		return path;
+#elif defined(__FreeBSD__)
+		Array<char> path;
+		std::size_t size;
+		const std::int32_t mib[4] = { CTL_KERN, KERN_PROC, KERN_PROC_PATHNAME, -1 };
+		sysctl(mib, 4, nullptr, &size, NULL, 0);
+		arrayResize(path, NoInit, size + 1);
+		sysctl(mib, 4, path, &size, NULL, 0);
+		path[size] = '\0';
+		const auto deleter = path.deleter();
+		return String { path.release(), size, deleter };
 #elif defined(DEATH_TARGET_UNIX)
 		// Reallocate like hell until we have enough place to store the path. Can't use lstat because
 		// the /proc/self/exe symlink is not a real symlink and so stat::st_size returns 0.
-		constexpr const char self[] = "/proc/self/exe";
+		static const char self[] = "/proc/self/exe";
 		Array<char> path;
 		arrayResize(path, NoInit, 4);
 		ssize_t size;
@@ -937,9 +1041,9 @@ namespace Death::IO
 		const auto deleter = path.deleter();
 		return String { path.release(), std::size_t(size), deleter };
 #elif defined(DEATH_TARGET_WINDOWS) && !defined(DEATH_TARGET_WINDOWS_RT)
-		wchar_t path[MaxPathLength];
+		wchar_t path[MaxPathLength + 1];
 		// Returns size *without* the null terminator
-		const std::size_t size = ::GetModuleFileNameW(nullptr, path, countof(path));
+		const std::size_t size = ::GetModuleFileNameW(NULL, path, static_cast<DWORD>(arraySize(path)));
 		return Utf8::FromUtf16(arrayView(path, size));
 #else
 		return { };
@@ -955,6 +1059,7 @@ namespace Death::IO
 		::GetCurrentDirectoryW(MaxPathLength, buffer);
 		return Utf8::FromUtf16(buffer);
 #else
+		char buffer[MaxPathLength];
 		if (::getcwd(buffer, MaxPathLength) != nullptr) {
 			return buffer;
 		} else {
@@ -1044,7 +1149,6 @@ namespace Death::IO
 			return AndroidAssetStream::TryOpenDirectory(nullTerminatedPath.data());
 		}
 #	endif
-
 		struct stat sb;
 		if (CallStat(nullTerminatedPath.data(), sb)) {
 			return (sb.st_mode & S_IFMT) == S_IFDIR;
@@ -1070,7 +1174,6 @@ namespace Death::IO
 			return AndroidAssetStream::TryOpenFile(nullTerminatedPath.data());
 		}
 #	endif
-
 		struct stat sb;
 		if (CallStat(nullTerminatedPath.data(), sb)) {
 			return (sb.st_mode & S_IFMT) == S_IFREG;
@@ -1096,7 +1199,6 @@ namespace Death::IO
 			return AndroidAssetStream::TryOpen(nullTerminatedPath.data());
 		}
 #	endif
-
 		struct stat sb;
 		return CallStat(nullTerminatedPath.data(), sb);
 #endif
@@ -1119,7 +1221,6 @@ namespace Death::IO
 			return AndroidAssetStream::TryOpen(nullTerminatedPath.data());
 		}
 #	endif
-
 		struct stat sb;
 		if (CallStat(nullTerminatedPath.data(), sb)) {
 			return (sb.st_mode & S_IRUSR);
@@ -1145,7 +1246,6 @@ namespace Death::IO
 			return false;
 		}
 #	endif
-
 		struct stat sb;
 		if (CallStat(nullTerminatedPath.data(), sb)) {
 			return (sb.st_mode & S_IWUSR);
@@ -1180,7 +1280,6 @@ namespace Death::IO
 			return AndroidAssetStream::TryOpenDirectory(nullTerminatedPath.data());
 		}
 #	endif
-
 		return (::access(nullTerminatedPath.data(), X_OK) == 0);
 #endif
 	}
@@ -1202,7 +1301,6 @@ namespace Death::IO
 			return AndroidAssetStream::TryOpenFile(nullTerminatedPath.data());
 		}
 #	endif
-
 		struct stat sb;
 		if (CallStat(nullTerminatedPath.data(), sb)) {
 			return (sb.st_mode & S_IFMT) == S_IFREG && (sb.st_mode & S_IRUSR);
@@ -1228,7 +1326,6 @@ namespace Death::IO
 			return false;
 		}
 #	endif
-
 		struct stat sb;
 		if (CallStat(nullTerminatedPath.data(), sb)) {
 			return (sb.st_mode & S_IFMT) == S_IFREG && (sb.st_mode & S_IWUSR);
@@ -1254,7 +1351,7 @@ namespace Death::IO
 			return false;
 		}
 #	endif
-
+		char buffer[MaxPathLength];
 		std::size_t pathLength = std::min((std::size_t)MaxPathLength - 1, path.size());
 		strncpy(buffer, path.data(), pathLength);
 		buffer[pathLength] = '\0';
@@ -1306,7 +1403,7 @@ namespace Death::IO
 			return false;
 		}
 #	endif
-
+		char buffer[MaxPathLength];
 		std::size_t pathLength = std::min((std::size_t)MaxPathLength - 1, path.size());
 		strncpy(buffer, nullTerminatedPath.data(), pathLength);
 		buffer[pathLength] = '\0';
@@ -1421,7 +1518,7 @@ namespace Death::IO
 		String fullPath = String { nullTerminatedPath };
 		bool slashWasLast = true;
 		struct stat sb;
-		for (std::int32_t i = 0; i < fullPath.size(); i++) {
+		for (std::size_t i = 0; i < fullPath.size(); i++) {
 			if (fullPath[i] == '\0') {
 				break;
 			}
@@ -1495,7 +1592,6 @@ namespace Death::IO
 			return false;
 		}
 #	endif
-
 		return (::unlink(nullTerminatedPath.data()) == 0);
 #endif
 	}
@@ -1514,7 +1610,6 @@ namespace Death::IO
 			return false;
 		}
 #	endif
-
 		return (::rename(nullTerminatedOldPath.data(), nullTerminatedNewPath.data()) == 0);
 #endif
 	}
@@ -1563,7 +1658,11 @@ namespace Death::IO
 			return false;
 		}
 
+#	if defined(DEATH_TARGET_EMSCRIPTEN)
+		constexpr std::size_t BufferSize = 8 * 1024;
+#	else
 		constexpr std::size_t BufferSize = 128 * 1024;
+#	endif
 		char buffer[BufferSize];
 
 		std::int32_t source, dest;
@@ -1573,7 +1672,7 @@ namespace Death::IO
 		if ((source = ::open(String::nullTerminatedView(oldPath).data(), O_RDONLY)) == -1) {
 			return false;
 		}
-		fstat(source, &sb);
+		::fstat(source, &sb);
 		if ((dest = ::open(String::nullTerminatedView(newPath).data(), O_WRONLY | O_CREAT, sb.st_mode)) == -1) {
 			::close(source);
 			return false;
@@ -1600,15 +1699,15 @@ namespace Death::IO
 
 #if defined(DEATH_TARGET_WINDOWS)
 #	if defined(DEATH_TARGET_WINDOWS_RT)
-		HANDLE hFile = ::CreateFileFromAppW(Utf8::ToUtf16(path), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+		HANDLE hFile = ::CreateFileFromAppW(Utf8::ToUtf16(path), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
 #	else
-		HANDLE hFile = ::CreateFileW(Utf8::ToUtf16(path), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+		HANDLE hFile = ::CreateFileW(Utf8::ToUtf16(path), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
 #	endif
 		LARGE_INTEGER fileSize;
 		fileSize.QuadPart = 0;
 		const BOOL status = ::GetFileSizeEx(hFile, &fileSize);
 		::CloseHandle(hFile);
-		return (status != 0 ? static_cast<int64_t>(fileSize.QuadPart) : -1);
+		return (status != 0 ? static_cast<std::int64_t>(fileSize.QuadPart) : -1);
 #else
 		auto nullTerminatedPath = String::nullTerminatedView(path);
 #	if defined(DEATH_TARGET_ANDROID)
@@ -1616,7 +1715,6 @@ namespace Death::IO
 			return static_cast<std::int64_t>(AndroidAssetStream::GetLength(nullTerminatedPath.data()));
 		}
 #	endif
-
 		struct stat sb;
 		if (!CallStat(nullTerminatedPath.data(), sb)) {
 			return -1;
@@ -1625,22 +1723,28 @@ namespace Death::IO
 #endif
 	}
 
-	FileSystem::FileDate FileSystem::GetLastModificationTime(const StringView& path)
+	DateTime FileSystem::GetCreationTime(const StringView& path)
 	{
 		if (path.empty()) return { };
 
-		FileDate date = { };
+		DateTime date;
 #if defined(DEATH_TARGET_WINDOWS)
 #	if defined(DEATH_TARGET_WINDOWS_RT)
-		HANDLE hFile = ::CreateFileFromAppW(Utf8::ToUtf16(path), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+		HANDLE hFile = ::CreateFileFromAppW(Utf8::ToUtf16(path), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
 #	else
-		HANDLE hFile = ::CreateFileW(Utf8::ToUtf16(path), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+		HANDLE hFile = ::CreateFileW(Utf8::ToUtf16(path), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
 #	endif
 		FILETIME fileTime;
-		if (::GetFileTime(hFile, nullptr, nullptr, &fileTime)) {
-			date = NativeTimeToFileDate(&fileTime);
+		if (::GetFileTime(hFile, &fileTime, nullptr, nullptr)) {
+			date = DateTime(fileTime);
 		}
 		::CloseHandle(hFile);
+#elif defined(DEATH_TARGET_APPLE) && defined(_DARWIN_FEATURE_64_BIT_INODE)
+		struct stat sb;
+		if (CallStat(String::nullTerminatedView(path).data(), sb)) {
+			date = DateTime(sb.st_birthtimespec.tv_sec);
+			date.SetMillisecond(sb.st_birthtimespec.tv_nsec / 1000000);
+		}
 #else
 		auto nullTerminatedPath = String::nullTerminatedView(path);
 #	if defined(DEATH_TARGET_ANDROID)
@@ -1648,32 +1752,37 @@ namespace Death::IO
 			return date;
 		}
 #	endif
-
 		struct stat sb;
 		if (CallStat(nullTerminatedPath.data(), sb)) {
-			date = NativeTimeToFileDate(&sb.st_mtime);
+			// Creation time is not available on Linux, return the last change of inode instead
+			date = DateTime(sb.st_ctime);
 		}
 #endif
-
 		return date;
 	}
 
-	FileSystem::FileDate FileSystem::GetLastAccessTime(const StringView& path)
+	DateTime FileSystem::GetLastModificationTime(const StringView& path)
 	{
 		if (path.empty()) return { };
 
-		FileDate date = { };
+		DateTime date;
 #if defined(DEATH_TARGET_WINDOWS)
 #	if defined(DEATH_TARGET_WINDOWS_RT)
-		HANDLE hFile = ::CreateFileFromAppW(Utf8::ToUtf16(path), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+		HANDLE hFile = ::CreateFileFromAppW(Utf8::ToUtf16(path), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
 #	else
-		HANDLE hFile = ::CreateFileW(Utf8::ToUtf16(path), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+		HANDLE hFile = ::CreateFileW(Utf8::ToUtf16(path), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
 #	endif
 		FILETIME fileTime;
-		if (::GetFileTime(hFile, nullptr, &fileTime, nullptr)) {
-			date = NativeTimeToFileDate(&fileTime);
+		if (::GetFileTime(hFile, nullptr, nullptr, &fileTime)) {
+			date = DateTime(fileTime);
 		}
 		::CloseHandle(hFile);
+#elif defined(DEATH_TARGET_APPLE) && defined(_DARWIN_FEATURE_64_BIT_INODE)
+		struct stat sb;
+		if (CallStat(String::nullTerminatedView(path).data(), sb)) {
+			date = DateTime(sb.st_mtimespec.tv_sec);
+			date.SetMillisecond(sb.st_mtimespec.tv_nsec / 1000000);
+		}
 #else
 		auto nullTerminatedPath = String::nullTerminatedView(path);
 #	if defined(DEATH_TARGET_ANDROID)
@@ -1681,13 +1790,48 @@ namespace Death::IO
 			return date;
 		}
 #	endif
-
 		struct stat sb;
 		if (CallStat(nullTerminatedPath.data(), sb)) {
-			date = NativeTimeToFileDate(&sb.st_atime);
+			date = DateTime(sb.st_mtime);
 		}
 #endif
+		return date;
+	}
 
+	DateTime FileSystem::GetLastAccessTime(const StringView& path)
+	{
+		if (path.empty()) return { };
+
+		DateTime date;
+#if defined(DEATH_TARGET_WINDOWS)
+#	if defined(DEATH_TARGET_WINDOWS_RT)
+		HANDLE hFile = ::CreateFileFromAppW(Utf8::ToUtf16(path), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+#	else
+		HANDLE hFile = ::CreateFileW(Utf8::ToUtf16(path), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+#	endif
+		FILETIME fileTime;
+		if (::GetFileTime(hFile, nullptr, &fileTime, nullptr)) {
+			date = DateTime(fileTime);
+		}
+		::CloseHandle(hFile);
+#elif defined(DEATH_TARGET_APPLE) && defined(_DARWIN_FEATURE_64_BIT_INODE)
+		struct stat sb;
+		if (CallStat(String::nullTerminatedView(path).data(), sb)) {
+			date = DateTime(sb.st_atimespec.tv_sec);
+			date.SetMillisecond(sb.st_atimespec.tv_nsec / 1000000);
+		}
+#else
+		auto nullTerminatedPath = String::nullTerminatedView(path);
+#	if defined(DEATH_TARGET_ANDROID)
+		if (AndroidAssetStream::TryGetAssetPath(nullTerminatedPath.data())) {
+			return date;
+		}
+#	endif
+		struct stat sb;
+		if (CallStat(nullTerminatedPath.data(), sb)) {
+			date = DateTime(sb.st_atime);
+		}
+#endif
 		return date;
 	}
 
@@ -1716,7 +1860,6 @@ namespace Death::IO
 			}
 		}
 #	endif
-
 		struct stat sb;
 		if (!CallStat(nullTerminatedPath.data(), sb)) {
 			return Permission::None;
@@ -1732,11 +1875,11 @@ namespace Death::IO
 #if defined(DEATH_TARGET_WINDOWS)
 		DWORD attrs = ::GetFileAttributesW(Utf8::ToUtf16(path));
 		if (attrs != INVALID_FILE_ATTRIBUTES) {
-			if ((mode & Permission::Write) == Permission::Write && (attrs & FILE_ATTRIBUTE_READONLY)) {
+			if ((mode & Permission::Write) == Permission::Write && (attrs & FILE_ATTRIBUTE_READONLY) == FILE_ATTRIBUTE_READONLY) {
 				// Adding the write permission
 				attrs &= ~FILE_ATTRIBUTE_READONLY;
 				return ::SetFileAttributesW(Utf8::ToUtf16(path), attrs);
-			} else if ((mode & Permission::Write) == Permission::Write == 0 && (attrs & FILE_ATTRIBUTE_READONLY) == 0) {
+			} else if ((mode & Permission::Write) != Permission::Write && (attrs & FILE_ATTRIBUTE_READONLY) != FILE_ATTRIBUTE_READONLY) {
 				// Removing the write permission
 				attrs |= FILE_ATTRIBUTE_READONLY;
 				return ::SetFileAttributesW(Utf8::ToUtf16(path), attrs);
@@ -1751,7 +1894,6 @@ namespace Death::IO
 			return false;
 		}
 #	endif
-
 		struct stat sb;
 		if (!CallStat(nullTerminatedPath.data(), sb)) {
 			return false;
@@ -1770,7 +1912,7 @@ namespace Death::IO
 		DWORD attrs = ::GetFileAttributesW(Utf8::ToUtf16(path));
 		if (attrs != INVALID_FILE_ATTRIBUTES) {
 			// Adding the write permission
-			if ((mode & Permission::Write) == Permission::Write && (attrs & FILE_ATTRIBUTE_READONLY)) {
+			if ((mode & Permission::Write) == Permission::Write && (attrs & FILE_ATTRIBUTE_READONLY) == FILE_ATTRIBUTE_READONLY) {
 				attrs &= ~FILE_ATTRIBUTE_READONLY;
 				return ::SetFileAttributesW(Utf8::ToUtf16(path), attrs);
 			}
@@ -1784,7 +1926,6 @@ namespace Death::IO
 			return false;
 		}
 #	endif
-
 		struct stat sb;
 		if (!CallStat(nullTerminatedPath.data(), sb)) {
 			return false;
@@ -1803,7 +1944,7 @@ namespace Death::IO
 		DWORD attrs = ::GetFileAttributesW(Utf8::ToUtf16(path));
 		if (attrs != INVALID_FILE_ATTRIBUTES) {
 			// Removing the write permission
-			if ((mode & Permission::Write) == Permission::Write && (attrs & FILE_ATTRIBUTE_READONLY) == 0) {
+			if ((mode & Permission::Write) == Permission::Write && (attrs & FILE_ATTRIBUTE_READONLY) != FILE_ATTRIBUTE_READONLY) {
 				attrs |= FILE_ATTRIBUTE_READONLY;
 				return ::SetFileAttributesW(Utf8::ToUtf16(path), attrs);
 			}
@@ -1817,7 +1958,6 @@ namespace Death::IO
 			return false;
 		}
 #	endif
-
 		struct stat sb;
 		if (!CallStat(nullTerminatedPath.data(), sb)) {
 			return false;
@@ -1830,7 +1970,17 @@ namespace Death::IO
 
 	bool FileSystem::LaunchDirectoryAsync(const StringView& path)
 	{
-#if defined(DEATH_TARGET_EMSCRIPTEN)
+#if defined(DEATH_TARGET_APPLE)
+		Class nsStringClass = objc_getClass("NSString");
+		Class nsUrlClass = objc_getClass("NSURL");
+		Class nsWorkspaceClass = objc_getClass("NSWorkspace");
+		if (nsStringClass != nullptr && nsUrlClass != nullptr && nsWorkspaceClass != nullptr) {
+			id pathString = ((id(*)(Class, SEL, const char*))objc_msgSend)(nsStringClass, sel_getUid("stringWithUTF8String:"), String::nullTerminatedView(path).data());
+			id pathUrl = ((id(*)(Class, SEL, id))objc_msgSend)(nsUrlClass, sel_getUid("fileURLWithPath:"), pathString);
+			id workspaceInstance = ((id(*)(Class, SEL))objc_msgSend)(nsWorkspaceClass, sel_getUid("sharedWorkspace"));
+			((id(*)(id, SEL, id))objc_msgSend)(workspaceInstance, sel_getUid("openURL:"), pathUrl);
+			return true;
+		}
 		return false;
 #elif defined(DEATH_TARGET_WINDOWS_RT)
 		if (!DirectoryExists(path)) {

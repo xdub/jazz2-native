@@ -251,8 +251,7 @@ namespace nCine
 		};
 
 		const IGfxCapabilities& gfxCaps = theServiceLocator().gfxCapabilities();
-		// Clamping the value as some drivers report a maximum size similar to SSBO one
-		const int maxUniformBlockSize = std::clamp(gfxCaps.value(IGfxCapabilities::GLIntValues::MAX_UNIFORM_BLOCK_SIZE), 0, 64 * 1024);
+		const int maxUniformBlockSize = gfxCaps.value(IGfxCapabilities::GLIntValues::MAX_UNIFORM_BLOCK_SIZE_NORMALIZED);
 
 		char sourceString[48];
 		const char *vertexStrings[3] = { nullptr, nullptr, nullptr };
@@ -265,7 +264,7 @@ namespace nCine
 #else
 			String vertexPath = fs::CombinePath({ theApplication().GetDataPath(), "Shaders"_s, StringView(shaderToLoad.vertexShader) });
 			String fragmentPath = fs::CombinePath({ theApplication().GetDataPath(), "Shaders"_s, StringView(shaderToLoad.fragmentShader) });
-			uint64_t shaderVersion = std::max(fs::GetLastModificationTime(vertexPath).Ticks, fs::GetLastModificationTime(fragmentPath).Ticks);
+			uint64_t shaderVersion = (uint64_t)std::max(fs::GetLastModificationTime(vertexPath).GetValue(), fs::GetLastModificationTime(fragmentPath).GetValue());
 #endif
 
 			shaderToLoad.shaderProgram = std::make_unique<GLShaderProgram>(GLShaderProgram::QueryPhase::Immediate);

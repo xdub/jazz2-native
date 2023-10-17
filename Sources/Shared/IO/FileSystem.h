@@ -2,6 +2,7 @@
 
 #include "Stream.h"
 #include "../Common.h"
+#include "../Containers/DateTime.h"
 #include "../Containers/String.h"
 #include "../Containers/StringView.h"
 
@@ -10,7 +11,7 @@
 
 #if !defined(DEATH_TARGET_WINDOWS)
 #	include <climits> // for `PATH_MAX`
-#	if defined(DEATH_TARGET_APPLE)
+#	if defined(DEATH_TARGET_APPLE) || defined(DEATH_TARGET_SWITCH)
 #		include <dirent.h>
 #	elif defined(DEATH_TARGET_ANDROID)
 using DIR = struct DIR;
@@ -106,7 +107,7 @@ namespace Death::IO
 #endif
 		};
 
-#if defined(DEATH_TARGET_WINDOWS)
+#if defined(DEATH_TARGET_WINDOWS) || defined(DEATH_TARGET_SWITCH)
 		// Windows is already case in-sensitive
 		DEATH_ALWAYS_INLINE static const Containers::StringView& FindPathCaseInsensitive(const Containers::StringView& path) {
 			return path;
@@ -119,9 +120,6 @@ namespace Death::IO
 		static Containers::String CombinePath(const Containers::StringView& first, const Containers::StringView& second);
 		static Containers::String CombinePath(const Containers::ArrayView<const Containers::StringView> paths);
 		static Containers::String CombinePath(const std::initializer_list<Containers::StringView> paths);
-
-		/** @brief Returns the absolute path after joining together two path components */
-		static Containers::String CombinePathAsAbsolute(const Containers::StringView& first, const Containers::StringView& second);
 
 		/** @brief Returns the path up to, but not including, the final separator */
 		static Containers::StringView GetDirectoryName(const Containers::StringView& path);
@@ -195,10 +193,12 @@ namespace Death::IO
 
 		/** @brief Returns the file size in bytes */
 		static std::int64_t GetFileSize(const Containers::StringView& path);
+		/** @brief Returns the creation time of the file or directory (if available) */
+		static Containers::DateTime GetCreationTime(const Containers::StringView& path);
 		/** @brief Returns the last time the file or directory was modified */
-		static FileDate GetLastModificationTime(const Containers::StringView& path);
+		static Containers::DateTime GetLastModificationTime(const Containers::StringView& path);
 		/** @brief Returns the last time the file or directory was accessed */
-		static FileDate GetLastAccessTime(const Containers::StringView& path);
+		static Containers::DateTime GetLastAccessTime(const Containers::StringView& path);
 
 		/** @brief Returns the file or directory permissions in a mask */
 		static Permission GetPermissions(const Containers::StringView& path);

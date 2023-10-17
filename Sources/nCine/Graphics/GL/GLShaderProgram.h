@@ -68,7 +68,7 @@ namespace nCine
 		inline QueryPhase queryPhase() const {
 			return queryPhase_;
 		}
-		inline int batchSize() const {
+		inline unsigned int batchSize() const {
 			return batchSize_;
 		}
 		inline void setBatchSize(int value) {
@@ -141,7 +141,7 @@ namespace nCine
 		static constexpr int UniformBlocksInitialSize = 4;
 		static constexpr int AttributesInitialSize = 4;
 
-#if defined(DEATH_LOG)
+#if defined(DEATH_TRACE)
 		static constexpr unsigned int MaxInfoLogLength = 512;
 		static char infoLogString_[MaxInfoLogLength];
 #endif
@@ -154,7 +154,7 @@ namespace nCine
 		Status status_;
 		Introspection introspection_;
 		QueryPhase queryPhase_;
-		int batchSize_;
+		unsigned int batchSize_;
 
 		/// A flag indicating whether the shader program should automatically log errors (the information log)
 		bool shouldLogOnErrors_;

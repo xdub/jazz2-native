@@ -1,5 +1,7 @@
 ﻿#include "RescaleModeSection.h"
 
+#include <Utf8.h>
+
 namespace Jazz2::UI::Menu
 {
 	RescaleModeSection::RescaleModeSection()
@@ -13,13 +15,20 @@ namespace Jazz2::UI::Menu
 			auto& item = _items.emplace_back();
 			item.Item.Mode = (RescaleMode)i;
 			switch (item.Item.Mode) {
+				// TRANSLATORS: Menu item in Options > Graphics > Rescale Mode section
 				case RescaleMode::None: item.Item.DisplayName = _("None / Pixel-perfect"); break;
+				// TRANSLATORS: Menu item in Options > Graphics > Rescale Mode section
 				case RescaleMode::HQ2x: item.Item.DisplayName = "HQ2×"_s; break;
+				// TRANSLATORS: Menu item in Options > Graphics > Rescale Mode section
 				case RescaleMode::_3xBrz: item.Item.DisplayName = "3×BRZ"_s; break;
 
+				// TRANSLATORS: Menu item in Options > Graphics > Rescale Mode section
 				case RescaleMode::CrtScanlines: item.Item.DisplayName = _("CRT Scanlines"); break;
+				// TRANSLATORS: Menu item in Options > Graphics > Rescale Mode section
 				case RescaleMode::CrtShadowMask: item.Item.DisplayName = _("CRT Shadow Mask"); break;
+				// TRANSLATORS: Menu item in Options > Graphics > Rescale Mode section
 				case RescaleMode::CrtApertureGrille: item.Item.DisplayName = _("CRT Aperture Grille"); break;
+				// TRANSLATORS: Menu item in Options > Graphics > Rescale Mode section
 				case RescaleMode::Monochrome: item.Item.DisplayName = _("Monochrome"); break;
 			}
 		}
@@ -47,7 +56,7 @@ namespace Jazz2::UI::Menu
 		if (isSelected) {
 			float size = 0.5f + IMenuContainer::EaseOutElastic(_animation) * 0.6f;
 
-			_root->DrawElement("MenuGlow"_s, 0, centerX, item.Y, IMenuContainer::MainLayer, Alignment::Center, Colorf(1.0f, 1.0f, 1.0f, 0.4f * size), (item.Item.DisplayName.size() + 3) * 0.5f * size, 4.0f * size, true);
+			_root->DrawElement("MenuGlow"_s, 0, centerX, item.Y, IMenuContainer::MainLayer, Alignment::Center, Colorf(1.0f, 1.0f, 1.0f, 0.4f * size), (Utf8::GetLength(item.Item.DisplayName) + 3) * 0.5f * size, 4.0f * size, true);
 
 			_root->DrawStringShadow(item.Item.DisplayName, charOffset, centerX, item.Y, IMenuContainer::FontLayer + 10,
 				Alignment::Center, Font::RandomColor, size, 0.7f, 1.1f, 1.1f, 0.4f, 0.9f);

@@ -1,13 +1,18 @@
 ﻿#include "SoundsOptionsSection.h"
 #include "../../PreferencesCache.h"
 
+#include <Utf8.h>
+
 namespace Jazz2::UI::Menu
 {
 	SoundsOptionsSection::SoundsOptionsSection()
 		: _selectedIndex(0), _animation(0.0f), _isDirty(false)
 	{
+		// TRANSLATORS: Menu item in Options > Sounds section
 		_items[(int32_t)Item::MasterVolume].Name = _("Master Volume");
+		// TRANSLATORS: Menu item in Options > Sounds section
 		_items[(int32_t)Item::SfxVolume].Name = _("SFX Volume");
+		// TRANSLATORS: Menu item in Options > Sounds section
 		_items[(int32_t)Item::MusicVolume].Name = _("Music Volume");
 	}
 
@@ -97,7 +102,7 @@ namespace Jazz2::UI::Menu
 			if (_selectedIndex == i) {
 				float size = 0.5f + IMenuContainer::EaseOutElastic(_animation) * 0.6f;
 
-				_root->DrawElement("MenuGlow"_s, 0, center.X, center.Y, IMenuContainer::MainLayer, Alignment::Center, Colorf(1.0f, 1.0f, 1.0f, 0.4f * size), (_items[i].Name.size() + 3) * 0.5f * size, 4.0f * size, true);
+				_root->DrawElement("MenuGlow"_s, 0, center.X, center.Y, IMenuContainer::MainLayer, Alignment::Center, Colorf(1.0f, 1.0f, 1.0f, 0.4f * size), (Utf8::GetLength(_items[i].Name) + 3) * 0.5f * size, 4.0f * size, true);
 
 				_root->DrawStringShadow(_items[i].Name, charOffset, center.X, center.Y, IMenuContainer::FontLayer + 10,
 					Alignment::Center, Font::RandomColor, size, 0.7f, 1.1f, 1.1f, 0.4f, 0.9f);

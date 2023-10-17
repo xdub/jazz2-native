@@ -6,6 +6,8 @@
 #include "AboutSection.h"
 #include "MainMenu.h"
 
+#include <Utf8.h>
+
 #if defined(SHAREWARE_DEMO_ONLY)
 #	if defined(DEATH_TARGET_EMSCRIPTEN)
 #		include "ImportSection.h"
@@ -27,15 +29,28 @@ namespace Jazz2::UI::Menu
 	{
 #if defined(SHAREWARE_DEMO_ONLY)
 #	if defined(DEATH_TARGET_EMSCRIPTEN)
+		// TRANSLATORS: Menu item in main menu (Emscripten only)
 		_items[(int32_t)Item::Import].Name = _("Import Episodes");
 #	endif
 #else
+		// TRANSLATORS: Menu item in main menu
 		_items[(int32_t)Item::PlayEpisodes].Name = _("Play Story");
+		// TRANSLATORS: Menu item in main menu
 		_items[(int32_t)Item::PlayCustomLevels].Name = _("Play Custom Levels");
 #endif
+
+#if defined(WITH_MULTIPLAYER)
+		// TODO: Multiplayer
+		_items[(int32_t)Item::TODO_ConnectTo].Name = _("Connect To Server");
+		_items[(int32_t)Item::TODO_CreateServer].Name = _("Create Server");
+#endif
+
+		// TRANSLATORS: Menu item in main menu
 		_items[(int32_t)Item::Options].Name = _("Options");
+		// TRANSLATORS: Menu item in main menu
 		_items[(int32_t)Item::About].Name = _("About");
-#if !defined(DEATH_TARGET_EMSCRIPTEN) && !defined(DEATH_TARGET_IOS)
+#if !defined(DEATH_TARGET_EMSCRIPTEN) && !defined(DEATH_TARGET_IOS) && !defined(DEATH_TARGET_SWITCH)
+		// TRANSLATORS: Menu item in main menu
 		_items[(int32_t)Item::Quit].Name = _("Quit");
 #endif
 	}
@@ -50,6 +65,7 @@ namespace Jazz2::UI::Menu
 		if (PreferencesCache::UnlockedEpisodes != UnlockableEpisodes::None) {
 			_items[(int32_t)Item::PlayEpisodes].Name = _("Play Story");
 		} else {
+			// TRANSLATORS: Menu item in main menu (Emscripten only)
 			_items[(int32_t)Item::PlayEpisodes].Name = _("Play Shareware Demo");
 		}
 #endif
@@ -90,7 +106,7 @@ namespace Jazz2::UI::Menu
 		if (_root->ActionHit(PlayerActions::Fire)) {
 			ExecuteSelected();
 		} else if (_root->ActionHit(PlayerActions::Menu)) {
-#if !defined(DEATH_TARGET_EMSCRIPTEN) && !defined(DEATH_TARGET_IOS)
+#if !defined(DEATH_TARGET_EMSCRIPTEN) && !defined(DEATH_TARGET_IOS) && !defined(DEATH_TARGET_SWITCH)
 			if (_selectedIndex != (int32_t)Item::Quit) {
 				_root->PlaySfx("MenuSelect"_s, 0.6f);
 				_animation = 0.0f;
@@ -161,10 +177,11 @@ namespace Jazz2::UI::Menu
 
 #	if defined(DEATH_TARGET_ANDROID)
 					if (AndroidJniHelper::SdkVersion() >= 30 && (flags & IRootController::Flags::HasExternalStoragePermission) != IRootController::Flags::HasExternalStoragePermission) {
+						// TRANSLATORS: Menu item in main menu (Android 11+ only)
 						auto grantPermissionText = _("Allow access to external storage");
 						if (_selectedIndex == 0) {
 							float size = 0.5f + IMenuContainer::EaseOutElastic(_animation) * 0.6f;
-							_root->DrawElement("MenuGlow"_s, 0, center.X, center.Y * 0.96f + 48.0f, IMenuContainer::MainLayer, Alignment::Center, Colorf(1.0f, 1.0f, 1.0f, 0.4f * size), (grantPermissionText.size() + 1) * 0.5f * size, 4.0f * size, true);
+							_root->DrawElement("MenuGlow"_s, 0, center.X, center.Y * 0.96f + 48.0f, IMenuContainer::MainLayer, Alignment::Center, Colorf(1.0f, 1.0f, 1.0f, 0.4f * size), (Utf8::GetLength(grantPermissionText) + 1) * 0.5f * size, 4.0f * size, true);
 							_root->DrawStringShadow(grantPermissionText, charOffset, center.X + 12.0f, center.Y * 0.96f + 48.0f, IMenuContainer::FontLayer,
 								Alignment::Center, Font::RandomColor, size, 0.7f, 1.1f, 1.1f, 0.4f, 0.8f);
 
@@ -192,7 +209,7 @@ namespace Jazz2::UI::Menu
 			if (i <= (int32_t)Item::Options && !isPlayable) {
 				if (i != 0 && (!hideSecondItem || i != 1)) {
 					if (_selectedIndex == i) {
-						_root->DrawElement("MenuGlow"_s, 0, center.X, center.Y, IMenuContainer::MainLayer, Alignment::Center, Colorf(1.0f, 1.0f, 1.0f, 0.2f), (_items[i].Name.size() + 3) * 0.5f, 4.0f, true);
+						_root->DrawElement("MenuGlow"_s, 0, center.X, center.Y, IMenuContainer::MainLayer, Alignment::Center, Colorf(1.0f, 1.0f, 1.0f, 0.2f), (Utf8::GetLength(_items[i].Name) + 3) * 0.5f, 4.0f, true);
 					}
 
 					_root->DrawStringShadow(_items[i].Name, charOffset, center.X, center.Y, IMenuContainer::FontLayer,
@@ -207,7 +224,7 @@ namespace Jazz2::UI::Menu
 			if (_selectedIndex == i) {
 				float size = 0.5f + IMenuContainer::EaseOutElastic(_animation) * 0.6f;
 
-				_root->DrawElement("MenuGlow"_s, 0, center.X, center.Y, IMenuContainer::MainLayer, Alignment::Center, Colorf(1.0f, 1.0f, 1.0f, 0.4f * size), (_items[i].Name.size() + 3) * 0.5f * size, 4.0f * size, true);
+				_root->DrawElement("MenuGlow"_s, 0, center.X, center.Y, IMenuContainer::MainLayer, Alignment::Center, Colorf(1.0f, 1.0f, 1.0f, 0.4f * size), (Utf8::GetLength(_items[i].Name) + 3) * 0.5f * size, 4.0f * size, true);
 
 				_root->DrawStringShadow(_items[i].Name, charOffset, center.X, center.Y, IMenuContainer::FontLayer + 10,
 					Alignment::Center, Font::RandomColor, size, 0.7f, 1.1f, 1.1f, 0.4f, 0.9f);
@@ -311,6 +328,19 @@ namespace Jazz2::UI::Menu
 				}
 				break;
 #endif
+
+#if defined(WITH_MULTIPLAYER)
+			// TODO: Multiplayer
+			case (int32_t)Item::TODO_ConnectTo:
+				// TODO: Hardcoded address and port
+				_root->ConnectToServer("127.0.0.1", 10666);
+				break;
+			case (int32_t)Item::TODO_CreateServer:
+				// TODO: Hardcoded address and port
+				_root->CreateServer(10666);
+				break;
+#endif
+
 			case (int32_t)Item::Options:
 				if (isPlayable) {
 					_root->PlaySfx("MenuSelect"_s, 0.6f);
@@ -321,7 +351,7 @@ namespace Jazz2::UI::Menu
 				_root->PlaySfx("MenuSelect"_s, 0.6f);
 				_root->SwitchToSection<AboutSection>();
 				break;
-#if !defined(DEATH_TARGET_EMSCRIPTEN) && !defined(DEATH_TARGET_IOS)
+#if !defined(DEATH_TARGET_EMSCRIPTEN) && !defined(DEATH_TARGET_IOS) && !defined(DEATH_TARGET_SWITCH)
 			case (int32_t)Item::Quit: theApplication().quit(); break;
 #endif
 		}

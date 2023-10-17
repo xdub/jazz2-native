@@ -46,7 +46,7 @@ namespace nCine
 	int GfxCapabilities::arrayValue(GLArrayIntValues valueName, unsigned int index) const
 	{
 		int value = 0;
-		if (valueName == GLArrayIntValues::PROGRAM_BINARY_FORMATS && index < glIntValues_[(int)GLIntValues::NUM_PROGRAM_BINARY_FORMATS]) {
+		if (valueName == GLArrayIntValues::PROGRAM_BINARY_FORMATS && index < (unsigned int)glIntValues_[(int)GLIntValues::NUM_PROGRAM_BINARY_FORMATS]) {
 			value = programBinaryFormats_[index];
 		}
 		return value;
@@ -98,9 +98,17 @@ namespace nCine
 #endif
 		glGetIntegerv(GL_MAX_COLOR_ATTACHMENTS, &glIntValues_[(int)GLIntValues::MAX_COLOR_ATTACHMENTS]);
 
+		// MAX_UNIFORM_BLOCK_SIZE is sometimes not reported correctly, so try to adjust it here
+		glIntValues_[(int)GLIntValues::MAX_UNIFORM_BLOCK_SIZE_NORMALIZED] = glIntValues_[(int)GLIntValues::MAX_UNIFORM_BLOCK_SIZE];
+		if (glIntValues_[(int)GLIntValues::MAX_UNIFORM_BLOCK_SIZE_NORMALIZED] > 64 * 1024) {
+			glIntValues_[(int)GLIntValues::MAX_UNIFORM_BLOCK_SIZE_NORMALIZED] = 64 * 1024;
+		} else if (glIntValues_[(int)GLIntValues::MAX_UNIFORM_BLOCK_SIZE_NORMALIZED] <= 0) {
+			glIntValues_[(int)GLIntValues::MAX_UNIFORM_BLOCK_SIZE_NORMALIZED] = 16 * 1024;
+		}
+
 		const char* ExtensionNames[] = {
 			"GL_KHR_debug", "GL_ARB_texture_storage", "GL_ARB_get_program_binary",
-#if defined(WITH_OPENGLES) && !defined(DEATH_TARGET_EMSCRIPTEN) && !defined(DEATH_TARGET_UNIX)
+#if defined(WITH_OPENGLES) && !defined(DEATH_TARGET_EMSCRIPTEN) && !defined(DEATH_TARGET_SWITCH) && !defined(DEATH_TARGET_UNIX)
 			"GL_OES_get_program_binary",
 #endif
 #if defined(DEATH_TARGET_EMSCRIPTEN)
@@ -118,7 +126,7 @@ namespace nCine
 
 		checkGLExtensions(ExtensionNames, glExtensions_, (int)GLExtensions::Count);
 
-#if defined(WITH_OPENGLES) && !defined(DEATH_TARGET_EMSCRIPTEN) && !defined(DEATH_TARGET_UNIX)
+#if defined(WITH_OPENGLES) && !defined(DEATH_TARGET_EMSCRIPTEN) && !defined(DEATH_TARGET_SWITCH) && !defined(DEATH_TARGET_UNIX)
 		if (hasExtension(GLExtensions::OES_GET_PROGRAM_BINARY)) {
 			glGetIntegerv(GL_NUM_PROGRAM_BINARY_FORMATS_OES, &glIntValues_[(int)GLIntValues::NUM_PROGRAM_BINARY_FORMATS]);
 			ASSERT(glIntValues_[(int)GLIntValues::NUM_PROGRAM_BINARY_FORMATS] <= MaxProgramBinaryFormats);
@@ -131,7 +139,7 @@ namespace nCine
 			glGetIntegerv(GL_PROGRAM_BINARY_FORMATS, programBinaryFormats_);
 		}
 
-#if defined(DEATH_LOG)
+#if defined(DEATH_TRACE)
 		logGLInfo();
 		logGLCaps();
 		//logGLExtensions();
@@ -165,7 +173,11 @@ namespace nCine
 		LOGI("--- OpenGL device capabilities ---");
 		LOGI("GL_MAX_TEXTURE_SIZE: %d", glIntValues_[(int)GLIntValues::MAX_TEXTURE_SIZE]);
 		LOGI("GL_MAX_TEXTURE_IMAGE_UNITS: %d", glIntValues_[(int)GLIntValues::MAX_TEXTURE_IMAGE_UNITS]);
-		LOGI("GL_MAX_UNIFORM_BLOCK_SIZE: %d", glIntValues_[(int)GLIntValues::MAX_UNIFORM_BLOCK_SIZE]);
+		if (glIntValues_[(int)GLIntValues::MAX_UNIFORM_BLOCK_SIZE] != glIntValues_[(int)GLIntValues::MAX_UNIFORM_BLOCK_SIZE_NORMALIZED]) {
+			LOGI("GL_MAX_UNIFORM_BLOCK_SIZE: %d (%d)", glIntValues_[(int)GLIntValues::MAX_UNIFORM_BLOCK_SIZE], glIntValues_[(int)GLIntValues::MAX_UNIFORM_BLOCK_SIZE_NORMALIZED]);
+		} else {
+			LOGI("GL_MAX_UNIFORM_BLOCK_SIZE: %d", glIntValues_[(int)GLIntValues::MAX_UNIFORM_BLOCK_SIZE]);
+		}
 		LOGI("GL_MAX_UNIFORM_BUFFER_BINDINGS: %d", glIntValues_[(int)GLIntValues::MAX_UNIFORM_BUFFER_BINDINGS]);
 		LOGI("GL_MAX_VERTEX_UNIFORM_BLOCKS: %d", glIntValues_[(int)GLIntValues::MAX_VERTEX_UNIFORM_BLOCKS]);
 		LOGI("GL_MAX_FRAGMENT_UNIFORM_BLOCKS: %d", glIntValues_[(int)GLIntValues::MAX_FRAGMENT_UNIFORM_BLOCKS]);
@@ -179,7 +191,7 @@ namespace nCine
 		LOGI("GL_KHR_debug: %d", glExtensions_[(int)GLExtensions::KHR_DEBUG]);
 		LOGI("GL_ARB_texture_storage: %d", glExtensions_[(int)GLExtensions::ARB_TEXTURE_STORAGE]);
 		LOGI("GL_ARB_get_program_binary: %d", glExtensions_[(int)GLExtensions::ARB_GET_PROGRAM_BINARY]);
-#if defined(WITH_OPENGLES) && !defined(DEATH_TARGET_EMSCRIPTEN) && !defined(DEATH_TARGET_UNIX)
+#if defined(WITH_OPENGLES) && !defined(DEATH_TARGET_EMSCRIPTEN) && !defined(DEATH_TARGET_SWITCH) && !defined(DEATH_TARGET_UNIX)
 		LOGI("GL_OES_get_program_binary: %d", glExtensions_[(int)GLExtensions::OES_GET_PROGRAM_BINARY]);
 #endif
 		LOGI("GL_EXT_texture_compression_s3tc: %d", glExtensions_[(int)GLExtensions::EXT_TEXTURE_COMPRESSION_S3TC]);

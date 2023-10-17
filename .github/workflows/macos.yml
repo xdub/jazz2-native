@@ -34,7 +34,7 @@ jobs:
 
     steps:
     - name: 'Checkout Repository'
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         fetch-depth: 0
 
@@ -60,7 +60,8 @@ jobs:
       run: |
         make package -C ./_build/
         mkdir ./_package/
-        cp ./_build/*.dmg ./_package/
+        cp -f ./_build/*.dmg ./_package/
+        cp -f ./LICENSE ./_package/LICENSE
         
     - name: 'Upload Package'
       uses: actions/upload-artifact@v3

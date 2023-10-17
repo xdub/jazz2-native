@@ -155,7 +155,7 @@ namespace nCine
 		return JoystickGuidType::Default;
 #elif GLFW_VERSION_MAJOR == 3 && GLFW_VERSION_MINOR >= 3
 		if (isJoyPresent(joyId)) {
-			constexpr char XinputPrefix[] = "78696e707574";
+			static const char XinputPrefix[] = "78696e707574";
 			const char* guid = glfwGetJoystickGUID(joyId);
 			if (strncmp(guid, XinputPrefix, sizeof(XinputPrefix) - 1) == 0) {
 				return JoystickGuidType::Xinput;
@@ -378,7 +378,7 @@ namespace nCine
 		joyConnectionEvent_.joyId = joyId;
 
 		if (event == GLFW_CONNECTED) {
-#if defined(DEATH_LOG)
+#if defined(DEATH_TRACE)
 			int numButtons = -1;
 			int numAxes = -1;
 			int numHats = -1;

@@ -1,5 +1,5 @@
 // Copyright © 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016,
-//             2017, 2018, 2019, 2020, 2021, 2022
+//             2017, 2018, 2019, 2020, 2021, 2022, 2023
 //           Vladimír Vondruš <mosra@centrum.cz> and contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -22,13 +22,12 @@
 
 #pragma once
 
+#include "../CommonBase.h"
+#include "StringView.h" /* needs to be included for comparison operators */
+
 #include <cstddef>
 #include <type_traits>
 #include <string>
-
-#include "../CommonBase.h"
-#include "StringView.h" /* needs to be included for comparison operators */
-#include "Array.h"
 
 namespace Death::Containers
 {
@@ -62,8 +61,7 @@ namespace Death::Containers
 	/**
 		@brief Allocated initialization tag type
 
-		Used to distinguish @ref String construction that bypasses small string
-		optimization.
+		Used to distinguish @ref String construction that bypasses small string optimization.
 	*/
 	struct AllocatedInitT {
 		struct Init {};
@@ -154,10 +152,10 @@ namespace Death::Containers
 		 * size, it's either stored allocated or in a SSO.
 		 */
 		/*implicit*/ String(StringView view);
-		/*implicit*/ String(Containers::ArrayView<const char> view);
+		/*implicit*/ String(ArrayView<const char> view);
 		// Without these there's ambiguity between StringView / ArrayView and char*
 		/*implicit*/ String(MutableStringView view);
-		/*implicit*/ String(Containers::ArrayView<char> view);
+		/*implicit*/ String(ArrayView<char> view);
 
 		/**
 		 * @brief Construct from a null-terminated C string
@@ -185,10 +183,10 @@ namespace Death::Containers
 		 * Compared to @ref String(StringView) the data is always allocated.
 		 */
 		explicit String(AllocatedInitT, StringView view);
-		explicit String(AllocatedInitT, Containers::ArrayView<const char> view);
+		explicit String(AllocatedInitT, ArrayView<const char> view);
 		// Without these there's ambiguity between StringView / ArrayView and char*
 		explicit String(AllocatedInitT, MutableStringView view);
-		explicit String(AllocatedInitT, Containers::ArrayView<char> view);
+		explicit String(AllocatedInitT, ArrayView<char> view);
 
 		/**
 		 * @brief Create a string instance bypassing SSO
@@ -239,7 +237,6 @@ namespace Death::Containers
 		 * default-constructed value alongside the array pointer and size. It
 		 * effectively means @cpp delete[] nullptr @ce gets called when
 		 * destructing a moved-out instance (which is a no-op).
-		 * @see @ref Containers-String-usage-wrapping
 		 */
 		explicit String(char* data, std::size_t size, Deleter deleter) noexcept;
 
@@ -250,7 +247,7 @@ namespace Death::Containers
 		 * @ref String(char*, std::size_t, Deleter).
 		 */
 		// Gets ambigous when calling String{ptr, 0}. FFS, zero as null pointerwas deprecated in C++11 already, why is this still a problem?!
-		template<class T> String(typename std::enable_if<std::is_convertible<T, Deleter>::value && !std::is_convertible<T, std::size_t>::value, char*>::type data, T deleter) noexcept : String { deleter, nullptr, data } {}
+		template<class T> String(typename std::enable_if<std::is_convertible<T, Deleter>::value && !std::is_convertible<T, std::size_t>::value, char*>::type data, T deleter) noexcept : String{deleter, nullptr, data} {}
 
 		/**
 		 * @brief Take ownership of an immutable external data array
@@ -262,7 +259,7 @@ namespace Death::Containers
 		 * copy, it's the user responsibility to avoid mutating the data in any
 		 * way.
 		 */
-		explicit String(const char* data, std::size_t size, Deleter deleter) noexcept : String { const_cast<char*>(data), size, deleter } {}
+		explicit String(const char* data, std::size_t size, Deleter deleter) noexcept : String{const_cast<char*>(data), size, deleter} {}
 
 		/**
 		 * @brief Take ownership of an external data array with implicit size
@@ -271,7 +268,7 @@ namespace Death::Containers
 		 * @ref String(const char*, std::size_t, Deleter).
 		 */
 		// Gets ambigous when calling String{ptr, 0}. FFS, zero as null pointer was deprecated in C++11 already, why is this still a problem?!
-		template<class T> String(typename std::enable_if<std::is_convertible<T, Deleter>::value && !std::is_convertible<T, std::size_t>::value, const char*>::type data, T deleter) noexcept : String { deleter, nullptr, const_cast<char*>(data) } {}
+		template<class T, class = typename std::enable_if<std::is_convertible<T, Deleter>::value && !std::is_convertible<T, std::size_t>::value, const char*>::type> String(const char* data, T deleter) noexcept : String{deleter, nullptr, const_cast<char*>(data)} {}
 
 		/**
 		 * @brief Taking ownership of a null pointer is not allowed
@@ -319,13 +316,12 @@ namespace Death::Containers
 		// There's no restriction that would disallow creating StringView from e.g. std::string<T>&& because that would break uses like
 		// `consume(foo());`, where `consume()` expects a view but `foo()` returns a std::vector. Besides that, to simplify the implementation,
 		// there's no const-adding conversion. Instead, the implementer is supposed to add an ArrayViewConverter variant for that.
-		template<class T, class = decltype(Implementation::StringConverter<typename std::decay<T&&>::type>::from(std::declval<T&&>()))> /*implicit*/ String(T&& other) noexcept : String { Implementation::StringConverter<typename std::decay<T&&>::type>::from(std::forward<T>(other)) } {}
+		template<class T, class = decltype(Implementation::StringConverter<typename std::decay<T&&>::type>::from(std::declval<T&&>()))> /*implicit*/ String(T&& other) noexcept : String{Implementation::StringConverter<typename std::decay<T&&>::type>::from(std::forward<T>(other))} {}
 
 		/**
 		 * @brief Destructor
 		 *
-		 * Calls @ref deleter() on the owned @ref data(); in case of a SSO does
-		 * nothing.
+		 * Calls @ref deleter() on the owned @ref data(); in case of a SSO does nothing.
 		 */
 		~String();
 
@@ -552,10 +548,18 @@ namespace Death::Containers
 		/**
 		 * @brief Split on given character
 		 *
-		 * Equivalent to @ref BasicStringView::split().
+		 * Equivalent to @ref BasicStringView::split(char) const.
 		 */
 		Array<MutableStringView> split(char delimiter);
 		Array<StringView> split(char delimiter) const;
+
+		/**
+		 * @brief Split on given substring
+		 *
+		 * Equivalent to @ref BasicStringView::split(StringView) const.
+		 */
+		Array<MutableStringView> split(StringView delimiter);
+		Array<StringView> split(StringView delimiter) const;
 
 		/**
 		 * @brief Split on given character, removing empty parts
@@ -584,11 +588,21 @@ namespace Death::Containers
 		/**
 		 * @brief Partition
 		 *
-		 * Equivalent to @ref BasicStringView::partition(). The last returned
+		 * Equivalent to @ref BasicStringView::partition(char) const. The last returned
 		 * value has always @ref StringViewFlags::NullTerminated set.
 		 */
 		StaticArray<3, MutableStringView> partition(char separator);
 		StaticArray<3, StringView> partition(char separator) const;
+
+		/**
+		 * @brief Partition
+		 *
+		 * Equivalent to @ref BasicStringView::partition(StringView) const. The
+		 * last returned value has always @ref StringViewFlag::NullTerminated
+		 * set.
+		 */
+		StaticArray<3, MutableStringView> partition(StringView separator);
+		StaticArray<3, StringView> partition(StringView separator) const;
 
 		/**
 		 * @brief Join strings with this view as the delimiter
@@ -852,7 +866,7 @@ namespace Death::Containers
 		void construct(NoInitT, std::size_t size);
 		void construct(const char* data, std::size_t size);
 		void destruct();
-		Containers::Pair<const char*, std::size_t> dataInternal() const;
+		Pair<const char*, std::size_t> dataInternal() const;
 
 		/* Small string optimization. Following size restrictions from
 		   StringView (which uses the top two bits for marking global and
