@@ -4,7 +4,6 @@
 #include "../Primitives/Vector2.h"
 
 #include <cstring>	// for memcpy()
-#include <cstdlib>	// for strtoul()
 
 #include <Containers/SmallVector.h>
 #include <Containers/StringView.h>
@@ -467,8 +466,8 @@ namespace nCine
 		// Never search by name on Android, it can lead to wrong mapping
 		if (!mapping.isValid) {
 			const StringView joyNameView = joyName;
-			// Don't assign Android default mapping to internal NVIDIA Shield devices and WSA devices
-			if (joyNameView == "virtual-search"_s || joyNameView == "shield-ask-remote"_s || joyNameView == "virtual_keyboard"_s) {
+			// Don't assign Android default mapping to internal NVIDIA Shield devices, WSA devices and mice (detected as gamepads)
+			if (joyNameView == "virtual-search"_s || joyNameView == "shield-ask-remote"_s || joyNameView == "virtual_keyboard"_s || joyNameView.contains("Mouse"_s)) {
 				return false;
 			}
 
@@ -755,15 +754,15 @@ namespace nCine
 		return false;
 #else
 #	if defined(DEATH_TARGET_WINDOWS)
-		constexpr char platformName[] = "Windows";
+		static const char platformName[] = "Windows";
 #	elif defined(DEATH_TARGET_ANDROID)
-		constexpr char platformName[] = "Android";
+		static const char platformName[] = "Android";
 #	elif defined(DEATH_TARGET_IOS)
-		constexpr char platformName[] = "iOS";
+		static const char platformName[] = "iOS";
 #	elif defined(DEATH_TARGET_APPLE)
-		constexpr char platformName[] = "Mac OS X";
+		static const char platformName[] = "Mac OS X";
 #	else
-		constexpr char platformName[] = "Linux";
+		static const char platformName[] = "Linux";
 #	endif
 
 		return (strncmp(start, platformName, end - start) == 0);
@@ -879,12 +878,12 @@ namespace nCine
 
 	void JoyMapping::trimSpaces(const char** start, const char** end) const
 	{
-		while (**start == ' ') {
+		while (**start == ' ' || **end == '\t') {
 			(*start)++;
 		}
 
 		(*end)--;
-		while (**end == ' ') {
+		while (**end == ' ' || **end == '\t') {
 			(*end)--;
 		}
 		(*end)++;

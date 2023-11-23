@@ -79,6 +79,9 @@ namespace Jazz2
 		static constexpr std::int32_t UnlimitedFps = 0;
 		static constexpr std::int32_t UseVsync = -1;
 
+#if defined(WITH_MULTIPLAYER)
+		static String InitialState;
+#endif
 		static UnlockableEpisodes UnlockedEpisodes;
 
 		// Graphics
@@ -89,6 +92,7 @@ namespace Jazz2
 		static bool KeepAspectRatioInCinematics;
 		static bool ShowPlayerTrails;
 		static bool LowGraphicsQuality;
+		static bool UnalignedViewport;
 
 		// Gameplay
 		static bool EnableReforged;
@@ -128,6 +132,7 @@ namespace Jazz2
 			KeepAspectRatioInCinematics = 0x04,
 			ShowPlayerTrails = 0x08,
 			LowGraphicsQuality = 0x10,
+			UnalignedViewport = 0x20,
 
 			EnableReforged = 0x100,
 			EnableLedgeClimb = 0x200,
@@ -148,9 +153,7 @@ namespace Jazz2
 
 		static constexpr float TouchPaddingMultiplier = 0.003f;
 
-		/// Deleted copy constructor
 		PreferencesCache(const PreferencesCache&) = delete;
-		/// Deleted assignment operator
 		PreferencesCache& operator=(const PreferencesCache&) = delete;
 
 		static String _configPath;

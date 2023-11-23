@@ -1,4 +1,5 @@
 ﻿#include "MainMenu.h"
+#include "MenuResources.h"
 #include "../../PreferencesCache.h"
 #include "../ControlScheme.h"
 #include "BeginSection.h"
@@ -7,6 +8,8 @@
 #include "../../../nCine/Graphics/RenderQueue.h"
 #include "../../../nCine/Audio/AudioReaderMpt.h"
 #include "../../../nCine/Base/Random.h"
+
+using namespace Jazz2::UI::Menu::Resources;
 
 namespace Jazz2::UI::Menu
 {
@@ -28,10 +31,8 @@ namespace Jazz2::UI::Menu
 		// It will also replace palette for subsequent `RequestMetadata()`
 		PrepareTexturedBackground();
 
-		Metadata* metadata = resolver.RequestMetadata("UI/MainMenu"_s);
-		ASSERT_MSG(metadata != nullptr, "Cannot load required metadata");
-		_graphics = &metadata->Graphics;
-		_sounds = &metadata->Sounds;
+		_metadata = resolver.RequestMetadata("UI/MainMenu"_s);
+		ASSERT_MSG(_metadata != nullptr, "Cannot load required metadata");
 
 		_smallFont = resolver.GetFont(FontType::Small);
 		_mediumFont = resolver.GetFont(FontType::Medium);
@@ -64,6 +65,30 @@ namespace Jazz2::UI::Menu
 		_canvasBackground->setParent(nullptr);
 		_canvasClipped->setParent(nullptr);
 		_canvasOverlay->setParent(nullptr);
+	}
+
+	void MainMenu::Reset()
+	{
+		bool shouldSwitch = false;
+		while (!_sections.empty()) {
+			if (_sections.size() == 1 && dynamic_cast<BeginSection*>(_sections.back().get())) {
+				if (shouldSwitch) {
+					auto& lastSection = _sections.back();
+					lastSection->OnShow(this);
+
+					if (_canvasBackground->ViewSize != Vector2i::Zero) {
+						Recti clipRectangle = lastSection->GetClipRectangle(_canvasBackground->ViewSize);
+						_upscalePass.SetClipRectangle(clipRectangle);
+					}
+				}
+				return;
+			}
+
+			_sections.pop_back();
+			shouldSwitch = true;
+		}
+		
+		SwitchToSection<BeginSection>();
 	}
 
 	void MainMenu::OnBeginFrame()
@@ -184,12 +209,12 @@ namespace Jazz2::UI::Menu
 		float logoTextTranslate = (1.0f - _owner->_logoTransition) * 60.0f;
 
 		if (_owner->_touchButtonsTimer > 0.0f && _owner->_sections.size() >= 2) {
-			_owner->DrawElement("MenuLineArrow"_s, -1, static_cast<float>(center.X), 40.0f, ShadowLayer, Alignment::Center, Colorf::White);
+			_owner->DrawElement(MenuLineArrow, -1, static_cast<float>(center.X), 40.0f, ShadowLayer, Alignment::Center, Colorf::White);
 		}
 
 		// Title
-		_owner->DrawElement("MenuCarrot"_s, -1, center.X - 76.0f * logoTranslateX, 64.0f + logoTranslateY + 2.0f, ShadowLayer + 200, Alignment::Center, Colorf(0.0f, 0.0f, 0.0f, 0.3f), 0.8f * logoScale, 0.8f * logoScale);
-		_owner->DrawElement("MenuCarrot"_s, -1, center.X - 76.0f * logoTranslateX, 64.0f + logoTranslateY, MainLayer + 200, Alignment::Center, Colorf::White, 0.8f * logoScale, 0.8f * logoScale);
+		_owner->DrawElement(MenuCarrot, -1, center.X - 76.0f * logoTranslateX, 64.0f + logoTranslateY + 2.0f, ShadowLayer + 200, Alignment::Center, Colorf(0.0f, 0.0f, 0.0f, 0.3f), 0.8f * logoScale, 0.8f * logoScale);
+		_owner->DrawElement(MenuCarrot, -1, center.X - 76.0f * logoTranslateX, 64.0f + logoTranslateY, MainLayer + 200, Alignment::Center, Colorf::White, 0.8f * logoScale, 0.8f * logoScale);
 
 		_owner->_mediumFont->DrawString(this, "Jazz"_s, charOffsetShadow, center.X - 63.0f, 70.0f + logoTranslateY + 2.0f, FontShadowLayer + 200,
 			Alignment::Left, Colorf(0.0f, 0.0f, 0.0f, 0.32f), 0.75f * logoTextScale, 1.65f, 3.0f, 3.0f, 0.0f, 0.92f);
@@ -223,7 +248,7 @@ namespace Jazz2::UI::Menu
 		// Copyright
 		Vector2f bottomLeft = bottomRight;
 		bottomLeft.X = 24.0f;
-		_owner->DrawStringShadow("© 2016-2023  Dan R."_s, charOffset, bottomLeft.X, bottomLeft.Y, IMenuContainer::FontLayer,
+		_owner->DrawStringShadow("© 2016-" NCINE_BUILD_YEAR "  Dan R."_s, charOffset, bottomLeft.X, bottomLeft.Y, IMenuContainer::FontLayer,
 			Alignment::BottomLeft, Font::DefaultColor, 0.7f, 0.4f, 1.2f, 1.2f, 0.46f, 0.8f);
 
 #if defined(DEATH_TARGET_WINDOWS_RT)
@@ -232,7 +257,7 @@ namespace Jazz2::UI::Menu
 		if (!sourcePath.empty() && sourcePath.hasPrefix("\\\\?\\"_s) && sourcePath.exceptPrefix(5).hasPrefix(":\\Games\\"_s)) {
 			_owner->DrawStringShadow("·"_s, charOffset, bottomLeft.X + 116.0f, bottomLeft.Y, IMenuContainer::FontLayer,
 				Alignment::BottomLeft, Font::DefaultColor, 0.7f, 0.4f, 0.0f, 0.8f, 0.46f, 0.8f);
-			_owner->DrawElement("Storage"_s, -1, bottomLeft.X + 146.0f, bottomLeft.Y - 3.0f, IMenuContainer::FontLayer, Alignment::BottomRight, Colorf(1.0f, 1.0f, 1.0f, std::max(_owner->_logoTransition - 0.6f, 0.0f) * 2.5f));
+			_owner->DrawElement(Storage, -1, bottomLeft.X + 146.0f, bottomLeft.Y - 3.0f, IMenuContainer::FontLayer, Alignment::BottomRight, Colorf(1.0f, 1.0f, 1.0f, std::max(_owner->_logoTransition - 0.6f, 0.0f) * 2.5f));
 			_owner->DrawStringShadow(sourcePath.slice(4, 7), charOffset, bottomLeft.X + 150.0f, bottomLeft.Y, IMenuContainer::FontLayer,
 				Alignment::BottomLeft, Font::DefaultColor, 0.7f, 0.4f, 1.2f, 1.2f, 0.46f, 0.8f);
 		}
@@ -286,7 +311,7 @@ namespace Jazz2::UI::Menu
 		return true;
 	}
 
-	void MainMenu::SwitchToSectionDirect(std::unique_ptr<MenuSection> section)
+	MenuSection* MainMenu::SwitchToSectionDirect(std::unique_ptr<MenuSection> section)
 	{
 		if (!_sections.empty()) {
 			auto& lastSection = _sections.back();
@@ -300,6 +325,8 @@ namespace Jazz2::UI::Menu
 			Recti clipRectangle = currentSection->GetClipRectangle(_canvasBackground->ViewSize);
 			_upscalePass.SetClipRectangle(clipRectangle);
 		}
+
+		return currentSection.get();
 	}
 
 	void MainMenu::LeaveSection()
@@ -327,7 +354,7 @@ namespace Jazz2::UI::Menu
 	}
 
 #if defined(WITH_MULTIPLAYER)
-	bool MainMenu::ConnectToServer(const char* address, std::uint16_t port)
+	bool MainMenu::ConnectToServer(const StringView& address, std::uint16_t port)
 	{
 		return _root->ConnectToServer(address, port);
 	}
@@ -353,24 +380,25 @@ namespace Jazz2::UI::Menu
 		}
 
 		if ((type & ChangedPreferencesType::Language) == ChangedPreferencesType::Language) {
+			// All sections have to be recreated to load new language
 			_sections.clear();
 			SwitchToSection<BeginSection>();
 		}
 	}
 
-	void MainMenu::DrawElement(const StringView& name, int32_t frame, float x, float y, uint16_t z, Alignment align, const Colorf& color, float scaleX, float scaleY, bool additiveBlending)
+	void MainMenu::DrawElement(AnimState state, int32_t frame, float x, float y, uint16_t z, Alignment align, const Colorf& color, float scaleX, float scaleY, bool additiveBlending)
 	{
-		auto it = _graphics->find(String::nullTerminatedView(name));
-		if (it == _graphics->end()) {
+		auto* res = _metadata->FindAnimation(state);
+		if (res == nullptr) {
 			return;
 		}
 
 		if (frame < 0) {
-			frame = it->second.FrameOffset + ((int32_t)(_canvasBackground->AnimTime * it->second.FrameCount / it->second.AnimDuration) % it->second.FrameCount);
+			frame = res->FrameOffset + ((int32_t)(_canvasBackground->AnimTime * res->FrameCount / res->AnimDuration) % res->FrameCount);
 		}
 
 		Canvas* currentCanvas = GetActiveCanvas();
-		GenericGraphicResource* base = it->second.Base;
+		GenericGraphicResource* base = res->Base;
 		Vector2f size = Vector2f(base->FrameDimensions.X * scaleX, base->FrameDimensions.Y * scaleY);
 		Vector2f adjustedPos = Canvas::ApplyAlignment(align, Vector2f(x - currentCanvas->ViewSize.X * 0.5f, currentCanvas->ViewSize.Y * 0.5f - y), size);
 
@@ -390,15 +418,15 @@ namespace Jazz2::UI::Menu
 		currentCanvas->DrawTexture(*base->TextureDiffuse.get(), adjustedPos, z, size, texCoords, color, additiveBlending);
 	}
 
-	void MainMenu::DrawElement(const StringView& name, float x, float y, uint16_t z, Alignment align, const Colorf& color, const Vector2f& size, const Vector4f& texCoords)
+	void MainMenu::DrawElement(AnimState state, float x, float y, uint16_t z, Alignment align, const Colorf& color, const Vector2f& size, const Vector4f& texCoords)
 	{
-		auto it = _graphics->find(String::nullTerminatedView(name));
-		if (it == _graphics->end()) {
+		auto* res = _metadata->FindAnimation(state);
+		if (res == nullptr) {
 			return;
 		}
 
 		Canvas* currentCanvas = GetActiveCanvas();
-		GenericGraphicResource* base = it->second.Base;
+		GenericGraphicResource* base = res->Base;
 		Vector2f adjustedPos = Canvas::ApplyAlignment(align, Vector2f(x - currentCanvas->ViewSize.X * 0.5f, currentCanvas->ViewSize.Y * 0.5f - y), size);
 
 		currentCanvas->DrawTexture(*base->TextureDiffuse.get(), adjustedPos, z, size, texCoords, color, false);
@@ -438,10 +466,10 @@ namespace Jazz2::UI::Menu
 
 	void MainMenu::PlaySfx(const StringView& identifier, float gain)
 	{
-		auto it = _sounds->find(String::nullTerminatedView(identifier));
-		if (it != _sounds->end()) {
+		auto it = _metadata->Sounds.find(String::nullTerminatedView(identifier));
+		if (it != _metadata->Sounds.end()) {
 			int32_t idx = (it->second.Buffers.size() > 1 ? Random().Next(0, (int32_t)it->second.Buffers.size()) : 0);
-			auto& player = _playingSounds.emplace_back(std::make_shared<AudioBufferPlayer>(it->second.Buffers[idx].get()));
+			auto& player = _playingSounds.emplace_back(std::make_shared<AudioBufferPlayer>(&it->second.Buffers[idx]->Buffer));
 			player->setPosition(Vector3f(0.0f, 0.0f, 100.0f));
 			player->setGain(gain * PreferencesCache::MasterVolume * PreferencesCache::SfxVolume);
 			player->setSourceRelative(true);
@@ -574,9 +602,9 @@ namespace Jazz2::UI::Menu
 				Vector2f debrisPos = Vector2f(Random().FastFloat(viewSize.X * -0.8f, viewSize.X * 0.8f),
 					Random().NextFloat(viewSize.Y * 0.5f, viewSize.Y * 1.0f));
 
-				auto it = _graphics->find(String::nullTerminatedView("Snow"_s));
-				if (it != _graphics->end()) {
-					auto& resBase = it->second.Base;
+				auto* res = _metadata->FindAnimation((AnimState)1); // Snow
+				if (res != nullptr) {
+					auto& resBase = res->Base;
 					Vector2i texSize = resBase->TextureDiffuse->size();
 					float scale = Random().FastFloat(0.4f, 1.1f);
 					float speedX = Random().FastFloat(-1.6f, -1.2f) * scale;
@@ -599,7 +627,7 @@ namespace Jazz2::UI::Menu
 
 					debris.Time = 160.0f;
 
-					int32_t curAnimFrame = it->second.FrameOffset + Random().Next(0, it->second.FrameCount);
+					int32_t curAnimFrame = res->FrameOffset + Random().Next(0, res->FrameCount);
 					int32_t col = curAnimFrame % resBase->FrameConfiguration.X;
 					int32_t row = curAnimFrame / resBase->FrameConfiguration.X;
 					debris.TexScaleX = (float(resBase->FrameDimensions.X) / float(texSize.X));
@@ -860,16 +888,9 @@ namespace Jazz2::UI::Menu
 
 				Vector2i texSize = _owner->_tileSet->TextureDiffuse->size();
 				float texScaleX = TileSet::DefaultTileSize / float(texSize.X);
-				float texBiasX = (tile.TileID % _owner->_tileSet->TilesPerRow) * TileSet::DefaultTileSize / float(texSize.X);
+				float texBiasX = ((tile.TileID % _owner->_tileSet->TilesPerRow) * (TileSet::DefaultTileSize + 2.0f) + 1.0f) / float(texSize.X);
 				float texScaleY = TileSet::DefaultTileSize / float(texSize.Y);
-				float texBiasY = (tile.TileID / _owner->_tileSet->TilesPerRow) * TileSet::DefaultTileSize / float(texSize.Y);
-
-				if ((targetSize.X & 1) == 1) {
-					texBiasX += 0.5f / float(texSize.X);
-				}
-				if ((targetSize.Y & 1) == 1) {
-					texBiasY -= 0.5f / float(texSize.Y);
-				}
+				float texBiasY = ((tile.TileID / _owner->_tileSet->TilesPerRow) * (TileSet::DefaultTileSize + 2.0f) + 1.0f) / float(texSize.Y);
 
 				auto instanceBlock = command->material().uniformBlock(Material::InstanceBlockName);
 				instanceBlock->uniform(Material::TexRectUniformName)->setFloatValue(texScaleX, texBiasX, texScaleY, texBiasY);

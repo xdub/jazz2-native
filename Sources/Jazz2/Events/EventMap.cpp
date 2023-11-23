@@ -2,14 +2,35 @@
 #include "../Tiles/TileMap.h"
 #include "../WeatherType.h"
 
+#include "../../nCine/tracy.h"
 #include "../../nCine/Base/Random.h"
 #include "../../nCine/Base/FrameTimer.h"
 
 namespace Jazz2::Events
 {
-	EventMap::EventMap(ILevelHandler* levelHandler, Vector2i layoutSize, PitType pitType)
-		: _levelHandler(levelHandler), _layoutSize(layoutSize), _checkpointCreated(false), _pitType(pitType)
+	EventMap::EventMap(const Vector2i& layoutSize)
+		: _levelHandler(nullptr), _layoutSize(layoutSize), _checkpointCreated(false), _pitType(PitType::FallForever)
 	{
+	}
+
+	void EventMap::SetLevelHandler(ILevelHandler* levelHandler)
+	{
+		_levelHandler = levelHandler;
+	}
+
+	Vector2i EventMap::GetSize() const
+	{
+		return _layoutSize;
+	}
+
+	PitType EventMap::GetPitType() const
+	{
+		return _pitType;
+	}
+
+	void EventMap::SetPitType(PitType value)
+	{
+		_pitType = value;
 	}
 
 	Vector2f EventMap::GetSpawnPosition(PlayerType type)
@@ -95,6 +116,8 @@ namespace Jazz2::Events
 
 	void EventMap::PreloadEventsAsync()
 	{
+		ZoneScopedC(0x9D5BA3);
+
 		auto eventSpawner = _levelHandler->EventSpawner();
 
 		// TODO
@@ -119,6 +142,8 @@ namespace Jazz2::Events
 
 	void EventMap::ProcessGenerators(float timeMult)
 	{
+		ZoneScopedC(0x9D5BA3);
+
 		for (auto& generator : _generators) {
 			if (!_eventLayout[generator.EventPos].IsEventActive) {
 				// Generator is inactive (and recharging)
@@ -149,7 +174,9 @@ namespace Jazz2::Events
 
 	void EventMap::ActivateEvents(std::int32_t tx1, std::int32_t ty1, std::int32_t tx2, std::int32_t ty2, bool allowAsync)
 	{
-		auto tiles = _levelHandler->TileMap();
+		ZoneScopedC(0x9D5BA3);
+
+		auto* tiles = _levelHandler->TileMap();
 		if (tiles == nullptr) {
 			return;
 		}
@@ -290,7 +317,7 @@ namespace Jazz2::Events
 				std::uint8_t eventFlags = s.ReadValue<std::uint8_t>();
 				std::uint8_t eventParams[16];
 
-				// ToDo: Remove inlined constants
+				// TODO: Remove inlined constants
 
 				// Flag 0x02: Generator
 				std::uint8_t generatorFlags, generatorDelay;

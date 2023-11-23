@@ -13,6 +13,7 @@
 #endif
 
 #include "nCine/IAppEventHandler.h"
+#include "nCine/tracy.h"
 #include "nCine/Graphics/BinaryShaderCache.h"
 #include "nCine/Graphics/RenderResources.h"
 #include "nCine/Input/IInputEventHandler.h"
@@ -25,6 +26,7 @@
 #include "Jazz2/UI/Cinematics.h"
 #include "Jazz2/UI/ControlScheme.h"
 #include "Jazz2/UI/Menu/MainMenu.h"
+#include "Jazz2/UI/Menu/LoadingSection.h"
 #include "Jazz2/UI/Menu/SimpleMessageSection.h"
 
 #include "Jazz2/Compatibility/JJ2Anims.h"
@@ -76,6 +78,7 @@ public:
 	static constexpr std::int32_t DefaultHeight = 405;
 
 #if defined(WITH_MULTIPLAYER)
+	static constexpr std::uint16_t MultiplayerDefaultPort = 7438;
 	static constexpr std::uint32_t MultiplayerProtocolVersion = 1;
 #endif
 
@@ -98,11 +101,11 @@ public:
 	void ChangeLevel(LevelInitialization&& levelInit) override;
 
 #if defined(WITH_MULTIPLAYER)
-	bool ConnectToServer(const char* address, std::uint16_t port) override;
+	bool ConnectToServer(const StringView& address, std::uint16_t port) override;
 	bool CreateServer(std::uint16_t port) override;
 
-	bool OnPeerConnected(const Peer& peer, std::uint32_t clientData) override;
-	void OnPeerDisconnected(const Peer& peer, std::uint32_t reason) override;
+	ConnectionResult OnPeerConnected(const Peer& peer, std::uint32_t clientData) override;
+	void OnPeerDisconnected(const Peer& peer, Reason reason) override;
 	void OnPacketReceived(const Peer& peer, std::uint8_t channelId, std::uint8_t* data, std::size_t dataLength) override;
 #endif
 
@@ -134,13 +137,18 @@ private:
 	void RefreshCache();
 	void CheckUpdates();
 #endif
-	static void SaveEpisodeEnd(const LevelInitialization& pendingLevelChange);
-	static void SaveEpisodeContinue(const LevelInitialization& pendingLevelChange);
+	bool SetLevelHandler(const LevelInitialization& levelInit);
+	static void WriteCacheDescriptor(const StringView& path, std::uint64_t currentVersion, std::int64_t animsModified);
+	static void SaveEpisodeEnd(const LevelInitialization& levelInit);
+	static void SaveEpisodeContinue(const LevelInitialization& levelInit);
 	static void UpdateRichPresence(const LevelInitialization& levelInit);
+	static bool TryParseAddressAndPort(const StringView& input, String& address, std::uint16_t& port);
 };
 
 void GameEventHandler::OnPreInit(AppConfiguration& config)
 {
+	ZoneScopedC(0x888888);
+
 	PreferencesCache::Initialize(config);
 
 	config.windowTitle = NCINE_APP_NAME;
@@ -158,16 +166,26 @@ void GameEventHandler::OnPreInit(AppConfiguration& config)
 	auto& resolver = ContentResolver::Get();
 	config.shaderCachePath = fs::CombinePath(resolver.GetCachePath(), "Shaders"_s);
 #endif
+
+#if defined(WITH_IMGUI)
+	//config.withDebugOverlay = true;
+#endif
 }
 
 void GameEventHandler::OnInit()
 {
+	ZoneScopedC(0x888888);
+
+#if defined(WITH_IMGUI)
+	//theApplication().debugOverlaySettings().showInterface = true;
+#endif
+
 	_flags = Flags::None;
 
 	std::memset(_newestVersion, 0, sizeof(_newestVersion));
 
 	auto& resolver = ContentResolver::Get();
-	
+
 #if defined(DEATH_TARGET_ANDROID)
 	theApplication().setAutoSuspension(true);
 
@@ -196,6 +214,8 @@ void GameEventHandler::OnInit()
 #if defined(WITH_THREADS) && !defined(DEATH_TARGET_EMSCRIPTEN)
 	// If threading support is enabled, refresh cache during intro cinematics and don't allow skip until it's completed
 	Thread thread([](void* arg) {
+		Thread::SetCurrentName("Parallel initialization");
+
 		auto handler = static_cast<GameEventHandler*>(arg);
 #	if (defined(DEATH_TARGET_WINDOWS) && !defined(DEATH_TARGET_WINDOWS_RT)) || defined(DEATH_TARGET_UNIX)
 		if (PreferencesCache::EnableDiscordIntegration) {
@@ -215,11 +235,40 @@ void GameEventHandler::OnInit()
 		handler->CheckUpdates();
 	}, this);
 
+#	if defined(WITH_MULTIPLAYER)
+	if (PreferencesCache::InitialState == "/server"_s) {
+		thread.Join();
+
+		auto mainMenu = std::make_unique<Menu::MainMenu>(this, false);
+		mainMenu->SwitchToSection<Menu::LoadingSection>(_("Creating server..."));
+		SetStateHandler(std::move(mainMenu));
+
+		// TODO: Hardcoded port
+		CreateServer(MultiplayerDefaultPort);
+	} else if (PreferencesCache::InitialState.hasPrefix("/connect:"_s)) {
+		thread.Join();
+
+		String address; std::uint16_t port;
+		if (TryParseAddressAndPort(PreferencesCache::InitialState.exceptPrefix(9), address, port)) {
+			if (port == 0) {
+				port = MultiplayerDefaultPort;
+			}
+
+			auto mainMenu = std::make_unique<Menu::MainMenu>(this, false);
+			mainMenu->SwitchToSection<Menu::LoadingSection>(_f("Connecting to %s:%u...", address.data(), port));
+			SetStateHandler(std::move(mainMenu));
+
+			ConnectToServer(address.data(), (std::uint16_t)port);
+			return;
+		}
+	}
+#	endif
+
 	SetStateHandler(std::make_unique<Cinematics>(this, "intro"_s, [thread](IRootController* root, bool endOfStream) mutable {
 		if ((root->GetFlags() & Jazz2::IRootController::Flags::IsVerified) != Jazz2::IRootController::Flags::IsVerified) {
 			return false;
 		}
-		
+
 		thread.Join();
 		root->GoToMainMenu(endOfStream);
 		return true;
@@ -248,6 +297,33 @@ void GameEventHandler::OnInit()
 	CheckUpdates();
 #	endif
 
+#	if defined(WITH_MULTIPLAYER)
+	if (PreferencesCache::InitialState == "/server"_s) {
+		LOGI("Starting server on port %u...", MultiplayerDefaultPort);
+
+		auto mainMenu = std::make_unique<Menu::MainMenu>(this, false);
+		mainMenu->SwitchToSection<Menu::LoadingSection>(_("Creating server..."));
+		SetStateHandler(std::move(mainMenu));
+
+		// TODO: Hardcoded port
+		CreateServer(MultiplayerDefaultPort);
+	} else if (PreferencesCache::InitialState.hasPrefix("/connect:"_s)) {
+		String address; std::uint16_t port;
+		if (TryParseAddressAndPort(PreferencesCache::InitialState.exceptPrefix(9), address, port)) {
+			if (port == 0) {
+				port = MultiplayerDefaultPort;
+			}
+
+			auto mainMenu = std::make_unique<Menu::MainMenu>(this, false);
+			mainMenu->SwitchToSection<Menu::LoadingSection>(_f("Connecting to %s:%u...", address.data(), port));
+			SetStateHandler(std::move(mainMenu));
+
+			ConnectToServer(address.data(), (std::uint16_t)port);
+			return;
+		}
+	}
+#	endif
+
 	SetStateHandler(std::make_unique<Cinematics>(this, "intro"_s, [](IRootController* root, bool endOfStream) {
 		root->GoToMainMenu(endOfStream);
 		return true;
@@ -261,6 +337,8 @@ void GameEventHandler::OnInit()
 void GameEventHandler::OnFrameStart()
 {
 	if (!_pendingCallbacks.empty()) {
+		ZoneScopedNC("Pending callbacks", 0x888888);
+
 		for (std::size_t i = 0; i < _pendingCallbacks.size(); i++) {
 			_pendingCallbacks[i]();
 		}
@@ -292,6 +370,8 @@ void GameEventHandler::OnResizeWindow(int width, int height)
 
 void GameEventHandler::OnShutdown()
 {
+	ZoneScopedC(0x888888);
+
 	_currentHandler = nullptr;
 #if defined(WITH_MULTIPLAYER)
 	_networkManager = nullptr;
@@ -367,18 +447,25 @@ void GameEventHandler::InvokeAsync(std::function<void()>&& callback)
 void GameEventHandler::GoToMainMenu(bool afterIntro)
 {
 	InvokeAsync([this, afterIntro]() {
+		ZoneScopedNC("GameEventHandler::GoToMainMenu", 0x888888);
+
 #if defined(WITH_MULTIPLAYER)
 		_networkManager = nullptr;
 #endif
-
-		SetStateHandler(std::make_unique<Menu::MainMenu>(this, afterIntro));
-		UpdateRichPresence({});
+		if (auto mainMenu = dynamic_cast<Menu::MainMenu*>(_currentHandler.get())) {
+			mainMenu->Reset();
+		} else {
+			SetStateHandler(std::make_unique<Menu::MainMenu>(this, afterIntro));
+			UpdateRichPresence({});
+		}
 	});
 }
 
 void GameEventHandler::ChangeLevel(LevelInitialization&& levelInit)
 {
 	InvokeAsync([this, levelInit = std::move(levelInit)]() mutable {
+		ZoneScopedNC("GameEventHandler::ChangeLevel", 0x888888);
+
 		std::unique_ptr<IStateHandler> newHandler;
 		if (levelInit.LevelName.empty()) {
 			// Next level not specified, so show main menu
@@ -400,7 +487,13 @@ void GameEventHandler::ChangeLevel(LevelInitialization&& levelInit)
 			}
 
 			if (levelInit.LevelName != ":end"_s) {
-				newHandler = std::make_unique<LevelHandler>(this, levelInit);
+				if (SetLevelHandler(levelInit)) {
+					UpdateRichPresence(levelInit);
+				} else {
+					auto mainMenu = std::make_unique<Menu::MainMenu>(this, false);
+					mainMenu->SwitchToSection<Menu::SimpleMessageSection>(_("\f[c:0x704a4a]Cannot load specified level!\f[c]\n\n\nMake sure all necessary files\nare accessible and try it again."));
+					newHandler = std::move(mainMenu);
+				}
 			} else {
 				newHandler = std::make_unique<Menu::MainMenu>(this, false);
 			}
@@ -431,31 +524,29 @@ void GameEventHandler::ChangeLevel(LevelInitialization&& levelInit)
 				newHandler = std::make_unique<Menu::MainMenu>(this, false);
 			} else
 #endif
-				newHandler = std::make_unique<LevelHandler>(this, levelInit);
+			{
+				if (SetLevelHandler(levelInit)) {
+					UpdateRichPresence(levelInit);
+				} else {
+					auto mainMenu = std::make_unique<Menu::MainMenu>(this, false);
+					mainMenu->SwitchToSection<Menu::SimpleMessageSection>(_("\f[c:0x704a4a]Cannot load specified level!\f[c]\n\n\nMake sure all necessary files\nare accessible and try it again."));
+					newHandler = std::move(mainMenu);
+				}
+			}
 		}
 
-		if (auto levelHandler = static_cast<LevelHandler*>(newHandler.get())) {
-			if (!levelHandler->IsLoaded()) {
-				// If level cannot be loaded, go back to main menu
-				newHandler = std::make_unique<Menu::MainMenu>(this, false);
-				if (auto mainMenu = static_cast<Menu::MainMenu*>(newHandler.get())) {
-					mainMenu->SwitchToSection<Menu::SimpleMessageSection>(Menu::SimpleMessageSection::Message::CannotLoadLevel);
-					UpdateRichPresence({});
-				}
-			} else {
-				UpdateRichPresence(levelInit);
-			}
-		} else {
+		if (newHandler != nullptr) {
+			SetStateHandler(std::move(newHandler));
 			UpdateRichPresence({});
 		}
-
-		SetStateHandler(std::move(newHandler));
 	});
 }
 
 #if defined(WITH_MULTIPLAYER)
-bool GameEventHandler::ConnectToServer(const char* address, std::uint16_t port)
+bool GameEventHandler::ConnectToServer(const StringView& address, std::uint16_t port)
 {
+	LOGI("Connecting to %s:%u...", address.data(), port);
+
 	if (_networkManager == nullptr) {
 		_networkManager = std::make_unique<NetworkManager>();
 	}
@@ -465,6 +556,8 @@ bool GameEventHandler::ConnectToServer(const char* address, std::uint16_t port)
 
 bool GameEventHandler::CreateServer(std::uint16_t port)
 {
+	LOGI("Creating server on port %u...", port);
+
 	if (_networkManager == nullptr) {
 		_networkManager = std::make_unique<NetworkManager>();
 	}
@@ -474,21 +567,24 @@ bool GameEventHandler::CreateServer(std::uint16_t port)
 	}
 
 	InvokeAsync([this]() {
-		LevelInitialization levelInit("unknown", "arace1", GameDifficulty::Multiplayer, true, false, PlayerType::Jazz);
-		SetStateHandler(std::make_unique<MultiLevelHandler>(this, _networkManager.get(), levelInit));
+		// TODO: Hardcoded level
+		LevelInitialization levelInit("rescue", "01_colon1", GameDifficulty::Multiplayer, true, false, PlayerType::Jazz);
+		auto levelHandler = std::make_unique<MultiLevelHandler>(this, _networkManager.get());
+		levelHandler->Initialize(levelInit);
+		SetStateHandler(std::move(levelHandler));
 	});
 
 	return true;
 }
 
-bool GameEventHandler::OnPeerConnected(const Peer& peer, std::uint32_t clientData)
+ConnectionResult GameEventHandler::OnPeerConnected(const Peer& peer, std::uint32_t clientData)
 {
 	LOGI("Peer connected");
 
 	if (_networkManager->GetState() == NetworkState::Listening) {
 		if ((clientData & 0xFF000000) != 0xCA000000 || (clientData & 0x00FFFFFF) > MultiplayerProtocolVersion) {
 			// Connected client is newer than server, reject it
-			return false;
+			return Reason::IncompatibleVersion;
 		}
 	} else {
 		// TODO: Auth packet
@@ -499,25 +595,49 @@ bool GameEventHandler::OnPeerConnected(const Peer& peer, std::uint32_t clientDat
 	return true;
 }
 
-void GameEventHandler::OnPeerDisconnected(const Peer& peer, std::uint32_t reason)
+void GameEventHandler::OnPeerDisconnected(const Peer& peer, Reason reason)
 {
-	LOGI("Peer disconnected");
+	LOGI("Peer disconnected (%u)", (std::uint32_t)reason);
+
+	if (auto multiLevelHandler = dynamic_cast<MultiLevelHandler*>(_currentHandler.get())) {
+		if (multiLevelHandler->OnPeerDisconnected(peer)) {
+			return;
+		}
+	}
 
 	if (_networkManager != nullptr && _networkManager->GetState() != NetworkState::Listening) {
-		// TODO: Show error message only if not initiated by the player
-		GoToMainMenu(false);
+		InvokeAsync([this, reason]() {
+#if defined(WITH_MULTIPLAYER)
+			_networkManager = nullptr;
+#endif
+			Menu::MainMenu* mainMenu;
+			if (mainMenu = dynamic_cast<Menu::MainMenu*>(_currentHandler.get())) {
+				mainMenu->Reset();
+			} else {
+				auto newHandler = std::make_unique<Menu::MainMenu>(this, false);
+				mainMenu = newHandler.get();
+				SetStateHandler(std::move(newHandler));
+				UpdateRichPresence({});
+			}
+
+			switch (reason) {
+				case Reason::IncompatibleVersion: mainMenu->SwitchToSection<Menu::SimpleMessageSection>(_("\f[c:0x704a4a]Cannot connect to the server!\f[c]\n\n\nYour client version is not compatible with the server.")); break;
+				case Reason::ServerIsFull: mainMenu->SwitchToSection<Menu::SimpleMessageSection>(_("\f[c:0x704a4a]Cannot connect to the server!\f[c]\n\n\nServer capacity is full.\nPlease try it later.")); break;
+				case Reason::ServerNotReady: mainMenu->SwitchToSection<Menu::SimpleMessageSection>(_("\f[c:0x704a4a]Cannot connect to the server!\f[c]\n\n\nServer is not in a state where it can process your request.\nPlease try again in a few seconds.")); break;
+				case Reason::ServerStopped: mainMenu->SwitchToSection<Menu::SimpleMessageSection>(_("\f[c:0x704a4a]Connection has been closed!\f[c]\n\n\nServer is shutting down.\nPlease try it later.")); break;
+				case Reason::ConnectionLost: mainMenu->SwitchToSection<Menu::SimpleMessageSection>(_("\f[c:0x704a4a]Connection has been lost!\f[c]\n\n\nPlease try it again and if the problem persists,\ncheck your network connection.")); break;
+				case Reason::ConnectionTimedOut: mainMenu->SwitchToSection<Menu::SimpleMessageSection>(_("\f[c:0x704a4a]Cannot connect to the server!\f[c]\n\n\nThe server is not responding for connection request.")); break;
+				case Reason::Kicked: mainMenu->SwitchToSection<Menu::SimpleMessageSection>(_("\f[c:0x704a4a]Connection has been closed!\f[c]\n\n\nYou have been \f[c:0x907050]kicked\f[c] off the server.\nContact server administrators for more information.")); break;
+				case Reason::Banned: mainMenu->SwitchToSection<Menu::SimpleMessageSection>(_("\f[c:0x704a4a]Connection has been closed!\f[c]\n\n\nYou have been \f[c:0x725040]banned\f[c] off the server.\nContact server administrators for more information.")); break;
+			}
+		});
 	}
 }
 
 void GameEventHandler::OnPacketReceived(const Peer& peer, std::uint8_t channelId, std::uint8_t* data, std::size_t dataLength)
 {
-	if (auto multiLevelHandler = dynamic_cast<MultiLevelHandler*>(_currentHandler.get())) {
-		if (multiLevelHandler->OnPacketReceived(peer, channelId, data, dataLength)) {
-			return;
-		}
-	}
-
-	if (_networkManager->GetState() == NetworkState::Listening) {
+	bool isServer = (_networkManager->GetState() == NetworkState::Listening);
+	if (isServer) {
 		auto packetType = (ClientPacketType)data[0];
 		switch (packetType) {
 			case ClientPacketType::Ping: {
@@ -525,15 +645,16 @@ void GameEventHandler::OnPacketReceived(const Peer& peer, std::uint8_t channelId
 				_networkManager->SendToPeer(peer, NetworkChannel::Main, data, sizeof(data));
 				break;
 			}
-			case ClientPacketType::Auth: {
+			/*case ClientPacketType::Auth: {
 				// TODO: Move this to MultiLevelHandler
 				std::uint8_t flags = 0;
 				if (PreferencesCache::EnableReforged) {
 					flags |= 0x01;
 				}
 
-				String episodeName = "unknown"_s;
-				String levelName = "arace1"_s;
+				// TODO: Hardcoded level
+				String episodeName = "prince"_s;
+				String levelName = "01_castle1"_s;
 
 				MemoryStream packet(10 + episodeName.size() + levelName.size());
 				packet.WriteValue<std::uint8_t>((std::uint8_t)ServerPacketType::LoadLevel);
@@ -545,7 +666,7 @@ void GameEventHandler::OnPacketReceived(const Peer& peer, std::uint8_t channelId
 
 				_networkManager->SendToPeer(peer, NetworkChannel::Main, packet.GetBuffer(), packet.GetSize());
 				break;
-			}
+			}*/
 		}
 
 	} else {
@@ -564,11 +685,24 @@ void GameEventHandler::OnPacketReceived(const Peer& peer, std::uint8_t channelId
 				InvokeAsync([this, flags, episodeName = std::move(episodeName), levelName = std::move(levelName)]() {
 					bool isReforged = (flags & 0x01) != 0;
 					LevelInitialization levelInit(episodeName, levelName, GameDifficulty::Multiplayer, isReforged);
-					SetStateHandler(std::make_unique<MultiLevelHandler>(this, _networkManager.get(), levelInit));
+					auto levelHandler = std::make_unique<MultiLevelHandler>(this, _networkManager.get());
+					levelHandler->Initialize(levelInit);
+					SetStateHandler(std::move(levelHandler));
 				});
 				break;
 			}
 		}
+	}
+
+	if (auto multiLevelHandler = dynamic_cast<MultiLevelHandler*>(_currentHandler.get())) {
+		if (multiLevelHandler->OnPacketReceived(peer, channelId, data, dataLength)) {
+			return;
+		}
+	}
+
+	if (isServer && (ClientPacketType)data[0] == ClientPacketType::Auth) {
+		// Message was not processed by level handler, kick the client
+		_networkManager->KickClient(peer, Reason::ServerNotReady);
 	}
 }
 #endif
@@ -585,29 +719,34 @@ void GameEventHandler::SetStateHandler(std::unique_ptr<IStateHandler>&& handler)
 #if !defined(DEATH_TARGET_EMSCRIPTEN)
 void GameEventHandler::RefreshCache()
 {
+	ZoneScopedC(0x888888);
+
 	if (PreferencesCache::BypassCache) {
 		LOGI("Cache is bypassed by command-line parameter");
 		_flags |= Flags::IsVerified | Flags::IsPlayable;
 		return;
 	}
 
+	constexpr std::uint64_t currentVersion = parseVersion({ NCINE_VERSION, countof(NCINE_VERSION) - 1 });
+
 	auto& resolver = ContentResolver::Get();
+	auto cachePath = fs::CombinePath({ resolver.GetCachePath(), "Animations"_s, "cache.index"_s });
 
 	// Check cache state
 	{
-		auto s = fs::Open(fs::CombinePath({ resolver.GetCachePath(), "Animations"_s, "cache.index"_s }), FileAccessMode::Read);
+		auto s = fs::Open(cachePath, FileAccessMode::Read);
 		if (s->GetSize() < 16) {
 			goto RecreateCache;
 		}
 
-		uint64_t signature = s->ReadValue<uint64_t>();
-		uint8_t fileType = s->ReadValue<uint8_t>();
-		uint16_t version = s->ReadValue<uint16_t>();
+		std::uint64_t signature = s->ReadValue<std::uint64_t>();
+		std::uint8_t fileType = s->ReadValue<std::uint8_t>();
+		std::uint16_t version = s->ReadValue<std::uint16_t>();
 		if (signature != 0x2095A59FF0BFBBEF || fileType != ContentResolver::CacheIndexFile || version != Compatibility::JJ2Anims::CacheVersion) {
 			goto RecreateCache;
 		}
 
-		uint8_t flags = s->ReadValue<uint8_t>();
+		std::uint8_t flags = s->ReadValue<std::uint8_t>();
 		if ((flags & 0x01) == 0x01) {
 			// Don't overwrite cache
 			LOGI("Cache is protected");
@@ -619,20 +758,39 @@ void GameEventHandler::RefreshCache()
 		if (!fs::IsReadableFile(animsPath)) {
 			animsPath = fs::FindPathCaseInsensitive(fs::CombinePath(resolver.GetSourcePath(), "AnimsSw.j2a"_s));
 		}
-		int64_t animsCached = s->ReadValue<int64_t>();
-		int64_t animsModified = fs::GetLastModificationTime(animsPath).GetValue();
+		std::int64_t animsCached = s->ReadValue<std::int64_t>();
+		std::int64_t animsModified = fs::GetLastModificationTime(animsPath).GetValue();
 		if (animsModified != 0 && animsCached != animsModified) {
 			goto RecreateCache;
 		}
 
 		// If some events were added, recreate cache
-		uint16_t eventTypeCount = s->ReadValue<uint16_t>();
-		if (eventTypeCount != (uint16_t)EventType::Count) {
+		std::uint16_t eventTypeCount = s->ReadValue<std::uint16_t>();
+		if (eventTypeCount != (std::uint16_t)EventType::Count) {
 			goto RecreateCache;
 		}
 
 		// Cache is up-to-date
-		LOGI("Cache is already up-to-date");
+		std::uint64_t lastVersion = s->ReadValue<std::uint64_t>();
+
+		// Close the file, so it can be writable for possible update
+		s = nullptr;
+
+		if (currentVersion != lastVersion) {
+			if ((lastVersion & 0xFFFFFFFFULL) == 0x0FFFFFFFULL) {
+				LOGI("Cache is already up-to-date, but created in experimental build v%i.%i.0", (lastVersion >> 48) & 0xFFFFULL, (lastVersion >> 32) & 0xFFFFULL);
+			} else {
+				LOGI("Cache is already up-to-date, but created in different build v%i.%i.%i", (lastVersion >> 48) & 0xFFFFULL, (lastVersion >> 32) & 0xFFFFULL, lastVersion & 0xFFFFFFFFULL);
+			}
+
+			WriteCacheDescriptor(cachePath, currentVersion, animsModified);
+
+			std::uint32_t filesRemoved = RenderResources::binaryShaderCache().prune();
+			LOGI("Pruning binary shader cache (removed %u files)...", filesRemoved);
+		} else {
+			LOGI("Cache is already up-to-date");
+		}
+
 		_flags |= Flags::IsVerified | Flags::IsPlayable;
 		return;
 	}
@@ -659,23 +817,20 @@ RecreateCache:
 
 	RefreshCacheLevels();
 
-	// Create cache index
-	auto so = fs::Open(fs::CombinePath({ resolver.GetCachePath(), "Animations"_s, "cache.index"_s }), FileAccessMode::Write);
-
-	so->WriteValue<uint64_t>(0x2095A59FF0BFBBEF);	// Signature
-	so->WriteValue<uint8_t>(ContentResolver::CacheIndexFile);
-	so->WriteValue<uint16_t>(Compatibility::JJ2Anims::CacheVersion);
-	so->WriteValue<uint8_t>(0x00);					// Flags
-	int64_t animsModified = fs::GetLastModificationTime(animsPath).GetValue();
-	so->WriteValue<int64_t>(animsModified);
-	so->WriteValue<uint16_t>((uint16_t)EventType::Count);
-
 	LOGI("Cache was recreated");
+	std::int64_t animsModified = fs::GetLastModificationTime(animsPath).GetValue();
+	WriteCacheDescriptor(cachePath, currentVersion, animsModified);
+
+	std::uint32_t filesRemoved = RenderResources::binaryShaderCache().prune();
+	LOGI("Pruning binary shader cache (removed %u files)...", filesRemoved);
+
 	_flags |= Flags::IsVerified | Flags::IsPlayable;
 }
 
 void GameEventHandler::RefreshCacheLevels()
 {
+	ZoneScopedC(0x888888);
+
 	LOGI("Searching for levels...");
 
 	auto& resolver = ContentResolver::Get();
@@ -684,7 +839,7 @@ void GameEventHandler::RefreshCacheLevels()
 
 	bool hasChristmasChronicles = fs::IsReadableFile(fs::FindPathCaseInsensitive(fs::CombinePath(resolver.GetSourcePath(), "xmas99.j2e"_s)));
 	const HashMap<String, Pair<String, String>> knownLevels = {
-		{ "trainer"_s, { "prince"_s, { } } },
+		{ "trainer"_s, { "prince"_s, {} } },
 		{ "castle1"_s, { "prince"_s, "01"_s } },
 		{ "castle1n"_s, { "prince"_s, "02"_s } },
 		{ "carrot1"_s, { "prince"_s, "03"_s } },
@@ -736,46 +891,46 @@ void GameEventHandler::RefreshCacheLevels()
 		{ "town3"_s, { "secretf"_s, "09"_s } },
 
 		// Holiday Hare '17
-		{ "hh17_level00"_s, { "hh17"_s, { } } },
-		{ "hh17_level01"_s, { "hh17"_s, { } } },
-		{ "hh17_level01_save"_s, { "hh17"_s, { } } },
-		{ "hh17_level02"_s, { "hh17"_s, { } } },
-		{ "hh17_level02_save"_s, { "hh17"_s, { } } },
-		{ "hh17_level03"_s, { "hh17"_s, { } } },
-		{ "hh17_level03_save"_s, { "hh17"_s, { } } },
-		{ "hh17_level04"_s, { "hh17"_s, { } } },
-		{ "hh17_level04_save"_s, { "hh17"_s, { } } },
-		{ "hh17_level05"_s, { "hh17"_s, { } } },
-		{ "hh17_level05_save"_s, { "hh17"_s, { } } },
-		{ "hh17_level06"_s, { "hh17"_s, { } } },
-		{ "hh17_level06_save"_s, { "hh17"_s, { } } },
-		{ "hh17_level07"_s, { "hh17"_s, { } } },
-		{ "hh17_level07_save"_s, { "hh17"_s, { } } },
-		{ "hh17_ending"_s, { "hh17"_s, { } } },
-		{ "hh17_guardian"_s, { "hh17"_s, { } } },
+		{ "hh17_level00"_s, { "hh17"_s, {} } },
+		{ "hh17_level01"_s, { "hh17"_s, {} } },
+		{ "hh17_level01_save"_s, { "hh17"_s, {} } },
+		{ "hh17_level02"_s, { "hh17"_s, {} } },
+		{ "hh17_level02_save"_s, { "hh17"_s, {} } },
+		{ "hh17_level03"_s, { "hh17"_s, {} } },
+		{ "hh17_level03_save"_s, { "hh17"_s, {} } },
+		{ "hh17_level04"_s, { "hh17"_s, {} } },
+		{ "hh17_level04_save"_s, { "hh17"_s, {} } },
+		{ "hh17_level05"_s, { "hh17"_s, {} } },
+		{ "hh17_level05_save"_s, { "hh17"_s, {} } },
+		{ "hh17_level06"_s, { "hh17"_s, {} } },
+		{ "hh17_level06_save"_s, { "hh17"_s, {} } },
+		{ "hh17_level07"_s, { "hh17"_s, {} } },
+		{ "hh17_level07_save"_s, { "hh17"_s, {} } },
+		{ "hh17_ending"_s, { "hh17"_s, {} } },
+		{ "hh17_guardian"_s, { "hh17"_s, {} } },
 
 		// Holiday Hare '18
-		{ "hh18_level01"_s, { "hh18"_s, { } } },
-		{ "hh18_level02"_s, { "hh18"_s, { } } },
-		{ "hh18_level03"_s, { "hh18"_s, { } } },
-		{ "hh18_level04"_s, { "hh18"_s, { } } },
-		{ "hh18_level05"_s, { "hh18"_s, { } } },
-		{ "hh18_level06"_s, { "hh18"_s, { } } },
-		{ "hh18_level07"_s, { "hh18"_s, { } } },
-		{ "hh18_save01"_s, { "hh18"_s, { } } },
-		{ "hh18_save02"_s, { "hh18"_s, { } } },
-		{ "hh18_save03"_s, { "hh18"_s, { } } },
-		{ "hh18_save04"_s, { "hh18"_s, { } } },
-		{ "hh18_save05"_s, { "hh18"_s, { } } },
-		{ "hh18_save06"_s, { "hh18"_s, { } } },
-		{ "hh18_save07"_s, { "hh18"_s, { } } },
-		{ "hh18_ending"_s, { "hh18"_s, { } } },
-		{ "hh18_guardian"_s, { "hh18"_s, { } } },
+		{ "hh18_level01"_s, { "hh18"_s, {} } },
+		{ "hh18_level02"_s, { "hh18"_s, {} } },
+		{ "hh18_level03"_s, { "hh18"_s, {} } },
+		{ "hh18_level04"_s, { "hh18"_s, {} } },
+		{ "hh18_level05"_s, { "hh18"_s, {} } },
+		{ "hh18_level06"_s, { "hh18"_s, {} } },
+		{ "hh18_level07"_s, { "hh18"_s, {} } },
+		{ "hh18_save01"_s, { "hh18"_s, {} } },
+		{ "hh18_save02"_s, { "hh18"_s, {} } },
+		{ "hh18_save03"_s, { "hh18"_s, {} } },
+		{ "hh18_save04"_s, { "hh18"_s, {} } },
+		{ "hh18_save05"_s, { "hh18"_s, {} } },
+		{ "hh18_save06"_s, { "hh18"_s, {} } },
+		{ "hh18_save07"_s, { "hh18"_s, {} } },
+		{ "hh18_ending"_s, { "hh18"_s, {} } },
+		{ "hh18_guardian"_s, { "hh18"_s, {} } },
 
 		// Special names
-		{ "end"_s, { { }, ":end"_s } },
-		{ "endepis"_s, { { }, ":end"_s } },
-		{ "ending"_s, { { }, ":credits"_s } }
+		{ "end"_s, { {}, ":end"_s } },
+		{ "endepis"_s, { {}, ":end"_s } },
+		{ "ending"_s, { {}, ":credits"_s } }
 	};
 
 	auto LevelTokenConversion = [&knownLevels](const StringView& levelToken) -> Compatibility::JJ2Level::LevelToken {
@@ -786,7 +941,7 @@ void GameEventHandler::RefreshCacheLevels()
 			}
 			return { it->second.first(), (it->second.second()[0] == ':' ? it->second.second() : (it->second.second() + "_"_s + levelToken)) };
 		}
-		return { { }, levelToken };
+		return { {}, levelToken };
 	};
 
 	auto EpisodeNameConversion = [](Compatibility::JJ2Episode* episode) -> String {
@@ -810,15 +965,15 @@ void GameEventHandler::RefreshCacheLevels()
 
 	auto EpisodePrevNext = [](Compatibility::JJ2Episode* episode) -> Pair<String, String> {
 		if (episode->Name == "prince"_s) {
-			return { { }, "rescue"_s };
+			return { {}, "rescue"_s };
 		} else if (episode->Name == "rescue"_s) {
 			return { "prince"_s, "flash"_s };
 		} else if (episode->Name == "flash"_s) {
 			return { "rescue"_s, "monk"_s };
 		} else if (episode->Name == "monk"_s) {
-			return { "flash"_s, { } };
+			return { "flash"_s, {} };
 		} else {
-			return { { }, { } };
+			return { {}, {} };
 		}
 	};
 
@@ -898,6 +1053,7 @@ void GameEventHandler::RefreshCacheLevels()
 	}
 
 	// Convert only used tilesets
+	LOGI("Converting used tilesets...");
 	String tilesetsPath = fs::CombinePath(resolver.GetCachePath(), "Tilesets"_s);
 	fs::RemoveDirectoryRecursive(tilesetsPath);
 	fs::CreateDirectories(tilesetsPath);
@@ -912,14 +1068,13 @@ void GameEventHandler::RefreshCacheLevels()
 			}
 		}
 	}
-	
-	LOGI("Pruning binary shader cache...");
-	RenderResources::binaryShaderCache().prune();
 }
 
 void GameEventHandler::CheckUpdates()
 {
 #if !defined(DEATH_DEBUG)
+	ZoneScopedC(0x888888);
+
 #if defined(DEATH_TARGET_X86)
 	std::int32_t arch = 1;
 	Cpu::Features cpuFeatures = Cpu::runtimeFeatures();
@@ -1093,7 +1248,7 @@ void GameEventHandler::CheckUpdates()
 	Http::Request req(url, Http::InternetProtocol::V4);
 	Http::Response resp = req.Send("GET"_s, std::chrono::seconds(10));
 	if (resp.Status.Code == Http::HttpStatus::Ok && !resp.Body.empty() && resp.Body.size() < sizeof(_newestVersion) - 1) {
-		std::uint64_t currentVersion = parseVersion(NCINE_VERSION);
+		constexpr std::uint64_t currentVersion = parseVersion({ NCINE_VERSION, countof(NCINE_VERSION) - 1 });
 		std::uint64_t latestVersion = parseVersion(StringView(reinterpret_cast<char*>(resp.Body.data()), resp.Body.size()));
 		if (currentVersion < latestVersion) {
 			std::memcpy(_newestVersion, resp.Body.data(), resp.Body.size());
@@ -1104,25 +1259,58 @@ void GameEventHandler::CheckUpdates()
 }
 #endif
 
-void GameEventHandler::SaveEpisodeEnd(const LevelInitialization& pendingLevelChange)
+bool GameEventHandler::SetLevelHandler(const LevelInitialization& levelInit)
 {
-	if (pendingLevelChange.LastEpisodeName.empty()) {
+#if defined(WITH_MULTIPLAYER)
+	if (levelInit.Difficulty == GameDifficulty::Multiplayer) {
+		auto levelHandler = std::make_unique<MultiLevelHandler>(this, _networkManager.get());
+		if (!levelHandler->Initialize(levelInit)) {
+			return false;
+		}
+		SetStateHandler(std::move(levelHandler));
+		return true;
+	}
+#endif
+
+	auto levelHandler = std::make_unique<LevelHandler>(this);
+	if (!levelHandler->Initialize(levelInit)) {
+		return false;
+	}
+	SetStateHandler(std::move(levelHandler));
+	return true;
+}
+
+void GameEventHandler::WriteCacheDescriptor(const StringView& path, std::uint64_t currentVersion, std::int64_t animsModified)
+{
+	auto so = fs::Open(path, FileAccessMode::Write);
+	so->WriteValue<std::uint64_t>(0x2095A59FF0BFBBEF);	// Signature
+	so->WriteValue<std::uint8_t>(ContentResolver::CacheIndexFile);
+	so->WriteValue<std::uint16_t>(Compatibility::JJ2Anims::CacheVersion);
+	so->WriteValue<std::uint8_t>(0x00);				// Flags
+	so->WriteValue<std::int64_t>(animsModified);
+	so->WriteValue<std::uint16_t>((std::uint16_t)EventType::Count);
+	so->WriteValue<std::uint64_t>(currentVersion);
+}
+
+void GameEventHandler::SaveEpisodeEnd(const LevelInitialization& levelInit)
+{
+	if (levelInit.LastEpisodeName.empty()) {
 		return;
 	}
 
 	std::size_t playerCount = 0;
 	const PlayerCarryOver* firstPlayer = nullptr;
-	for (std::size_t i = 0; i < arraySize(pendingLevelChange.PlayerCarryOvers); i++) {
-		if (pendingLevelChange.PlayerCarryOvers[i].Type != PlayerType::None) {
-			firstPlayer = &pendingLevelChange.PlayerCarryOvers[i];
+	for (std::size_t i = 0; i < arraySize(levelInit.PlayerCarryOvers); i++) {
+		if (levelInit.PlayerCarryOvers[i].Type != PlayerType::None) {
+			firstPlayer = &levelInit.PlayerCarryOvers[i];
 			playerCount++;
 		}
 	}
 
 	if (playerCount == 1) {
-		auto episodeEnd = PreferencesCache::GetEpisodeEnd(pendingLevelChange.LastEpisodeName, true);
+		auto episodeEnd = PreferencesCache::GetEpisodeEnd(levelInit.LastEpisodeName, true);
 		episodeEnd->Flags = EpisodeContinuationFlags::IsCompleted;
-		if (pendingLevelChange.CheatsUsed) {
+		if (levelInit.CheatsUsed) {
 			episodeEnd->Flags |= EpisodeContinuationFlags::CheatsUsed;
 		}
 
@@ -1135,37 +1323,37 @@ void GameEventHandler::SaveEpisodeEnd(const LevelInitialization& pendingLevelCha
 	}
 }
 
-void GameEventHandler::SaveEpisodeContinue(const LevelInitialization& pendingLevelChange)
+void GameEventHandler::SaveEpisodeContinue(const LevelInitialization& levelInit)
 {
-	if (pendingLevelChange.EpisodeName.empty() || pendingLevelChange.LevelName.empty() ||
-		pendingLevelChange.EpisodeName == "unknown"_s ||
-		(pendingLevelChange.EpisodeName == "prince"_s && pendingLevelChange.LevelName == "trainer"_s)) {
+	if (levelInit.EpisodeName.empty() || levelInit.LevelName.empty() ||
+		levelInit.EpisodeName == "unknown"_s ||
+		(levelInit.EpisodeName == "prince"_s && levelInit.LevelName == "trainer"_s)) {
 		return;
 	}
 
-	std::optional<Episode> currentEpisode = ContentResolver::Get().GetEpisode(pendingLevelChange.EpisodeName);
-	if (!currentEpisode.has_value() || currentEpisode->FirstLevel == pendingLevelChange.LevelName) {
+	std::optional<Episode> currentEpisode = ContentResolver::Get().GetEpisode(levelInit.EpisodeName);
+	if (!currentEpisode.has_value() || currentEpisode->FirstLevel == levelInit.LevelName) {
 		return;
 	}
 
 	std::size_t playerCount = 0;
 	const PlayerCarryOver* firstPlayer = nullptr;
-	for (std::size_t i = 0; i < arraySize(pendingLevelChange.PlayerCarryOvers); i++) {
-		if (pendingLevelChange.PlayerCarryOvers[i].Type != PlayerType::None) {
-			firstPlayer = &pendingLevelChange.PlayerCarryOvers[i];
+	for (std::size_t i = 0; i < arraySize(levelInit.PlayerCarryOvers); i++) {
+		if (levelInit.PlayerCarryOvers[i].Type != PlayerType::None) {
+			firstPlayer = &levelInit.PlayerCarryOvers[i];
 			playerCount++;
 		}
 	}
 
 	if (playerCount == 1) {
-		auto episodeContinue = PreferencesCache::GetEpisodeContinue(pendingLevelChange.EpisodeName, true);
-		episodeContinue->LevelName = pendingLevelChange.LevelName;
+		auto episodeContinue = PreferencesCache::GetEpisodeContinue(levelInit.EpisodeName, true);
+		episodeContinue->LevelName = levelInit.LevelName;
 		episodeContinue->State.Flags = EpisodeContinuationFlags::None;
-		if (pendingLevelChange.CheatsUsed) {
+		if (levelInit.CheatsUsed) {
 			episodeContinue->State.Flags |= EpisodeContinuationFlags::CheatsUsed;
 		}
 
-		episodeContinue->State.DifficultyAndPlayerType = ((int32_t)pendingLevelChange.Difficulty & 0x0f) | (((int32_t)firstPlayer->Type & 0x0f) << 4);
+		episodeContinue->State.DifficultyAndPlayerType = ((int32_t)levelInit.Difficulty & 0x0f) | (((int32_t)firstPlayer->Type & 0x0f) << 4);
 		episodeContinue->State.Lives = firstPlayer->Lives;
 		episodeContinue->State.Score = firstPlayer->Score;
 		std::memcpy(episodeContinue->State.Ammo, firstPlayer->Ammo, sizeof(firstPlayer->Ammo));
@@ -1263,6 +1451,23 @@ void GameEventHandler::UpdateRichPresence(const LevelInitialization& levelInit)
 #endif
 }
 
+bool GameEventHandler::TryParseAddressAndPort(const StringView& input, String& address, std::uint16_t& port)
+{
+	auto portSep = input.findLast(':');
+	if (portSep == nullptr) {
+		return false;
+	}
+
+	address = String(input.prefix(portSep.begin()));
+	if (address.empty()) {
+		return false;
+	}
+
+	auto portString = input.suffix(portSep.begin() + 1);
+	port = (std::uint16_t)stou32(portString.data(), portString.size());
+	return true;
+}
+
 #if defined(DEATH_TARGET_ANDROID)
 std::unique_ptr<IAppEventHandler> CreateAppEventHandler()
 {
@@ -1283,14 +1488,56 @@ int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdSh
 	}, __argc, __wargv);
 }
 #else
+#if defined(DEATH_TARGET_UNIX)
+int PrintVersion(bool logoVisible)
+{
+	if (logoVisible) {
+		static const char Copyright[] = "© 2016-" NCINE_BUILD_YEAR " Dan R.";
+		static const char Reset[] = "\033[0m";
+		static const char Bold[] = "\033[1m";
+		static const char Faint[] = "\033[2m";
+
+		constexpr std::size_t LogoWidth = 58;
+
+		char padding[(LogoWidth / 2) + 2];
+		std::size_t paddingLength = (LogoWidth - (arraySize(NCINE_APP_NAME) - 1) - 1 - (arraySize(NCINE_VERSION) - 1) + 1) / 2;
+		for (std::size_t j = 0; j < paddingLength; j++) {
+			padding[j] = ' ';
+		}
+		padding[paddingLength] = '\0';
+		fprintf(stdout, "%s%s%s %s%s%s\n", padding, Reset, NCINE_APP_NAME, Bold, NCINE_VERSION, Reset);
+
+		paddingLength = (LogoWidth - (arraySize(Copyright) - 1) + 1) / 2;
+		for (std::size_t j = 0; j < paddingLength; j++) {
+			padding[j] = ' ';
+		}
+		padding[paddingLength] = '\0';
+		fprintf(stdout, "%s%s%s%s%s\n", padding, Reset, Faint, Copyright, Reset);
+	} else {
+		fputs(NCINE_APP_NAME " " NCINE_VERSION "\n", stdout);
+	}
+	return 0;
+}
+#endif
+
 int main(int argc, char** argv)
 {
+	bool logoVisible = false;
 #if defined(DEATH_TRACE) && (defined(DEATH_TARGET_APPLE) || defined(DEATH_TARGET_UNIX))
 	bool hasVirtualTerminal = isatty(1);
 	if (hasVirtualTerminal) {
 		const char* term = ::getenv("TERM");
 		if (term != nullptr && strcmp(term, "xterm-256color") == 0) {
 			fwrite(TermLogo, sizeof(unsigned char), arraySize(TermLogo), stdout);
+			logoVisible = true;
+		}
+	}
+#endif
+#if defined(DEATH_TARGET_UNIX)
+	for (int i = 1; i < argc; i++) {
+		if (strcmp(argv[i], "--version") == 0) {
+			// Just print current version below the logo and quit
+			return PrintVersion(logoVisible);
 		}
 	}
 #endif

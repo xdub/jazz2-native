@@ -4,11 +4,12 @@
 #include "../Weapons/ShieldFireShot.h"
 #include "../Weapons/ToasterShot.h"
 
+using namespace Jazz2::Tiles;
+
 namespace Jazz2::Actors::Environment
 {
 	Spring::Spring()
-		:
-		_cooldown(0.0f)
+		: _cooldown(0.0f)
 	{
 	}
 
@@ -20,7 +21,7 @@ namespace Jazz2::Actors::Environment
 
 		_cooldown = (_delay > 0 ? _delay : 6.0f);
 
-		SetTransition(_currentAnimationState | (AnimState)0x200, false);
+		SetTransition(_currentAnimation->State | (AnimState)0x200, false);
 		switch (_orientation) {
 			case Orientation::Bottom:
 				PlaySfx("Vertical"_s);
@@ -103,7 +104,7 @@ namespace Jazz2::Actors::Environment
 					_strength = 1.50f;
 					break;
 				case 2: // Blue
-					_strength = 1.65f;
+					_strength = (_levelHandler->IsReforged() ? 1.65f : 1.72f);
 					break;
 			}
 		}

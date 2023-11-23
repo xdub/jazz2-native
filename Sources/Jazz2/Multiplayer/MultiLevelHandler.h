@@ -32,8 +32,14 @@ namespace Jazz2::Multiplayer
 #endif
 
 	public:
-		MultiLevelHandler(IRootController* root, NetworkManager* networkManager, const LevelInitialization& levelInit);
+		MultiLevelHandler(IRootController* root, NetworkManager* networkManager);
 		~MultiLevelHandler() override;
+
+		bool Initialize(const LevelInitialization& levelInit) override;
+
+		bool IsPausable() const override {
+			return false;
+		}
 
 		float GetAmbientLight() const override;
 		void SetAmbientLight(float value) override;
@@ -48,9 +54,9 @@ namespace Jazz2::Multiplayer
 
 		void AddActor(std::shared_ptr<Actors::ActorBase> actor) override;
 
-		std::shared_ptr<AudioBufferPlayer> PlaySfx(AudioBuffer* buffer, const Vector3f& pos, bool sourceRelative, float gain = 1.0f, float pitch = 1.0f) override;
+		std::shared_ptr<AudioBufferPlayer> PlaySfx(Actors::ActorBase* self, const StringView& identifier, AudioBuffer* buffer, const Vector3f& pos, bool sourceRelative, float gain, float pitch) override;
 		std::shared_ptr<AudioBufferPlayer> PlayCommonSfx(const StringView& identifier, const Vector3f& pos, float gain = 1.0f, float pitch = 1.0f) override;
-		void WarpCameraToTarget(const std::shared_ptr<Actors::ActorBase>& actor, bool fast = false) override;
+		void WarpCameraToTarget(Actors::ActorBase* actor, bool fast = false) override;
 		bool IsPositionEmpty(Actors::ActorBase* self, const AABBf& aabb, TileCollisionParams& params, Actors::ActorBase** collider) override;
 		void FindCollisionActorsByAABB(Actors::ActorBase* self, const AABBf& aabb, const std::function<bool(Actors::ActorBase*)>& callback) override;
 		void FindCollisionActorsByRadius(float x, float y, float radius, const std::function<bool(Actors::ActorBase*)>& callback) override;
@@ -59,9 +65,11 @@ namespace Jazz2::Multiplayer
 		void BroadcastTriggeredEvent(Actors::ActorBase* initiator, EventType eventType, uint8_t* eventParams) override;
 		void BeginLevelChange(ExitType exitType, const StringView& nextLevel) override;
 		void HandleGameOver() override;
-		bool HandlePlayerDied(const std::shared_ptr<Actors::ActorBase>& player) override;
-		void HandlePlayerWarped(const std::shared_ptr<Actors::ActorBase>& player, const Vector2f& prevPos, bool fast) override;
-		void SetCheckpoint(Vector2f pos) override;
+		bool HandlePlayerDied(Actors::Player* player) override;
+		bool HandlePlayerFireWeapon(Actors::Player* player, WeaponType& weaponType, std::uint16_t& ammoDecrease) override;
+		bool HandlePlayerSpring(Actors::Player* player, const Vector2f& pos, const Vector2f& force, bool keepSpeedX, bool keepSpeedY) override;
+		void HandlePlayerWarped(Actors::Player* player, const Vector2f& prevPos, bool fast) override;
+		void SetCheckpoint(const Vector2f& pos) override;
 		void RollbackToCheckpoint() override;
 		void ActivateSugarRush() override;
 		void ShowLevelText(const StringView& text) override;
@@ -71,6 +79,7 @@ namespace Jazz2::Multiplayer
 		void OverrideLevelText(uint32_t textId, const StringView& value) override;
 		void LimitCameraView(int left, int width) override;
 		void ShakeCameraView(float duration) override;
+		void SetTrigger(std::uint8_t triggerId, bool newState) override;
 		void SetWeather(WeatherType type, uint8_t intensity) override;
 		bool BeginPlayMusic(const StringView& path, bool setDefault = false, bool forceReload = false) override;
 
@@ -83,20 +92,36 @@ namespace Jazz2::Multiplayer
 
 		void OnAdvanceDestructibleTileAnimation(std::int32_t tx, std::int32_t ty, std::int32_t amount) override;
 
+		void AttachComponents(LevelDescriptor&& descriptor) override;
+
+		bool OnPeerDisconnected(const Peer& peer);
 		bool OnPacketReceived(const Peer& peer, std::uint8_t channelId, std::uint8_t* data, std::size_t dataLength);
 
+	protected:
+		void BeforeActorDestroyed(Actors::ActorBase* actor) override;
+		void ProcessEvents(float timeMult) override;
+		void PrepareNextLevelInitialization(LevelInitialization& levelInit) override;
+
 	private:
-		struct PeerState {
+		enum class PeerState {
+			Unknown,
+			LevelLoaded,
+			LevelSynchronized
+		};
+
+		struct PeerDesc {
 			Actors::Player* Player;
+			PeerState State;
 			std::uint32_t LastUpdated;
 
-			PeerState() {}
-			PeerState(Actors::Player* player) : Player(player), LastUpdated(0) {}
+			PeerDesc() {}
+			PeerDesc(Actors::Player* player, PeerState state) : Player(player), State(state), LastUpdated(0) {}
 		};
 
 		struct StateFrame {
 			std::int64_t Time;
 			Vector2f Pos;
+			Vector2f Speed;
 		};
 
 		enum class PlayerFlags {
@@ -108,27 +133,22 @@ namespace Jazz2::Multiplayer
 			IsVisible = 0x20,
 			IsActivelyPushing = 0x40,
 
-			PressedUp = 0x100,
-			PressedDown = 0x200,
-			PressedLeft = 0x400,
-			PressedRight = 0x800,
-			PressedJump = 0x1000,
-			PressedRun = 0x2000,
-
-			JustWarped = 0x10000
+			JustWarped = 0x100
 		};
 
 		DEFINE_PRIVATE_ENUM_OPERATORS(PlayerFlags);
 
 		struct PlayerState {
-			StateFrame StateBuffer[4];
+			StateFrame StateBuffer[8];
 			std::int32_t StateBufferPos;
 			PlayerFlags Flags;
+			std::uint32_t PressedKeys;
+			std::uint64_t WarpSeqNum;
 			float WarpTimeLeft;
+			float DeviationTime;
 
-			PlayerState() {}
-
-			PlayerState(const Vector2f& pos);
+			PlayerState();
+			PlayerState(const Vector2f& pos, const Vector2f& speed);
 		};
 
 		static constexpr std::int64_t ServerDelay = 64;
@@ -137,18 +157,19 @@ namespace Jazz2::Multiplayer
 		bool _isServer;
 		float _updateTimeLeft;
 		bool _initialUpdateSent;
-		HashMap<Peer, PeerState> _peerStates; // Server: Per peer state
+		HashMap<Peer, PeerDesc> _peerDesc; // Server: Per peer description
 		HashMap<std::uint8_t, PlayerState> _playerStates; // Server: Per (remote) player state
 		HashMap<std::uint32_t, std::shared_ptr<Actors::RemoteActor>> _remoteActors; // Client: Actor ID -> Remote Actor created by server
-		std::uint32_t _lastPlayerIndex;	// Server: last assigned ID, Client: ID assigned by server
-		bool _justWarped; // Client: set to true from HandlePlayerWarped()
+		HashMap<Actors::ActorBase*, std::uint32_t> _remotingActors; // Server: Local Actor created by server -> Actor ID
+		std::uint32_t _lastSpawnedActorId;	// Server: last assigned actor/player ID, Client: ID assigned by server
+		std::uint64_t _seqNum; // Client: sequence number of the last update
+		std::uint64_t _seqNumWarped; // Client: set to _seqNum from HandlePlayerWarped() when warped
+		bool _suppressRemoting; // Server: if true, actor will not be automatically remoted to other players
+		bool _ignorePackets;
 
-		void OnLevelLoaded(const StringView& fullPath, const StringView& name, const StringView& nextLevel, const StringView& secretLevel,
-			std::unique_ptr<Tiles::TileMap>& tileMap, std::unique_ptr<Events::EventMap>& eventMap,
-			const StringView& musicPath, const Vector4f& ambientColor, WeatherType weatherType, uint8_t weatherIntensity, uint16_t waterLevel, SmallVectorImpl<String>& levelTexts);
-
-		void UpdatePlayerLocalPos(Actors::Player* player, const PlayerState& playerState);
-		void OnRemotePlayerPosReceived(PlayerState& playerState, const Vector2f& pos, PlayerFlags flags);
+		void SynchronizePeers();
+		void UpdatePlayerLocalPos(Actors::Player* player, PlayerState& playerState, float timeMult);
+		void OnRemotePlayerPosReceived(PlayerState& playerState, const Vector2f& pos, const Vector2f speed, PlayerFlags flags);
 	};
 }
 

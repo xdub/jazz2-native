@@ -10,7 +10,7 @@ set(NCINE_APP_DESCRIPTION "Open-source reimplementation of Jazz Jackrabbit 2")
 set(NCINE_APP_DESCRIPTION_FULL "Jazz² Resurrection is reimplementation of the game Jazz Jackrabbit 2 released in 1998. Supports various versions of the game (Shareware Demo, Holiday Hare '98, The Secret Files and Christmas Chronicles). Also, it partially supports some features of JJ2+ extension and MLLE.\n\nFurther information can be found here: http://deat.tk/jazz2/")
 set(NCINE_APP_VENDOR "Dan R.")
 set(NCINE_REVERSE_DNS "jazz2.resurrection")
-set(NCINE_VERSION "2.1.0")
+set(NCINE_VERSION "2.2.2")
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_SOURCE_DIR}/cmake)
 get_filename_component(PARENT_SOURCE_DIR ${CMAKE_SOURCE_DIR} DIRECTORY)
@@ -55,6 +55,7 @@ endif()
 
 include(ncine_get_version)
 include(ncine_imported_targets)
+include(ncine_imgui)
 include(ncine_tracy)
 
 if(NCINE_BUILD_ANDROID)
@@ -90,18 +91,26 @@ include(ncine_extra_sources)
 include(ncine_generated_sources)
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
-
+set(PATH_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/Sources")
 foreach(FILE ${HEADERS} ${SOURCES}) 
 	get_filename_component(PARENT_DIR "${FILE}" DIRECTORY)
-	string(REPLACE "${CMAKE_CURRENT_SOURCE_DIR}/Sources" "" GROUP "${PARENT_DIR}")
-	string(REPLACE "/" "\\" GROUP "${GROUP}")
+	string(LENGTH "${PATH_PREFIX}" PATH_PREFIX_LENGTH)
+	string(SUBSTRING "${PARENT_DIR}" 0 ${PATH_PREFIX_LENGTH} PATH_START)
+	if(PATH_START STREQUAL "${PATH_PREFIX}")
+		string(SUBSTRING "${PARENT_DIR}" ${PATH_PREFIX_LENGTH} -1 GROUP)
+		string(REPLACE "/" "\\" GROUP "${GROUP}")
 
-	# Group into "Source Files" and "Header Files"
-	if ("${FILE}" MATCHES ".*\\.cpp")
-		set(GROUP "Source Files${GROUP}")
-	elseif("${FILE}" MATCHES ".*\\.h")
-		set(GROUP "Header Files${GROUP}")
+		# Group into "Source Files" and "Header Files"
+		if("${FILE}" MATCHES ".*\\.cpp")
+			set(GROUP "Source Files${GROUP}")
+		elseif("${FILE}" MATCHES ".*\\.h")
+			set(GROUP "Header Files${GROUP}")
+		endif()
+	else()
+		# Path doesn't have common prefix, put it into "Dependencies"
+		set(GROUP "Dependencies")
 	endif()
+
 	source_group("${GROUP}" FILES "${FILE}")
 endforeach()
 
@@ -117,6 +126,11 @@ if(OPENGL_FOUND)
 endif()
 target_sources(${NCINE_APP} PRIVATE ${SOURCES} ${HEADERS} ${SHADER_FILES} ${GENERATED_SOURCES})
 
+if(NCINE_WITH_IMGUI)
+	target_include_directories(${NCINE_APP}
+		INTERFACE $<BUILD_INTERFACE:${IMGUI_INCLUDE_ONLY_DIR}>
+		PRIVATE $<BUILD_INTERFACE:${IMGUI_INCLUDE_ONLY_DIR}>)
+endif()
 if(NCINE_WITH_TRACY)
 	target_include_directories(${NCINE_APP}
 		PUBLIC $<BUILD_INTERFACE:${TRACY_INCLUDE_ONLY_DIR}/tracy>

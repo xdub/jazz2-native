@@ -6,12 +6,24 @@
 
 #include <IO/Stream.h>
 
+using namespace Death::IO;
+
+namespace Jazz2::Tiles
+{
+	class TileMap;
+}
+
 namespace Jazz2::Events
 {
 	class EventMap
 	{
 	public:
-		EventMap(ILevelHandler* levelHandler, Vector2i layoutSize, PitType pitType);
+		EventMap(const Vector2i& layoutSize);
+
+		void SetLevelHandler(ILevelHandler* levelHandler);
+		Vector2i GetSize() const;
+		PitType GetPitType() const;
+		void SetPitType(PitType value);
 
 		Vector2f GetSpawnPosition(PlayerType type);
 		void CreateCheckpointForRollback();

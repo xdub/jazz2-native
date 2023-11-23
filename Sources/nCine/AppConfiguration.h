@@ -9,12 +9,6 @@ using namespace Death::Containers;
 
 namespace nCine
 {
-#if defined(DEATH_TARGET_WINDOWS)
-	typedef wchar_t* NativeArgument;
-#else
-	typedef char* NativeArgument;
-#endif
-
 	/// The class storing initialization settings for an nCine application
 	class AppConfiguration
 	{
@@ -62,6 +56,10 @@ namespace nCine
 		/// The initial size for the pool of render commands
 		unsigned int renderCommandPoolSize;
 
+#if defined(WITH_IMGUI)
+		/// The flag is `true` if the debug overlay is enabled
+		bool withDebugOverlay;
+#endif
 		/// The flag is `true` if the audio subsystem is enabled
 		bool withAudio;
 		/// The flag is `true` if the threading subsystem is enabled
@@ -96,15 +94,11 @@ namespace nCine
 		}
 
 		/// \returns The number of arguments passed on the command-line
-		inline int argc() const {
-			return argc_;
+		inline std::size_t argc() const {
+			return argv_.size();
 		}
 		/// \returns The selected argument from the ones passed on the command-line
-#if defined(DEATH_TARGET_WINDOWS)
-		const String argv(int index) const;
-#else
 		const StringView argv(int index) const;
-#endif
 
 	private:
 		// Pre-configured compile-time variables
@@ -113,8 +107,11 @@ namespace nCine
 		const unsigned int glMajorVersion_;
 		const unsigned int glMinorVersion_;
 
-		int argc_;
-		NativeArgument* argv_;
+#if defined(DEATH_TARGET_WINDOWS)
+		Array<String> argv_;
+#else
+		Array<StringView> argv_;
+#endif
 		String dataPath_;
 
 		friend class MainApplication;

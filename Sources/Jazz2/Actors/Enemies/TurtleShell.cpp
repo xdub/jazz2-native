@@ -12,6 +12,8 @@
 
 #include "../../../nCine/Base/Random.h"
 
+using namespace Jazz2::Tiles;
+
 namespace Jazz2::Actors::Enemies
 {
 	TurtleShell::TurtleShell()
@@ -63,7 +65,7 @@ namespace Jazz2::Actors::Enemies
 				break;
 		}
 
-		SetAnimation(AnimState::Idle);
+		SetAnimation(AnimState::Default);
 
 		_canHurtPlayer = false;
 		_friction = _levelHandler->Gravity * 0.05f;

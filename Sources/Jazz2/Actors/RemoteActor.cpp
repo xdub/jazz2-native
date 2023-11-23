@@ -13,8 +13,8 @@ namespace Jazz2::Actors
 
 	Task<bool> RemoteActor::OnActivatedAsync(const ActorActivationDetails& details)
 	{
-		SetState(ActorState::ForceDisableCollisions | ActorState::PreserveOnRollback | ActorState::ExcludeSimilar, true);
-		SetState(ActorState::CanBeFrozen | ActorState::CollideWithTileset | ActorState::CollideWithOtherActors | ActorState::ApplyGravitation, false);
+		SetState(ActorState::PreserveOnRollback, true);
+		SetState(ActorState::CanBeFrozen | ActorState::CollideWithTileset | ActorState::ApplyGravitation, false);
 
 		Clock& c = nCine::clock();
 		std::uint64_t now = c.now() * 1000 / c.frequency();
@@ -22,10 +22,6 @@ namespace Jazz2::Actors
 			_stateBuffer[i].Time = now - countof(_stateBuffer) + i;
 			_stateBuffer[i].Pos = Vector2f(details.Pos.X, details.Pos.Y);
 		}
-
-		async_await RequestMetadataAsync("Interactive/PlayerJazz"_s);
-
-		SetAnimation(AnimState::Idle);
 
 		async_return true;
 	}
@@ -69,6 +65,17 @@ namespace Jazz2::Actors
 		}
 
 		ActorBase::OnUpdate(timeMult);
+	}
+
+	void RemoteActor::AssignMetadata(const StringView& path, AnimState anim, ActorState state)
+	{
+		constexpr ActorState RemotedFlags = ActorState::Illuminated | ActorState::IsInvulnerable | ActorState::TriggersTNT |
+			ActorState::CollideWithOtherActors | ActorState::CollideWithSolidObjects | ActorState::IsSolidObject |
+			ActorState::CollideWithTilesetReduced | ActorState::CollideWithSolidObjectsBelow | ActorState::ExcludeSimilar;
+
+		RequestMetadata(path);
+		SetAnimation(anim);
+		SetState((GetState() & ~RemotedFlags) | (state & RemotedFlags));
 	}
 
 	void RemoteActor::SyncWithServer(const Vector2f& pos, AnimState anim, bool isVisible, bool isFacingLeft)

@@ -2,10 +2,16 @@
 
 #if !defined(DEATH_TARGET_EMSCRIPTEN)
 
+#include "MenuResources.h"
 #include "MainMenu.h"
 #include "../../PreferencesCache.h"
 
 #include "../../../nCine/Base/Algorithms.h"
+#include "../../../nCine/Graphics/BinaryShaderCache.h"
+#include "../../../nCine/Graphics/RenderResources.h"
+
+using namespace Jazz2::UI::Menu::Resources;
+using namespace nCine;
 
 namespace Jazz2::UI::Menu
 {
@@ -20,16 +26,24 @@ namespace Jazz2::UI::Menu
 
 #if defined(WITH_THREADS)
 		_thread.Run([](void* arg) {
-			auto _this = reinterpret_cast<RefreshCacheSection*>(arg);
+			auto _this = static_cast<RefreshCacheSection*>(arg);
 			if (auto mainMenu = dynamic_cast<MainMenu*>(_this->_root)) {
 				mainMenu->_root->RefreshCacheLevels();
 			}
+
+			std::uint32_t filesRemoved = RenderResources::binaryShaderCache().prune();
+			LOGI("Pruning binary shader cache (removed %u files)...", filesRemoved);
+
 			_this->_done = true;
 		}, this);
 #else
 		if (auto mainMenu = dynamic_cast<MainMenu*>(_root)) {
 			mainMenu->_root->RefreshCacheLevels();
 		}
+
+		std::uint32_t filesRemoved = RenderResources::binaryShaderCache().prune();
+		LOGI("Pruning binary shader cache (removed %u files)...", filesRemoved);
+
 		_done = true;
 #endif
 	}
@@ -52,10 +66,10 @@ namespace Jazz2::UI::Menu
 
 		constexpr float topLine = 131.0f;
 		float bottomLine = viewSize.Y - 42.0f;
-		_root->DrawElement("MenuDim"_s, center.X, (topLine + bottomLine) * 0.5f, IMenuContainer::BackgroundLayer,
+		_root->DrawElement(MenuDim, center.X, (topLine + bottomLine) * 0.5f, IMenuContainer::BackgroundLayer,
 			Alignment::Center, Colorf::Black, Vector2f(680.0f, bottomLine - topLine + 2), Vector4f(1.0f, 0.0f, 0.4f, 0.3f));
-		_root->DrawElement("MenuLine"_s, 0, center.X, topLine, IMenuContainer::MainLayer, Alignment::Center, Colorf::White, 1.6f);
-		_root->DrawElement("MenuLine"_s, 1, center.X, bottomLine, IMenuContainer::MainLayer, Alignment::Center, Colorf::White, 1.6f);
+		_root->DrawElement(MenuLine, 0, center.X, topLine, IMenuContainer::MainLayer, Alignment::Center, Colorf::White, 1.6f);
+		_root->DrawElement(MenuLine, 1, center.X, bottomLine, IMenuContainer::MainLayer, Alignment::Center, Colorf::White, 1.6f);
 
 		center.Y = topLine + (bottomLine - topLine) * 0.4f;
 		int32_t charOffset = 0;

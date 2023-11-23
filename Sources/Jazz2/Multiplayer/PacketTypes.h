@@ -15,6 +15,7 @@ namespace Jazz2::Multiplayer
 		LevelReady,
 
 		PlayerUpdate,
+		PlayerKeyPress,
 		PlayerRefreshAnimation,
 		PlayerFireWeapon,
 		PlayerDied,
@@ -31,6 +32,7 @@ namespace Jazz2::Multiplayer
 
 		LoadLevel,
 		PlaySfx,
+		PlayCommonSfx,
 		ShowMessage,
 		OverrideLevelText,
 		SetTrigger,
@@ -44,6 +46,7 @@ namespace Jazz2::Multiplayer
 		UpdateAllActors,
 
 		PlayerMoveInstantly,
+		PlayerAckWarped,
 		PlayerActivateForce,
 		PlayerAddHealth,
 		PlayerRefreshAmmo,
@@ -55,6 +58,7 @@ namespace Jazz2::Multiplayer
 		PlayerSetModifier,
 		PlayerSetStats,
 		PlayerTakeDamage,
+		PlayerActivateSpring,
 		PlayerWarpToPosition
 	};
 }

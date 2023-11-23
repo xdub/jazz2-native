@@ -29,7 +29,9 @@
 #		include <sys/mman.h>
 #		include <sys/wait.h>
 #	endif
-#	if defined(__linux__)
+#	if defined(DEATH_TARGET_APPLE) || defined(__FreeBSD__)
+#		include <copyfile.h>
+#	elif defined(__linux__)
 #		include <sys/sendfile.h>
 #	endif
 #	if defined(__FreeBSD__)
@@ -191,8 +193,8 @@ namespace Death::IO
 #	else
 									if (!::RemoveDirectoryW(bufferExtended)) {
 #	endif
-										DWORD err = ::GetLastError();
-										if (err != ERROR_PATH_NOT_FOUND) {
+										DWORD error = ::GetLastError();
+										if (error != ERROR_PATH_NOT_FOUND) {
 											// Cannot remove symbolic link
 										}
 									}
@@ -376,8 +378,8 @@ namespace Death::IO
 				FS.mkdir(p);
 				FS.mount(IDBFS, { }, p);
 
-				FS.syncfs(true, function(err) {
-					callback(err ? 0 : 1);
+				FS.syncfs(true, function(error) {
+					callback(error ? 0 : 1);
 				});
 			});
 		});
@@ -387,6 +389,15 @@ namespace Death::IO
 	String FileSystem::_savePath;
 
 	FileSystem::Directory::Directory(const StringView& path, EnumerationOptions options)
+		: _fileNamePart(nullptr)
+#if defined(DEATH_TARGET_WINDOWS)
+			, _firstFile(true), _hFindFile(NULL)
+#else
+#	if defined(DEATH_TARGET_ANDROID)
+			, _assetDir(nullptr)
+#	endif
+			, _dirStream(nullptr)
+#endif
 	{
 		Open(path, options);
 	}
@@ -451,31 +462,31 @@ namespace Death::IO
 		return (_hFindFile != NULL && _hFindFile != INVALID_HANDLE_VALUE);
 #else
 		auto nullTerminatedPath = String::nullTerminatedView(path);
+		if (!nullTerminatedPath.empty()) {
 #	if defined(DEATH_TARGET_ANDROID)
-		const char* assetPath = AndroidAssetStream::TryGetAssetPath(nullTerminatedPath.data());
-		if (assetPath != nullptr) {
-			// It probably supports only files
-			if ((_options & EnumerationOptions::SkipFiles) == EnumerationOptions::SkipFiles) {
+			const char* assetPath = AndroidAssetStream::TryGetAssetPath(nullTerminatedPath.data());
+			if (assetPath != nullptr) {
+				// It probably supports only files
+				if ((_options & EnumerationOptions::SkipFiles) != EnumerationOptions::SkipFiles) {
+					_assetDir = AndroidAssetStream::OpenDirectory(assetPath);
+					if (_assetDir != nullptr) {
+						std::size_t pathLength = path.size();
+						std::memcpy(_path, path.data(), pathLength);
+						if (_path[pathLength - 1] == '/' || _path[pathLength - 1] == '\\') {
+							_path[pathLength - 1] = '/';
+							_path[pathLength] = '\0';
+							_fileNamePart = _path + pathLength;
+						} else {
+							_path[pathLength] = '/';
+							_path[pathLength + 1] = '\0';
+							_fileNamePart = _path + pathLength + 1;
+						}
+						return true;
+					}
+				}
 				return false;
 			}
-			_assetDir = AndroidAssetStream::OpenDirectory(assetPath);
-			if (_assetDir != nullptr) {
-				std::size_t pathLength = path.size();
-				std::memcpy(_path, path.data(), pathLength);
-				if (_path[pathLength - 1] == '/' || _path[pathLength - 1] == '\\') {
-					_path[pathLength - 1] = '/';
-					_path[pathLength] = '\0';
-					_fileNamePart = _path + pathLength;
-				} else {
-					_path[pathLength] = '/';
-					_path[pathLength + 1] = '\0';
-					_fileNamePart = _path + pathLength + 1;
-				}
-				return true;
-			}
-		} else
 #	endif
-		if (!nullTerminatedPath.empty()) {
 			_dirStream = ::opendir(nullTerminatedPath.data());
 			if (_dirStream != nullptr) {
 				String absPath = GetAbsolutePath(path);
@@ -839,7 +850,7 @@ namespace Death::IO
 	{
 		// Take ownership first if not already (e.g., directly from `String::nullTerminatedView()`)
 		if (!path.isSmall() && path.deleter()) {
-			path = String { path };
+			path = String{path};
 		}
 		for (char& c : path) {
 			if (c == '/') {
@@ -1110,7 +1121,7 @@ namespace Death::IO
 	{
 		const char* extStorage = ::getenv("EXTERNAL_STORAGE");
 		if (extStorage == nullptr || extStorage[0] == '\0') {
-			return String { "/sdcard"_s };
+			return "/sdcard"_s;
 		}
 		return extStorage;
 	}
@@ -1129,6 +1140,14 @@ namespace Death::IO
 		}
 
 		return { };
+	}
+#elif defined(DEATH_TARGET_WINDOWS)
+	String FileSystem::GetWindowsDirectory()
+	{
+		wchar_t buffer[MaxPathLength];
+		UINT requiredLength = ::GetSystemWindowsDirectoryW(buffer, static_cast<UINT>(MaxPathLength));
+		if (requiredLength == 0 || requiredLength >= MaxPathLength) return { };
+		return Utf8::FromUtf16(buffer);
 	}
 #endif
 
@@ -1477,8 +1496,9 @@ namespace Death::IO
 				if (attrs == INVALID_FILE_ATTRIBUTES) {
 					if (!::CreateDirectoryW(fullPath, NULL)) {
 #	endif
-						DWORD err = ::GetLastError();
-						if (err != ERROR_ALREADY_EXISTS) {
+						DWORD error = ::GetLastError();
+						if (error != ERROR_ALREADY_EXISTS) {
+							LOGW("Cannot create directory \"%s\" with error %u (0x%08x)", fullPath.data(), error, error);
 							return false;
 						}
 					}
@@ -1496,8 +1516,9 @@ namespace Death::IO
 #	else
 			if (!::CreateDirectoryW(fullPath, NULL)) {
 #	endif
-				DWORD err = ::GetLastError();
-				if (err != ERROR_ALREADY_EXISTS) {
+				DWORD error = ::GetLastError();
+				if (error != ERROR_ALREADY_EXISTS) {
+					LOGW("Cannot create directory \"%s\" with error %u (0x%08x)", fullPath.data(), error, error);
 					return false;
 				}
 			}
@@ -1622,7 +1643,7 @@ namespace Death::IO
 		return ::CopyFileFromAppW(Utf8::ToUtf16(oldPath), Utf8::ToUtf16(newPath), overwrite ? TRUE : FALSE);
 #elif defined(DEATH_TARGET_WINDOWS)
 		return ::CopyFileW(Utf8::ToUtf16(oldPath), Utf8::ToUtf16(newPath), overwrite ? TRUE : FALSE);
-#elif defined(__linux__)
+#else
 		auto nullTerminatedOldPath = String::nullTerminatedView(oldPath);
 		auto nullTerminatedNewPath = String::nullTerminatedView(newPath);
 #	if defined(DEATH_TARGET_ANDROID)
@@ -1635,61 +1656,52 @@ namespace Death::IO
 		}
 
 		std::int32_t source, dest;
-		off_t bytes = 0;
 		struct stat sb;
-
 		if ((source = ::open(nullTerminatedOldPath.data(), O_RDONLY)) == -1) {
 			return false;
 		}
-		fstat(source, &sb);
+		::fstat(source, &sb);
+#	if defined(DEATH_TARGET_SWITCH)
+		// Switch doesn't support `creat()`
+		if ((dest = ::open(nullTerminatedNewPath.data(), O_WRONLY | O_CREAT, sb.st_mode)) == -1) {
+#	else
 		if ((dest = ::creat(nullTerminatedNewPath.data(), sb.st_mode)) == -1) {
+#	endif
 			::close(source);
 			return false;
 		}
 
-		const std::int32_t status = ::sendfile(dest, source, &bytes, sb.st_size);
-
-		::close(source);
-		::close(dest);
-
-		return (status != -1);
-#else
-		if (!overwrite && Exists(newPath)) {
-			return false;
-		}
-
+#	if defined(DEATH_TARGET_APPLE) || defined(__FreeBSD__)
+		// fcopyfile works on FreeBSD and OS X 10.5+ 
+		bool success = (::fcopyfile(source, dest, 0, COPYFILE_ALL) == 0);
+#	elif defined(__linux__)
+		off_t offset = 0;
+		bool success = (::sendfile(dest, source, &offset, sb.st_size) == sb.st_size);
+#	else
+#	if !defined(DEATH_TARGET_SWITCH) && defined(_POSIX_C_SOURCE) && _POSIX_C_SOURCE >= 200112L
+		// As noted in https://eklitzke.org/efficient-file-copying-on-linux, might make the file reading faster
+		::posix_fadvise(source, 0, 0, POSIX_FADV_SEQUENTIAL);
+#	endif
 #	if defined(DEATH_TARGET_EMSCRIPTEN)
 		constexpr std::size_t BufferSize = 8 * 1024;
 #	else
 		constexpr std::size_t BufferSize = 128 * 1024;
 #	endif
 		char buffer[BufferSize];
-
-		std::int32_t source, dest;
-		size_t size = 0;
-		struct stat sb;
-
-		if ((source = ::open(String::nullTerminatedView(oldPath).data(), O_RDONLY)) == -1) {
-			return false;
-		}
-		::fstat(source, &sb);
-		if ((dest = ::open(String::nullTerminatedView(newPath).data(), O_WRONLY | O_CREAT, sb.st_mode)) == -1) {
-			::close(source);
-			return false;
-		}
-
-#	if defined(_POSIX_C_SOURCE) && _POSIX_C_SOURCE >= 200112L
-		// As noted in https://eklitzke.org/efficient-file-copying-on-linux, might make the file reading faster
-		::posix_fadvise(source, 0, 0, POSIX_FADV_SEQUENTIAL);
-#	endif
-
+		std::size_t size = 0;
+		bool success = true;
 		while ((size = ::read(source, buffer, BufferSize)) > 0) {
-			::write(dest, buffer, size);
+			if (::write(dest, buffer, size) != size) {
+				success = false;
+				break;
+			}
 		}
+#endif
+
 		::close(source);
 		::close(dest);
 
-		return true;
+		return success;
 #endif
 	}
 
@@ -2075,20 +2087,20 @@ namespace Death::IO
 #if defined(DEATH_TARGET_UNIX) || (defined(DEATH_TARGET_WINDOWS) && !defined(DEATH_TARGET_WINDOWS_RT))
 	void FileSystem::MapDeleter::operator()(const char* const data, const std::size_t size)
 	{
-#if defined(DEATH_TARGET_UNIX)
+#	if defined(DEATH_TARGET_UNIX)
 		if (data != nullptr) ::munmap(const_cast<char*>(data), size);
 		if (_fd != 0) ::close(_fd);
-#elif defined(DEATH_TARGET_WINDOWS) && !defined(DEATH_TARGET_WINDOWS_RT)
+#	elif defined(DEATH_TARGET_WINDOWS) && !defined(DEATH_TARGET_WINDOWS_RT)
 		if (data != nullptr) ::UnmapViewOfFile(data);
 		if (_hMap != nullptr) ::CloseHandle(_hMap);
 		if (_hFile != NULL) ::CloseHandle(_hFile);
 		static_cast<void>(size);
-#endif
+#	endif
 	}
 
 	std::optional<Array<char, FileSystem::MapDeleter>> FileSystem::OpenAsMemoryMapped(const StringView& path, FileAccessMode mode)
 	{
-#if defined(DEATH_TARGET_UNIX)
+#	if defined(DEATH_TARGET_UNIX)
 		int flags, prot;
 		switch (mode) {
 			case FileAccessMode::Read:
@@ -2100,20 +2112,20 @@ namespace Death::IO
 				prot = PROT_READ | PROT_WRITE;
 				break;
 			default:
-				LOGE("Cannot open the file \"%s\", wrong open mode", String::nullTerminatedView(path).data());
+				LOGE("Cannot open file \"%s\" - Invalid mode (%u)", String::nullTerminatedView(path).data(), (std::uint32_t)mode);
 				return { };
 		}
 
 		const int fd = ::open(String::nullTerminatedView(path).data(), flags);
 		if (fd == -1) {
-			LOGE("Cannot open the file \"%s\"", String::nullTerminatedView(path).data());
+			LOGE("Cannot open file \"%s\"", String::nullTerminatedView(path).data());
 			return { };
 		}
 
 		// Explicitly fail if opening directories for reading on Unix to prevent silent errors
 		struct stat sb;
 		if (::fstat(fd, &sb) == 0 && S_ISDIR(sb.st_mode)) {
-			LOGE("Cannot open the file \"%s\"", String::nullTerminatedView(path).data());
+			LOGE("Cannot open file \"%s\"", String::nullTerminatedView(path).data());
 			::close(fd);
 			return { };
 		}
@@ -2122,7 +2134,7 @@ namespace Death::IO
 		const std::size_t size = ::lseek(fd, 0, SEEK_END);
 		::lseek(fd, currentPos, SEEK_SET);
 
-		// Map the file. Can't call mmap() with a zero size, so if the file is empty just set the pointer to null -- but for consistency keep
+		// Can't call mmap() with a zero size, so if the file is empty just set the pointer to null - but for consistency keep
 		// the fd open and let it be handled by the deleter. Array guarantees that deleter gets called even in case of a null data.
 		char* data;
 		if (size == 0) {
@@ -2133,7 +2145,7 @@ namespace Death::IO
 		}
 
 		return Array<char, MapDeleter>{ data, size, MapDeleter { fd }};
-#elif defined(DEATH_TARGET_WINDOWS) && !defined(DEATH_TARGET_WINDOWS_RT)
+#	elif defined(DEATH_TARGET_WINDOWS) && !defined(DEATH_TARGET_WINDOWS_RT)
 		DWORD fileDesiredAccess, shareMode, protect, mapDesiredAccess;
 		switch (mode) {
 			case FileAccessMode::Read:
@@ -2149,13 +2161,14 @@ namespace Death::IO
 				mapDesiredAccess = FILE_MAP_ALL_ACCESS;
 				break;
 			default:
-				LOGE("Cannot open the file \"%s\", wrong open mode", String::nullTerminatedView(path).data());
+				LOGE("Cannot open file \"%s\" - Invalid mode (%u)", String::nullTerminatedView(path).data(), (std::uint32_t)mode);
 				return { };
 		}
 
 		HANDLE hFile = ::CreateFileW(Utf8::ToUtf16(path), fileDesiredAccess, shareMode, nullptr, OPEN_EXISTING, 0, nullptr);
 		if (hFile == INVALID_HANDLE_VALUE) {
-			LOGE("Cannot open the file \"%s\"", String::nullTerminatedView(path).data());
+			DWORD error = ::GetLastError();
+			LOGE("Cannot open file \"%s\" with error %u (0x%08x)", String::nullTerminatedView(path).data(), error, error);
 			return { };
 		}
 
@@ -2170,13 +2183,15 @@ namespace Death::IO
 			data = nullptr;
 		} else {
 			if (!(hMap = ::CreateFileMappingW(hFile, nullptr, protect, 0, 0, nullptr))) {
-				LOGE("Cannot open the file \"%s\"", String::nullTerminatedView(path).data());
+				DWORD error = ::GetLastError();
+				LOGE("Cannot open file \"%s\" with error %u (0x%08x)", String::nullTerminatedView(path).data(), error, error);
 				::CloseHandle(hFile);
 				return { };
 			}
 
 			if (!(data = reinterpret_cast<char*>(::MapViewOfFile(hMap, mapDesiredAccess, 0, 0, 0)))) {
-				LOGE("Cannot open the file \"%s\"", String::nullTerminatedView(path).data());
+				DWORD error = ::GetLastError();
+				LOGE("Cannot open file \"%s\" with error %u (0x%08x)", String::nullTerminatedView(path).data(), error, error);
 				::CloseHandle(hMap);
 				::CloseHandle(hFile);
 				return { };
@@ -2184,7 +2199,7 @@ namespace Death::IO
 		}
 
 		return Containers::Array<char, MapDeleter>{ data, size, MapDeleter { hFile, hMap }};
-#endif
+#	endif
 	}
 #endif
 
@@ -2217,10 +2232,9 @@ namespace Death::IO
 		if (!DirectoryExists(_savePath)) {
 			// Trying to create the data directory
 			if (!CreateDirectories(_savePath)) {
-				LOGE("Cannot create directory: %s", _savePath.data());
 				_savePath = { };
 			}
-	}
+		}
 #elif defined(DEATH_TARGET_APPLE)
 		// Not delegating into GetHomeDirectory() as the (admittedly rare) error message would have a confusing source
 		const char* home = ::getenv("HOME");

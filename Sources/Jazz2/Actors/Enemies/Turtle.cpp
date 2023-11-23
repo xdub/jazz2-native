@@ -4,19 +4,19 @@
 #include "TurtleShell.h"
 #include "../Explosion.h"
 #include "../Player.h"
+#include "../Solid/PushableBox.h"
 #include "../Weapons/ShieldFireShot.h"
 #include "../Weapons/Thunderbolt.h"
 #include "../Weapons/ToasterShot.h"
 
 #include "../../../nCine/Base/Random.h"
 
+using namespace Jazz2::Tiles;
+
 namespace Jazz2::Actors::Enemies
 {
 	Turtle::Turtle()
-		:
-		_isTurning(false),
-		_isWithdrawn(false),
-		_isAttacking(false)
+		: _isTurning(false), _isWithdrawn(false), _isAttacking(false)
 	{
 	}
 
@@ -116,7 +116,8 @@ namespace Jazz2::Actors::Enemies
 			}
 		} else if (dynamic_cast<Weapons::ToasterShot*>(collider) != nullptr || 
 					dynamic_cast<Weapons::ShieldFireShot*>(collider) != nullptr ||
-					dynamic_cast<Weapons::Thunderbolt*>(collider) != nullptr) {
+					dynamic_cast<Weapons::Thunderbolt*>(collider) != nullptr ||
+					dynamic_cast<Solid::PushableBox*>(collider) != nullptr) {
 			shouldDestroy = true;
 		}
 

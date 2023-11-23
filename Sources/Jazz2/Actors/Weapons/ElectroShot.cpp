@@ -7,6 +7,8 @@
 
 #include "../../../nCine/Base/Random.h"
 
+using namespace Jazz2::Tiles;
+
 namespace Jazz2::Actors::Weapons
 {
 	ElectroShot::ElectroShot()
@@ -79,9 +81,9 @@ namespace Jazz2::Actors::Weapons
 
 				auto tilemap = _levelHandler->TileMap();
 				if (tilemap != nullptr) {
-					auto it = _metadata->Graphics.find(String::nullTerminatedView("Particle"_s));
-					if (it != _metadata->Graphics.end()) {
-						auto& resBase = it->second.Base;
+					auto* res = _metadata->FindAnimation((AnimState)1); // Particle
+					if (res != nullptr) {
+						auto& resBase = res->Base;
 						Vector2i texSize = resBase->TextureDiffuse->size();
 
 						for (int i = 0; i < 6; i++) {

@@ -18,7 +18,7 @@
 // Undefine it again after include
 #undef far
 
-#define MAX_CLIENTS 64
+#include <Containers/String.h>
 
 namespace Jazz2::Multiplayer
 {
@@ -39,7 +39,7 @@ namespace Jazz2::Multiplayer
 		}
 	}
 
-	bool NetworkManager::CreateClient(INetworkHandler* handler, const char* address, std::uint16_t port, std::uint32_t clientData)
+	bool NetworkManager::CreateClient(INetworkHandler* handler, const StringView& address, std::uint16_t port, std::uint32_t clientData)
 	{
 		if (!_initialized || _host != nullptr) {
 			return false;
@@ -48,12 +48,10 @@ namespace Jazz2::Multiplayer
 		_host = enet_host_create(nullptr, 1, (std::size_t)NetworkChannel::Count, 0, 0);
 		RETURNF_ASSERT_MSG(_host != nullptr, "Failed to create client");
 
-		//enet_host_compress_with_range_coder(host);
-
 		_state = NetworkState::Connecting;
 
 		ENetAddress addr = { };
-		enet_address_set_host(&addr, address);
+		enet_address_set_host(&addr, String::nullTerminatedView(address).data());
 		addr.port = port;
 
 		ENetPeer* peer = enet_host_connect(_host, &addr, (std::size_t)NetworkChannel::Count, clientData);
@@ -82,8 +80,8 @@ namespace Jazz2::Multiplayer
 		addr.host = ENET_HOST_ANY;
 		addr.port = port;
 
-		_host = enet_host_create(&addr, MAX_CLIENTS, (std::size_t)NetworkChannel::Count, 0, 0);
-		RETURNF_ASSERT_MSG(_host != nullptr, "Failed to create server");
+		_host = enet_host_create(&addr, MaxPeerCount, (std::size_t)NetworkChannel::Count, 0, 0);
+		RETURNF_ASSERT_MSG(_host != nullptr, "Failed to create a server");
 
 		_handler = handler;
 		_state = NetworkState::Listening;
@@ -97,15 +95,8 @@ namespace Jazz2::Multiplayer
 			return;
 		}
 
-		for (auto& peer : _peers) {
-			enet_peer_disconnect_now(peer, 0);
-		}
-
 		_state = NetworkState::None;
 		_thread.Join();
-
-		// Should be already destroyed by the thread
-		//enet_host_destroy(_host);
 
 		_host = nullptr;
 	}
@@ -176,9 +167,14 @@ namespace Jazz2::Multiplayer
 		_lock.Unlock();
 	}
 
+	void NetworkManager::KickClient(const Peer& peer, Reason reason)
+	{
+		enet_peer_disconnect_now(peer._enet, (std::uint32_t)reason);
+	}
+
 	void NetworkManager::OnClientThread(void* param)
 	{
-		NetworkManager* _this = reinterpret_cast<NetworkManager*>(param);
+		NetworkManager* _this = static_cast<NetworkManager*>(param);
 		INetworkHandler* handler = _this->_handler;
 		ENetHost* host = _this->_host;
 
@@ -197,12 +193,15 @@ namespace Jazz2::Multiplayer
 			n--;
 		}
 
+		Reason reason;
 		if (n <= 0) {
 			LOGE("Failed to connect to the server");
 			_this->_state = NetworkState::None;
+			reason = Reason::ConnectionTimedOut;
 		} else {
 			_this->_state = NetworkState::Connected;
 			handler->OnPeerConnected(ev.peer, ev.data);
+			reason = Reason::Unknown;
 
 			while (_this->_state != NetworkState::None) {
 				_this->_lock.Lock();
@@ -211,9 +210,10 @@ namespace Jazz2::Multiplayer
 				if (result <= 0) {
 					if (result < 0) {
 						LOGE("enet_host_service() returned %i", result);
+						reason = Reason::ConnectionLost;
 						break;
 					}
-					Timer::sleep(10);
+					Timer::sleep(ProcessingIntervalMs);
 					continue;
 				}
 
@@ -222,23 +222,22 @@ namespace Jazz2::Multiplayer
 						handler->OnPacketReceived(ev.peer, ev.channelID, ev.packet->data, ev.packet->dataLength);
 						enet_packet_destroy(ev.packet);
 						break;
-
 					case ENET_EVENT_TYPE_DISCONNECT:
 						_this->_state = NetworkState::None;
+						reason = (Reason)ev.data;
 						break;
-
 					case ENET_EVENT_TYPE_DISCONNECT_TIMEOUT:
 						_this->_state = NetworkState::None;
+						reason = Reason::ConnectionLost;
 						break;
 				}
 			}
 		}
 
-		handler->OnPeerDisconnected(_this->_peers[0], 0);
+		handler->OnPeerDisconnected(_this->_peers[0], reason);
 
 		for (ENetPeer* peer : _this->_peers) {
-			//enet_peer_reset(peer);
-			enet_peer_disconnect(peer, 1);
+			enet_peer_disconnect_now(peer, (std::uint32_t)Reason::Disconnected);
 		}
 		_this->_peers.clear();
 
@@ -248,12 +247,12 @@ namespace Jazz2::Multiplayer
 
 		_this->_thread.Detach();
 
-		LOGD("Client thread exited");
+		LOGD("Client thread exited (%u)", (std::uint32_t)reason);
 	}
 
 	void NetworkManager::OnServerThread(void* param)
 	{
-		NetworkManager* _this = reinterpret_cast<NetworkManager*>(param);
+		NetworkManager* _this = static_cast<NetworkManager*>(param);
 		INetworkHandler* handler = _this->_handler;
 		ENetHost* host = _this->_host;
 
@@ -265,39 +264,56 @@ namespace Jazz2::Multiplayer
 			if (result <= 0) {
 				if (result < 0) {
 					LOGE("enet_host_service() returned %i", result);
-					break;
+
+					// Server failed, try to recreate it
+					_this->_lock.Lock();
+
+					for (auto& peer : _this->_peers) {
+						handler->OnPeerDisconnected(peer, Reason::ConnectionLost);
+					}
+					_this->_peers.clear();
+
+					ENetAddress addr = _this->_host->address;
+					enet_host_destroy(_this->_host);
+					host = enet_host_create(&addr, MaxPeerCount, (std::size_t)NetworkChannel::Count, 0, 0);
+					_this->_host = host;
+
+					_this->_lock.Unlock();
+
+					if (host == nullptr) {
+						LOGE("Failed to recreate the server");
+						break;
+					}
 				}
-				Timer::sleep(10);
+				Timer::sleep(ProcessingIntervalMs);
 				continue;
 			}
 
 			switch (ev.type) {
-				case ENET_EVENT_TYPE_CONNECT:
-					if (handler->OnPeerConnected(ev.peer, ev.data)) {
+				case ENET_EVENT_TYPE_CONNECT: {
+					ConnectionResult result = handler->OnPeerConnected(ev.peer, ev.data);
+					if (result.IsSuccessful()) {
 						_this->_peers.push_back(ev.peer);
 					} else {
-						enet_peer_disconnect_now(ev.peer, 1);
+						enet_peer_disconnect_now(ev.peer, (std::uint32_t)result.FailureReason);
 					}
 					break;
-
+				}
 				case ENET_EVENT_TYPE_RECEIVE:
 					handler->OnPacketReceived(ev.peer, ev.channelID, ev.packet->data, ev.packet->dataLength);
 					enet_packet_destroy(ev.packet);
 					break;
-
 				case ENET_EVENT_TYPE_DISCONNECT:
-					handler->OnPeerDisconnected(ev.peer, ev.data);
+					handler->OnPeerDisconnected(ev.peer, (Reason)ev.data);
 					break;
-
 				case ENET_EVENT_TYPE_DISCONNECT_TIMEOUT:
-					handler->OnPeerDisconnected(ev.peer, 0);
+					handler->OnPeerDisconnected(ev.peer, Reason::ConnectionLost);
 					break;
 			}
 		}
 
 		for (ENetPeer* peer : _this->_peers) {
-			//enet_peer_reset(peer);
-			enet_peer_disconnect(peer, 1);
+			enet_peer_disconnect_now(peer, (std::uint32_t)Reason::ServerStopped);
 		}
 		_this->_peers.clear();
 

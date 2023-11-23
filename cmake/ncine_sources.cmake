@@ -10,6 +10,7 @@ set(SOURCES
 	${NCINE_SOURCE_DIR}/Shared/IO/FileStream.cpp
 	${NCINE_SOURCE_DIR}/Shared/IO/FileSystem.cpp
 	${NCINE_SOURCE_DIR}/Shared/IO/MemoryStream.cpp
+	${NCINE_SOURCE_DIR}/Shared/IO/Stream.cpp
 )
 
 list(APPEND SOURCES
@@ -104,6 +105,7 @@ list(APPEND SOURCES
 	${NCINE_SOURCE_DIR}/Jazz2/ContentResolver.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/LevelHandler.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/PreferencesCache.cpp
+	${NCINE_SOURCE_DIR}/Jazz2/Resources.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/Actors/ActorBase.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/Actors/Player.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/Actors/PlayerCorpse.cpp
@@ -229,6 +231,9 @@ list(APPEND SOURCES
 	${NCINE_SOURCE_DIR}/Jazz2/Scripting/JJ2PlusDefinitions.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/Scripting/LevelScriptLoader.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/Scripting/RegisterArray.cpp
+	${NCINE_SOURCE_DIR}/Jazz2/Scripting/RegisterDictionary.cpp
+	${NCINE_SOURCE_DIR}/Jazz2/Scripting/RegisterImGuiBindings.cpp
+	${NCINE_SOURCE_DIR}/Jazz2/Scripting/RegisterMath.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/Scripting/RegisterRef.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/Scripting/RegisterString.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/Scripting/ScriptActorWrapper.cpp
@@ -256,6 +261,7 @@ list(APPEND SOURCES
 	${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/InGameMenu.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/InputDiagnosticsSection.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/LanguageSelectSection.cpp
+	${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/LoadingSection.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/MainMenu.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/OptionsSection.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/PauseSection.cpp

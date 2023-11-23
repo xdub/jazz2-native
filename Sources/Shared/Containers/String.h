@@ -165,7 +165,8 @@ namespace Death::Containers
 		 * @cpp nullptr @ce --- in that case an empty string is constructed.
 		 * Depending on the size, it's either stored allocated or in a SSO.
 		 */
-		/*implicit*/ String(const char* data);
+		/* To avoid ambiguity in certain cases of passing 0 to overloads that take either a String or std::size_t */
+		template<class T, class = typename std::enable_if<std::is_convertible<T, const char*>::value && !std::is_convertible<T, std::size_t>::value>::type> /*implicit*/ String(T data) : String{nullptr, nullptr, nullptr, data} {}
 
 		/**
 		 * @brief Construct from a sized C string
@@ -498,14 +499,36 @@ namespace Death::Containers
 		StringView slice(std::size_t begin, std::size_t end) const;
 
 		/**
+		 * @brief View on a slice of given size
+		 *
+		 * Equivalent to @ref BasicStringView::sliceSize(). Both arguments are
+		 * expected to be in range. If `begin + size` points to (one item
+		 * after) the end of the original (null-terminated) string, the result
+		 * has @ref StringViewFlag::NullTerminated set.
+		 * @m_keywords{substr()}
+		 */
+		template<class T, class = typename std::enable_if<std::is_convertible<T, char*>::value && !std::is_convertible<T, std::size_t>::value>::type> MutableStringView sliceSize(T begin, std::size_t size) {
+			return sliceSizePointerInternal(begin, size);
+		}
+		template<class T, class = typename std::enable_if<std::is_convertible<T, const char*>::value && !std::is_convertible<T, std::size_t>::value>::type> StringView sliceSize(T begin, std::size_t size) const {
+			return sliceSizePointerInternal(begin, size);
+		}
+		MutableStringView sliceSize(std::size_t begin, std::size_t size);
+		StringView sliceSize(std::size_t begin, std::size_t size) const;
+
+		/**
 		 * @brief View on a prefix until a pointer
 		 *
 		 * Equivalent to @ref BasicStringView::prefix(T*) const. If @p end
 		 * points to (one item after) the end of the original (null-terminated)
 		 * string, the result has @ref StringViewFlags::NullTerminated set.
 		 */
-		MutableStringView prefix(char* end);
-		StringView prefix(const char* end) const;
+		template<class T, class = typename std::enable_if<std::is_convertible<T, char*>::value && !std::is_convertible<T, std::size_t>::value>::type> MutableStringView prefix(T end) {
+			return prefixPointerInternal(end);
+		}
+		template<class T, class = typename std::enable_if<std::is_convertible<T, const char*>::value && !std::is_convertible<T, std::size_t>::value>::type> StringView prefix(T end) const {
+			return prefixPointerInternal(end);
+		}
 
 		/**
 		 * @brief View on a suffix after a pointer
@@ -517,33 +540,33 @@ namespace Death::Containers
 		StringView suffix(const char* begin) const;
 
 		/**
-		 * @brief View on the first @p count bytes
+		 * @brief View on the first @p size bytes
 		 *
 		 * Equivalent to @ref BasicStringView::prefix(std::size_t) const. If
-		 * @p count is equal to @ref size(), the result has
+		 * @p size is equal to @ref size(), the result has
 		 * @ref StringViewFlags::NullTerminated set.
 		 */
-		MutableStringView prefix(std::size_t count);
-		StringView prefix(std::size_t count) const;
+		MutableStringView prefix(std::size_t size);
+		StringView prefix(std::size_t size) const;
 
 		/**
-		 * @brief View except the first @p count bytes
+		 * @brief View except the first @p size bytes
 		 *
 		 * Equivalent to @ref BasicStringView::exceptPrefix(). The result has
 		 * always @ref StringViewFlags::NullTerminated set.
 		 */
-		MutableStringView exceptPrefix(std::size_t count);
-		StringView exceptPrefix(std::size_t count) const;
+		MutableStringView exceptPrefix(std::size_t size);
+		StringView exceptPrefix(std::size_t size) const;
 
 		/**
-		 * @brief View except the last @p count bytes
+		 * @brief View except the last @p size bytes
 		 *
 		 * Equivalent to @ref BasicStringView::exceptSuffix(). If
-		 * @p count is @cpp 0 @ce, the result has
+		 * @p size is @cpp 0 @ce, the result has
 		 * @ref StringViewFlags::NullTerminated set.
 		 */
-		MutableStringView exceptSuffix(std::size_t count);
-		StringView exceptSuffix(std::size_t count) const;
+		MutableStringView exceptSuffix(std::size_t size);
+		StringView exceptSuffix(std::size_t size) const;
 
 		/**
 		 * @brief Split on given character
@@ -610,7 +633,6 @@ namespace Death::Containers
 		 * Equivalent to @ref BasicStringView::join().
 		 */
 		String join(ArrayView<const StringView> strings) const;
-
 		/** @overload */
 		String join(std::initializer_list<StringView> strings) const;
 
@@ -620,8 +642,6 @@ namespace Death::Containers
 		 * Equivalent to @ref BasicStringView::joinWithoutEmptyParts().
 		 */
 		String joinWithoutEmptyParts(ArrayView<const StringView> strings) const;
-
-		/** @overload */
 		String joinWithoutEmptyParts(std::initializer_list<StringView> strings) const;
 
 		/**
@@ -860,6 +880,8 @@ namespace Death::Containers
 		char* release();
 
 	private:
+		// Delegated to from the (templated) String(const char*). THREE extra nullptr arguments to avoid accidental ambiguous overloads.
+		explicit String(std::nullptr_t, std::nullptr_t, std::nullptr_t, const char* data);
 		// Delegated to from the (templated) String(char*, Deleter). Argument order shuffled together with a null parameter to avoid accidental ambiguous overloads.
 		explicit String(Deleter deleter, std::nullptr_t, char* data) noexcept;
 
@@ -867,6 +889,11 @@ namespace Death::Containers
 		void construct(const char* data, std::size_t size);
 		void destruct();
 		Pair<const char*, std::size_t> dataInternal() const;
+
+		MutableStringView sliceSizePointerInternal(char* begin, std::size_t size);
+		StringView sliceSizePointerInternal(const char* begin, std::size_t size) const;
+		MutableStringView prefixPointerInternal(char* end);
+		StringView prefixPointerInternal(const char* end) const;
 
 		/* Small string optimization. Following size restrictions from
 		   StringView (which uses the top two bits for marking global and

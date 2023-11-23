@@ -46,7 +46,7 @@ namespace Jazz2::Actors::Enemies
 
 		switch (_state) {
 			case StateIdle: {
-				if (_currentTransitionState == AnimState::Idle) {
+				if (_currentTransition == nullptr) {
 					// InhaleStart
 					SetTransition((AnimState)1, true, [this]() {
 						// Inhale
@@ -129,7 +129,7 @@ namespace Jazz2::Actors::Enemies
 		_time = 500.0f;
 
 		async_await RequestMetadataAsync("Enemy/Caterpillar"_s);
-		SetAnimation("Smoke"_s);
+		SetAnimation((AnimState)7);
 
 		async_return true;
 	}

@@ -61,15 +61,19 @@ namespace nCine
 				: a->idSortKey() < b->idSortKey();
 		}
 
-#if defined(DEATH_DEBUG)
+#if defined(DEATH_DEBUG) && defined(NCINE_PROFILING)
 		const char* commandTypeString(const RenderCommand& command)
 		{
 			switch (command.type()) {
 				case RenderCommand::CommandTypes::Unspecified: return "unspecified";
 				case RenderCommand::CommandTypes::Sprite: return "sprite";
 				case RenderCommand::CommandTypes::MeshSprite: return "mesh sprite";
+				case RenderCommand::CommandTypes::TileMap: return "tile map";
 				case RenderCommand::CommandTypes::Particle: return "particle";
 				case RenderCommand::CommandTypes::Text: return "text";
+#	if defined(WITH_IMGUI)
+				case RenderCommand::CommandTypes::ImGui: return "imgui";
+#	endif
 				default: return "unknown";
 			}
 		}
@@ -88,7 +92,7 @@ namespace nCine
 		SmallVectorImpl<RenderCommand*>* transparents = batchingEnabled ? &transparentBatchedQueue_ : &transparentQueue_;
 
 		if (batchingEnabled) {
-			ZoneScopedN("Batching");
+			ZoneScopedNC("Batching", 0x81A861);
 			// Always create batches after sorting
 			RenderResources::renderBatcher().createBatches(opaqueQueue_, opaqueBatchedQueue_);
 			RenderResources::renderBatcher().createBatches(transparentQueue_, transparentBatchedQueue_);
@@ -96,7 +100,7 @@ namespace nCine
 
 		// Avoid GPU stalls by uploading to VBOs, IBOs and UBOs before drawing
 		if (!opaques->empty()) {
-			ZoneScopedN("Commit opaques");
+			ZoneScopedNC("Commit opaques", 0x81A861);
 #if defined(DEATH_DEBUG)
 			formatString(debugString, sizeof(debugString), "Commit %u opaque command(s) for viewport 0x%lx", (uint32_t)opaques->size(), uintptr_t(RenderResources::currentViewport()));
 			GLDebug::ScopedGroup scoped(debugString);
@@ -107,7 +111,7 @@ namespace nCine
 		}
 
 		if (!transparents->empty()) {
-			ZoneScopedN("Commit transparents");
+			ZoneScopedNC("Commit transparents", 0x81A861);
 #if defined(DEATH_DEBUG)
 			formatString(debugString, sizeof(debugString), "Commit %u transparent command(s) for viewport 0x%lx", (uint32_t)transparents->size(), uintptr_t(RenderResources::currentViewport()));
 			GLDebug::ScopedGroup scoped(debugString);
@@ -124,13 +128,13 @@ namespace nCine
 		SmallVectorImpl<RenderCommand*>* opaques = batchingEnabled ? &opaqueBatchedQueue_ : &opaqueQueue_;
 		SmallVectorImpl<RenderCommand*>* transparents = batchingEnabled ? &transparentBatchedQueue_ : &transparentQueue_;
 
-#if defined(DEATH_DEBUG)
+#if defined(DEATH_DEBUG) && defined(NCINE_PROFILING)
 		unsigned int commandIndex = 0;
 #endif
 		// Rendering opaque nodes front to back
 		for (RenderCommand* opaqueRenderCommand : *opaques) {
 			TracyGpuZone("Opaque");
-#if defined(DEATH_DEBUG)
+#if defined(DEATH_DEBUG) && defined(NCINE_PROFILING)
 			const int numInstances = opaqueRenderCommand->numInstances();
 			const int batchSize = opaqueRenderCommand->batchSize();
 			const uint16_t layer = opaqueRenderCommand->layer();
@@ -162,7 +166,7 @@ namespace nCine
 		// Rendering transparent nodes back to front
 		for (RenderCommand* transparentRenderCommand : *transparents) {
 			TracyGpuZone("Transparent");
-#if defined(DEATH_DEBUG)
+#if defined(DEATH_DEBUG) && defined(NCINE_PROFILING)
 			const int numInstances = transparentRenderCommand->numInstances();
 			const int batchSize = transparentRenderCommand->batchSize();
 			const uint16_t layer = transparentRenderCommand->layer();

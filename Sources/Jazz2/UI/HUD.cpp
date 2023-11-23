@@ -4,12 +4,16 @@
 #include "../PreferencesCache.h"
 #include "../Actors/Enemies/Bosses/BossBase.h"
 
+#if defined(WITH_ANGELSCRIPT)
+#	include "../Scripting/LevelScriptLoader.h"
+#endif
+
 #include "../../nCine/Graphics/RenderQueue.h"
 #include "../../nCine/Base/Random.h"
 #include "../../nCine/Application.h"
 
 // Position of key in 22x6 grid
-static constexpr uint8_t KeyLayout[] = {
+static const uint8_t KeyLayout[] = {
 	0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17,
 	22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 37, 38, 39, 40, 41, 42, 43,
 	44, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65,
@@ -20,33 +24,78 @@ static constexpr uint8_t KeyLayout[] = {
 
 namespace Jazz2::UI
 {
+	namespace Resources
+	{
+		static constexpr AnimState WeaponBlasterJazz = (AnimState)0;
+		static constexpr AnimState WeaponBlasterSpaz = (AnimState)1;
+		static constexpr AnimState WeaponBlasterLori = (AnimState)2;
+		static constexpr AnimState WeaponBouncer = (AnimState)3;
+		static constexpr AnimState WeaponFreezer = (AnimState)4;
+		static constexpr AnimState WeaponSeeker = (AnimState)5;
+		static constexpr AnimState WeaponRF = (AnimState)6;
+		static constexpr AnimState WeaponToaster = (AnimState)7;
+		static constexpr AnimState WeaponTNT = (AnimState)8;
+		static constexpr AnimState WeaponPepper = (AnimState)9;
+		static constexpr AnimState WeaponElectro = (AnimState)10;
+		static constexpr AnimState WeaponThunderbolt = (AnimState)11;
+		static constexpr AnimState WeaponPowerUpBlasterJazz = (AnimState)20;
+		static constexpr AnimState WeaponPowerUpBlasterSpaz = (AnimState)21;
+		static constexpr AnimState WeaponPowerUpBlasterLori = (AnimState)22;
+		static constexpr AnimState WeaponPowerUpBouncer = (AnimState)23;
+		static constexpr AnimState WeaponPowerUpFreezer = (AnimState)24;
+		static constexpr AnimState WeaponPowerUpSeeker = (AnimState)25;
+		static constexpr AnimState WeaponPowerUpRF = (AnimState)26;
+		static constexpr AnimState WeaponPowerUpToaster = (AnimState)27;
+		static constexpr AnimState WeaponPowerUpTNT = (AnimState)28;
+		static constexpr AnimState WeaponPowerUpPepper = (AnimState)29;
+		static constexpr AnimState WeaponPowerUpElectro = (AnimState)30;
+		static constexpr AnimState WeaponPowerUpThunderbolt = (AnimState)31;
+		static constexpr AnimState WeaponToasterDisabled = (AnimState)47;
+		static constexpr AnimState CharacterJazz = (AnimState)60;
+		static constexpr AnimState CharacterSpaz = (AnimState)61;
+		static constexpr AnimState CharacterLori = (AnimState)62;
+		static constexpr AnimState CharacterFrog = (AnimState)63;
+		static constexpr AnimState Heart = (AnimState)70;
+		static constexpr AnimState PickupGem = (AnimState)71;
+		static constexpr AnimState PickupCoin = (AnimState)72;
+		static constexpr AnimState PickupFood = (AnimState)73;
+		static constexpr AnimState BossHealthBar = (AnimState)74;
+		static constexpr AnimState WeaponWheel = (AnimState)80;
+		static constexpr AnimState WeaponWheelInner = (AnimState)81;
+		static constexpr AnimState WeaponWheelDim = (AnimState)82;
+		static constexpr AnimState TouchDpad = (AnimState)100;
+		static constexpr AnimState TouchFire = (AnimState)101;
+		static constexpr AnimState TouchJump = (AnimState)102;
+		static constexpr AnimState TouchRun = (AnimState)103;
+		static constexpr AnimState TouchChange = (AnimState)104;
+		static constexpr AnimState TouchPause = (AnimState)105;
+	}
+
+	using namespace Jazz2::UI::Resources;
+
 	HUD::HUD(LevelHandler* levelHandler)
-		: _levelHandler(levelHandler), _graphics(nullptr), _levelTextTime(-1.0f), _coins(0), _gems(0), _coinsTime(-1.0f), _gemsTime(-1.0f),
+		: _levelHandler(levelHandler), _metadata(nullptr), _levelTextTime(-1.0f), _coins(0), _gems(0), _coinsTime(-1.0f), _gemsTime(-1.0f),
 			_activeBossTime(0.0f), _touchButtonsTimer(0.0f), _rgbAmbientLight(0.0f), _rgbHealthLast(0.0f), _weaponWheelAnim(0.0f),
-			_weaponWheelShown(false), _lastWeaponWheelIndex(-1), _rgbLightsTime(0.0f), _transitionState(TransitionState::None),
+			_weaponWheelShown(false), _lastWeaponWheelIndex(-1), _rgbLightsAnim(0.0f), _rgbLightsTime(0.0f), _transitionState(TransitionState::None),
 			_transitionTime(0.0f)
 	{
 		auto& resolver = ContentResolver::Get();
 
-		Metadata* metadata = resolver.RequestMetadata("UI/HUD"_s);
-		if (metadata != nullptr) {
-			_graphics = &metadata->Graphics;
-		}
-
+		_metadata = resolver.RequestMetadata("UI/HUD"_s);
 		_smallFont = resolver.GetFont(FontType::Small);
 
-		_touchButtons[0] = CreateTouchButton(PlayerActions::None, "TouchDpad"_s, Alignment::BottomLeft, DpadLeft, DpadBottom, DpadSize, DpadSize);
+		_touchButtons[0] = CreateTouchButton(PlayerActions::None, TouchDpad, Alignment::BottomLeft, DpadLeft, DpadBottom, DpadSize, DpadSize);
 		// D-pad subsections
-		_touchButtons[1] = CreateTouchButton(PlayerActions::Up, nullptr, Alignment::BottomLeft, DpadLeft, DpadBottom + (DpadSize * 2 / 3), DpadSize, (DpadSize / 3) + DpadThreshold);
-		_touchButtons[2] = CreateTouchButton(PlayerActions::Down, nullptr, Alignment::BottomLeft, DpadLeft, DpadBottom - DpadThreshold, DpadSize, (DpadSize / 3) + DpadThreshold);
-		_touchButtons[3] = CreateTouchButton(PlayerActions::Left, nullptr, Alignment::BottomLeft | AllowRollover, DpadLeft - DpadThreshold, DpadBottom, (DpadSize / 3) + DpadThreshold, DpadSize);
-		_touchButtons[4] = CreateTouchButton(PlayerActions::Right, nullptr, Alignment::BottomLeft | AllowRollover, DpadLeft + (DpadSize * 2 / 3), DpadBottom, (DpadSize / 3) + DpadThreshold, DpadSize);
+		_touchButtons[1] = CreateTouchButton(PlayerActions::Up, AnimState::Default, Alignment::BottomLeft, DpadLeft, DpadBottom + (DpadSize * 2 / 3), DpadSize, (DpadSize / 3) + DpadThreshold);
+		_touchButtons[2] = CreateTouchButton(PlayerActions::Down, AnimState::Default, Alignment::BottomLeft, DpadLeft, DpadBottom - DpadThreshold, DpadSize, (DpadSize / 3) + DpadThreshold);
+		_touchButtons[3] = CreateTouchButton(PlayerActions::Left, AnimState::Default, Alignment::BottomLeft | AllowRollover, DpadLeft - DpadThreshold, DpadBottom, (DpadSize / 3) + DpadThreshold, DpadSize);
+		_touchButtons[4] = CreateTouchButton(PlayerActions::Right, AnimState::Default, Alignment::BottomLeft | AllowRollover, DpadLeft + (DpadSize * 2 / 3), DpadBottom, (DpadSize / 3) + DpadThreshold, DpadSize);
 		// Action buttons
-		_touchButtons[5] = CreateTouchButton(PlayerActions::Fire, "TouchFire"_s, Alignment::BottomRight, (ButtonSize + 0.02f) * 2, 0.04f, ButtonSize, ButtonSize);
-		_touchButtons[6] = CreateTouchButton(PlayerActions::Jump, "TouchJump"_s, Alignment::BottomRight, (ButtonSize + 0.02f), 0.04f + 0.08f, ButtonSize, ButtonSize);
-		_touchButtons[7] = CreateTouchButton(PlayerActions::Run, "TouchRun"_s, Alignment::BottomRight, 0.001f, 0.01f + 0.15f, ButtonSize, ButtonSize);
-		_touchButtons[8] = CreateTouchButton(PlayerActions::ChangeWeapon, "TouchChange"_s, Alignment::BottomRight, ButtonSize + 0.01f, 0.04f + 0.28f, SmallButtonSize, SmallButtonSize);
-		_touchButtons[9] = CreateTouchButton(PlayerActions::Menu, "TouchPause"_s, Alignment::TopRight | Fixed, 0.02f, 0.02f, SmallButtonSize, SmallButtonSize);
+		_touchButtons[5] = CreateTouchButton(PlayerActions::Fire, TouchFire, Alignment::BottomRight, (ButtonSize + 0.02f) * 2, 0.04f, ButtonSize, ButtonSize);
+		_touchButtons[6] = CreateTouchButton(PlayerActions::Jump, TouchJump, Alignment::BottomRight, (ButtonSize + 0.02f), 0.04f + 0.08f, ButtonSize, ButtonSize);
+		_touchButtons[7] = CreateTouchButton(PlayerActions::Run, TouchRun, Alignment::BottomRight, 0.001f, 0.01f + 0.15f, ButtonSize, ButtonSize);
+		_touchButtons[8] = CreateTouchButton(PlayerActions::ChangeWeapon, TouchChange, Alignment::BottomRight, ButtonSize + 0.01f, 0.04f + 0.28f, SmallButtonSize, SmallButtonSize);
+		_touchButtons[9] = CreateTouchButton(PlayerActions::Menu, TouchPause, Alignment::TopRight | Fixed, 0.02f, 0.02f, SmallButtonSize, SmallButtonSize);
 	}
 
 	HUD::~HUD()
@@ -142,7 +191,7 @@ namespace Jazz2::UI
 	{
 		Canvas::OnDraw(renderQueue);
 
-		if (_graphics == nullptr) {
+		if (_metadata == nullptr) {
 			return false;
 		}
 
@@ -165,160 +214,16 @@ namespace Jazz2::UI
 		auto& players = _levelHandler->GetPlayers();
 		if (!players.empty()) {
 			Actors::Player* player = players[0];
-			PlayerType playerType = player->_playerType;
-
-			// Bottom left
-			StringView playerIcon;
-			switch (playerType) {
-				default:
-				case PlayerType::Jazz: playerIcon = "CharacterJazz"_s; break;
-				case PlayerType::Spaz: playerIcon = "CharacterSpaz"_s; break;
-				case PlayerType::Lori: playerIcon = "CharacterLori"_s; break;
-				case PlayerType::Frog: playerIcon = "CharacterFrog"_s; break;
-			}
-
-			DrawElement(playerIcon, -1, adjustedView.X + 38.0f, bottom - 1.0f + 1.6f, ShadowLayer, Alignment::BottomRight, Colorf(0.0f, 0.0f, 0.0f, 0.4f));
-			DrawElement(playerIcon, -1, adjustedView.X + 38.0f, bottom - 1.0f, MainLayer, Alignment::BottomRight, Colorf::White);
-
-			if (_levelHandler->IsReforged()) {
-				for (int32_t i = 0; i < player->_health; i++) {
-					stringBuffer[i] = '|';
-				}
-				stringBuffer[player->_health] = '\0';
-
-				if (player->_lives > 0) {
-					_smallFont->DrawString(this, stringBuffer, charOffsetShadow, adjustedView.X + 36.0f - 3.0f - 0.5f, bottom - 17.0f + 0.5f, FontShadowLayer,
-						Alignment::BottomLeft, Colorf(0.0f, 0.0f, 0.0f, 0.42f), 0.7f, 0.0f, 0.0f, 0.0f, 0.0f, 1.1f);
-					_smallFont->DrawString(this, stringBuffer, charOffsetShadow, adjustedView.X + 36.0f - 3.0f + 0.5f, bottom - 17.0f - 0.5f, FontShadowLayer,
-						Alignment::BottomLeft, Colorf(0.0f, 0.0f, 0.0f, 0.42f), 0.7f, 0.0f, 0.0f, 0.0f, 0.0f, 1.1f);
-					_smallFont->DrawString(this, stringBuffer, charOffset, adjustedView.X + 36.0f - 3.0f, bottom - 17.0f, FontLayer,
-						Alignment::BottomLeft, Font::RandomColor, 0.7f, 0.0f, 0.0f, 0.0f, 0.0f, 1.1f);
-
-					if (player->_lives < UINT8_MAX) {
-						stringBuffer[0] = 'x';
-						i32tos(player->_lives, stringBuffer + 1);
-						
-						_smallFont->DrawString(this, stringBuffer, charOffsetShadow, adjustedView.X + 36.0f - 4.0f, bottom - 1.0f + 1.0f, FontShadowLayer,
-							Alignment::BottomLeft, Colorf(0.0f, 0.0f, 0.0f, 0.32f));
-						_smallFont->DrawString(this, stringBuffer, charOffset, adjustedView.X + 36.0f - 4.0f, bottom - 1.0f, FontLayer,
-							Alignment::BottomLeft, Font::DefaultColor);
-					} else {
-						_smallFont->DrawString(this, "x\u221E", charOffsetShadow, adjustedView.X + 36.0f - 4.0f, bottom - 1.0f + 1.0f, FontShadowLayer,
-							Alignment::BottomLeft, Colorf(0.0f, 0.0f, 0.0f, 0.32f));
-						_smallFont->DrawString(this, "x\u221E", charOffset, adjustedView.X + 36.0f - 4.0f, bottom - 1.0f, FontLayer,
-							Alignment::BottomLeft, Font::DefaultColor);
-					}
-				} else {
-					_smallFont->DrawString(this, stringBuffer, charOffsetShadow, adjustedView.X + 36.0f - 3.0f - 0.5f, bottom - 4.0f + 0.5f, FontShadowLayer,
-						Alignment::BottomLeft, Colorf(0.0f, 0.0f, 0.0f, 0.42f), 0.7f, 0.0f, 0.0f, 0.0f, 0.0f, 1.1f);
-					_smallFont->DrawString(this, stringBuffer, charOffsetShadow, adjustedView.X + 36.0f - 3.0f + 0.5f, bottom - 4.0f - 0.5f, FontShadowLayer,
-						Alignment::BottomLeft, Colorf(0.0f, 0.0f, 0.0f, 0.42f), 0.7f, 0.0f, 0.0f, 0.0f, 0.0f, 1.1f);
-					_smallFont->DrawString(this, stringBuffer, charOffset, adjustedView.X + 36.0f - 3.0f, bottom - 4.0f, FontLayer,
-						Alignment::BottomLeft, Font::RandomColor, 0.7f, 0.0f, 0.0f, 0.0f, 0.0f, 1.1f);
-				}
-
-				// Top left
-				DrawElement("PickupFood"_s, -1, view.X + 3.0f, view.Y + 3.0f + 1.6f, ShadowLayer, Alignment::TopLeft, Colorf(0.0f, 0.0f, 0.0f, 0.4f));
-				DrawElement("PickupFood"_s, -1, view.X + 3.0f, view.Y + 3.0f, MainLayer, Alignment::TopLeft, Colorf::White);
-
-				snprintf(stringBuffer, countof(stringBuffer), "%08i", player->_score);
-				_smallFont->DrawString(this, stringBuffer, charOffsetShadow, view.X + 14.0f, view.Y + 5.0f + 1.0f, FontShadowLayer,
-					Alignment::TopLeft, Colorf(0.0f, 0.0f, 0.0f, 0.32f), 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.88f);
-				_smallFont->DrawString(this, stringBuffer, charOffset, view.X + 14.0f, view.Y + 5.0f, FontLayer,
-					Alignment::TopLeft, Font::DefaultColor, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.88f);
-			} else {
-				for (int32_t i = 0; i < player->_health; i++) {
-					DrawElement("Heart"_s, -1, view.X + view.W - 4.0f - (i * 16.0f), view.Y + 4.0f, MainLayer, Alignment::TopRight, Colorf::White);
-				}
-
-				if (player->_lives > 0) {
-					if (player->_lives < UINT8_MAX) {
-						stringBuffer[0] = 'x';
-						i32tos(player->_lives, stringBuffer + 1);
-						_smallFont->DrawString(this, stringBuffer, charOffsetShadow, adjustedView.X + 36.0f - 4.0f, bottom - 1.0f + 1.0f, FontShadowLayer,
-							Alignment::BottomLeft, Colorf(0.0f, 0.0f, 0.0f, 0.32f));
-						_smallFont->DrawString(this, stringBuffer, charOffset, adjustedView.X + 36.0f - 4.0f, bottom - 1.0f, FontLayer,
-							Alignment::BottomLeft, Font::DefaultColor);
-					} else {
-						_smallFont->DrawString(this, "x\u221E", charOffsetShadow, adjustedView.X + 36.0f - 4.0f, bottom - 1.0f + 1.0f, FontShadowLayer,
-							Alignment::BottomLeft, Colorf(0.0f, 0.0f, 0.0f, 0.32f));
-						_smallFont->DrawString(this, "x\u221E", charOffset, adjustedView.X + 36.0f - 4.0f, bottom - 1.0f, FontLayer,
-							Alignment::BottomLeft, Font::DefaultColor);
-					}
-				}
-
-				snprintf(stringBuffer, countof(stringBuffer), "%08i", player->_score);
-				_smallFont->DrawString(this, stringBuffer, charOffsetShadow, view.X + 4.0f, view.Y + 1.0f + 1.0f, FontShadowLayer,
-					Alignment::TopLeft, Colorf(0.0f, 0.0f, 0.0f, 0.32f), 1.2f, 0.0f, 0.0f, 0.0f, 0.0f, 0.88f);
-				_smallFont->DrawString(this, stringBuffer, charOffset, view.X + 4.0f, view.Y + 1.0f, FontLayer,
-					Alignment::TopLeft, Font::DefaultColor, 1.2f, 0.0f, 0.0f, 0.0f, 0.0f, 0.88f);
-			}
-
-			// Bottom right
-			if (player->_weaponAllowed && playerType != PlayerType::Frog) {
-				WeaponType weapon = player->_currentWeapon;
-				Vector2f pos = Vector2f(right - 40.0f, bottom - 2.0f);
-				StringView currentWeaponString = GetCurrentWeapon(player, weapon, pos);
-
-				StringView ammoCount;
-				if (player->_weaponAmmo[(int32_t)weapon] == UINT16_MAX) {
-					ammoCount = "x\u221E"_s;
-				} else {
-					stringBuffer[0] = 'x';
-					i32tos(player->_weaponAmmo[(int32_t)weapon] / 256, stringBuffer + 1);
-					ammoCount = stringBuffer;
-				}
-				_smallFont->DrawString(this, ammoCount, charOffsetShadow, right - 40.0f, bottom - 2.0f + 1.0f, FontShadowLayer,
-					Alignment::BottomLeft, Colorf(0.0f, 0.0f, 0.0f, 0.32f), 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.96f);
-				_smallFont->DrawString(this, ammoCount, charOffset, right - 40.0f, bottom - 2.0f, FontLayer,
-					Alignment::BottomLeft, Font::DefaultColor, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.96f);
-
-				auto it = _graphics->find(String::nullTerminatedView(currentWeaponString));
-				if (it != _graphics->end()) {
-					if (it->second.Base->FrameDimensions.Y < 20) {
-						pos.Y -= std::round((20 - it->second.Base->FrameDimensions.Y) * 0.5f);
-					}
-
-					DrawElement(currentWeaponString, -1, pos.X, pos.Y + 1.6f, ShadowLayer, Alignment::BottomRight, Colorf(0.0f, 0.0f, 0.0f, 0.4f));
-					DrawElement(currentWeaponString, -1, pos.X, pos.Y, MainLayer, Alignment::BottomRight, Colorf::White);
-				}
-			}
-
-			// Active Boss (health bar)
-			if (_levelHandler->_activeBoss != nullptr && _levelHandler->_activeBoss->GetMaxHealth() != INT32_MAX) {
-				constexpr float TransitionTime = 60.0f;
-				float y, alpha;
-				if (_activeBossTime < TransitionTime) {
-					y = (TransitionTime - _activeBossTime) / 8.0f;
-					y = bottom * 0.1f - (y * y);
-					alpha = std::max(_activeBossTime / TransitionTime, 0.0f);
-				} else {
-					y = bottom * 0.1f;
-					alpha = 1.0f;
-				}
-
-				float perc = 0.08f + 0.84f * _levelHandler->_activeBoss->GetHealth() / _levelHandler->_activeBoss->GetMaxHealth();
-
-				DrawElement("BossHealthBar"_s, 0, ViewSize.X * 0.5f, y + 2.0f, ShadowLayer, Alignment::Center, Colorf(0.0f, 0.0f, 0.0f, 0.1f * alpha));
-				DrawElement("BossHealthBar"_s, 0, ViewSize.X * 0.5f, y + 1.0f, ShadowLayer, Alignment::Center, Colorf(0.0f, 0.0f, 0.0f, 0.2f * alpha));
-
-				DrawElement("BossHealthBar"_s, 0, ViewSize.X * 0.5f, y, MainLayer, Alignment::Center, Colorf(1.0f, 1.0f, 1.0f, alpha));
-				DrawElementClipped("BossHealthBar"_s, 1, ViewSize.X * 0.5f, y, MainLayer + 2, Alignment::Center, Colorf(1.0f, 1.0f, 1.0f, alpha), perc, 1.0f);
-			}
-
-			// Misc
+			
+			DrawHealth(view, adjustedView, player);
+			DrawScore(view, player);
+			DrawWeaponAmmo(adjustedView, player);
+			DrawActiveBoss(adjustedView);
 			DrawLevelText(charOffset);
 			DrawCoins(charOffset);
 			DrawGems(charOffset);
 
 			DrawWeaponWheel(player);
-
-			// FPS
-			if (PreferencesCache::ShowPerformanceMetrics) {
-				i32tos((int32_t)std::round(theApplication().averageFps()), stringBuffer);
-				_smallFont->DrawString(this, stringBuffer, charOffset, view.W - 4.0f, view.Y + 2.0f, FontLayer,
-					Alignment::TopRight, Font::DefaultColor, 0.8f, 0.0f, 0.0f, 0.0f, 0.0f, 0.96f);
-			}
 
 			// Touch Controls
 			if (_touchButtonsTimer > 0.0f) {
@@ -354,6 +259,13 @@ namespace Jazz2::UI
 					DrawTexture(*button.Graphics->Base->TextureDiffuse, Vector2f(x, y), TouchButtonsLayer, Vector2f(button.Width, button.Height), Vector4f(1.0f, 0.0f, -1.0f, 1.0f), Colorf::White);
 				}
 			}
+		}
+
+		// FPS
+		if (PreferencesCache::ShowPerformanceMetrics) {
+			i32tos((int32_t)std::round(theApplication().frameTimer().averageFps()), stringBuffer);
+			_smallFont->DrawString(this, stringBuffer, charOffset, view.W - 4.0f, view.Y + 2.0f, FontLayer,
+				Alignment::TopRight, Font::DefaultColor, 0.8f, 0.0f, 0.0f, 0.0f, 0.0f, 0.96f);
 		}
 
 		if (_transitionState == TransitionState::FadeIn || _transitionState == TransitionState::FadeOut) {
@@ -524,6 +436,211 @@ namespace Jazz2::UI
 		}
 	}
 
+	void HUD::DrawHealth(const Rectf& view, const Rectf& adjustedView, Actors::Player* player)
+	{
+		PlayerType playerType = player->_playerType;
+
+		float bottom = adjustedView.Y + adjustedView.H;
+
+		AnimState playerIcon;
+		switch (playerType) {
+			default:
+			case PlayerType::Jazz: playerIcon = CharacterJazz; break;
+			case PlayerType::Spaz: playerIcon = CharacterSpaz; break;
+			case PlayerType::Lori: playerIcon = CharacterLori; break;
+			case PlayerType::Frog: playerIcon = CharacterFrog; break;
+		}
+
+#if defined(WITH_ANGELSCRIPT)
+		bool shouldDrawHealth = (_levelHandler->_scripts == nullptr || !_levelHandler->_scripts->OnDraw(this, Scripting::DrawType::Health));
+		bool shouldDrawLives = (_levelHandler->_scripts == nullptr || !_levelHandler->_scripts->OnDraw(this, Scripting::DrawType::Lives));
+#else
+		constexpr bool shouldDrawHealth = true;
+		constexpr bool shouldDrawLives = true;
+#endif
+		if (shouldDrawLives) {
+			DrawElement(playerIcon, -1, adjustedView.X + 38.0f, bottom - 1.0f + 1.6f, ShadowLayer, Alignment::BottomRight, Colorf(0.0f, 0.0f, 0.0f, 0.4f));
+			DrawElement(playerIcon, -1, adjustedView.X + 38.0f, bottom - 1.0f, MainLayer, Alignment::BottomRight, Colorf::White);
+		}
+
+		char stringBuffer[32];
+		std::int32_t charOffset = 0;
+		std::int32_t charOffsetShadow = 0;
+
+		if (_levelHandler->IsReforged()) {
+			for (std::int32_t i = 0; i < player->_health; i++) {
+				stringBuffer[i] = '|';
+			}
+			stringBuffer[player->_health] = '\0';
+
+			if (player->_lives > 0) {
+				if (shouldDrawHealth) {
+					_smallFont->DrawString(this, stringBuffer, charOffsetShadow, adjustedView.X + 36.0f - 3.0f - 0.5f, bottom - 17.0f + 0.5f, FontShadowLayer,
+						Alignment::BottomLeft, Colorf(0.0f, 0.0f, 0.0f, 0.42f), 0.7f, 0.0f, 0.0f, 0.0f, 0.0f, 1.1f);
+					_smallFont->DrawString(this, stringBuffer, charOffsetShadow, adjustedView.X + 36.0f - 3.0f + 0.5f, bottom - 17.0f - 0.5f, FontShadowLayer,
+						Alignment::BottomLeft, Colorf(0.0f, 0.0f, 0.0f, 0.42f), 0.7f, 0.0f, 0.0f, 0.0f, 0.0f, 1.1f);
+					_smallFont->DrawString(this, stringBuffer, charOffset, adjustedView.X + 36.0f - 3.0f, bottom - 17.0f, FontLayer,
+						Alignment::BottomLeft, Font::RandomColor, 0.7f, 0.0f, 0.0f, 0.0f, 0.0f, 1.1f);
+				}
+
+				if (shouldDrawLives) {
+					if (player->_lives < UINT8_MAX) {
+						stringBuffer[0] = 'x';
+						i32tos(player->_lives, stringBuffer + 1);
+
+						_smallFont->DrawString(this, stringBuffer, charOffsetShadow, adjustedView.X + 36.0f - 4.0f, bottom - 1.0f + 1.0f, FontShadowLayer,
+							Alignment::BottomLeft, Colorf(0.0f, 0.0f, 0.0f, 0.32f));
+						_smallFont->DrawString(this, stringBuffer, charOffset, adjustedView.X + 36.0f - 4.0f, bottom - 1.0f, FontLayer,
+							Alignment::BottomLeft, Font::DefaultColor);
+					} else {
+						_smallFont->DrawString(this, "x\u221E", charOffsetShadow, adjustedView.X + 36.0f - 4.0f, bottom - 1.0f + 1.0f, FontShadowLayer,
+							Alignment::BottomLeft, Colorf(0.0f, 0.0f, 0.0f, 0.32f));
+						_smallFont->DrawString(this, "x\u221E", charOffset, adjustedView.X + 36.0f - 4.0f, bottom - 1.0f, FontLayer,
+							Alignment::BottomLeft, Font::DefaultColor);
+					}
+				}
+			} else {
+				if (shouldDrawHealth) {
+					_smallFont->DrawString(this, stringBuffer, charOffsetShadow, adjustedView.X + 36.0f - 3.0f - 0.5f, bottom - 4.0f + 0.5f, FontShadowLayer,
+						Alignment::BottomLeft, Colorf(0.0f, 0.0f, 0.0f, 0.42f), 0.7f, 0.0f, 0.0f, 0.0f, 0.0f, 1.1f);
+					_smallFont->DrawString(this, stringBuffer, charOffsetShadow, adjustedView.X + 36.0f - 3.0f + 0.5f, bottom - 4.0f - 0.5f, FontShadowLayer,
+						Alignment::BottomLeft, Colorf(0.0f, 0.0f, 0.0f, 0.42f), 0.7f, 0.0f, 0.0f, 0.0f, 0.0f, 1.1f);
+					_smallFont->DrawString(this, stringBuffer, charOffset, adjustedView.X + 36.0f - 3.0f, bottom - 4.0f, FontLayer,
+						Alignment::BottomLeft, Font::RandomColor, 0.7f, 0.0f, 0.0f, 0.0f, 0.0f, 1.1f);
+				}
+			}
+		} else {
+			if (shouldDrawHealth) {
+				for (std::int32_t i = 0; i < player->_health; i++) {
+					DrawElement(Heart, -1, view.X + view.W - 4.0f - (i * 16.0f), view.Y + 4.0f, MainLayer, Alignment::TopRight, Colorf::White);
+				}
+			}
+
+			if (shouldDrawLives) {
+				if (player->_lives > 0) {
+					if (player->_lives < UINT8_MAX) {
+						stringBuffer[0] = 'x';
+						i32tos(player->_lives, stringBuffer + 1);
+						_smallFont->DrawString(this, stringBuffer, charOffsetShadow, adjustedView.X + 36.0f - 4.0f, bottom - 1.0f + 1.0f, FontShadowLayer,
+							Alignment::BottomLeft, Colorf(0.0f, 0.0f, 0.0f, 0.32f));
+						_smallFont->DrawString(this, stringBuffer, charOffset, adjustedView.X + 36.0f - 4.0f, bottom - 1.0f, FontLayer,
+							Alignment::BottomLeft, Font::DefaultColor);
+					} else {
+						_smallFont->DrawString(this, "x\u221E", charOffsetShadow, adjustedView.X + 36.0f - 4.0f, bottom - 1.0f + 1.0f, FontShadowLayer,
+							Alignment::BottomLeft, Colorf(0.0f, 0.0f, 0.0f, 0.32f));
+						_smallFont->DrawString(this, "x\u221E", charOffset, adjustedView.X + 36.0f - 4.0f, bottom - 1.0f, FontLayer,
+							Alignment::BottomLeft, Font::DefaultColor);
+					}
+				}
+			}
+		}
+	}
+
+	void HUD::DrawScore(const Rectf& view, Actors::Player* player)
+	{
+#if defined(WITH_ANGELSCRIPT)
+		if (_levelHandler->_scripts != nullptr && _levelHandler->_scripts->OnDraw(this, Scripting::DrawType::Score)) {
+			return;
+		}
+#endif
+
+		char stringBuffer[32];
+		std::int32_t charOffset = 0;
+		std::int32_t charOffsetShadow = 0;
+
+		if (_levelHandler->IsReforged()) {
+			DrawElement(PickupFood, -1, view.X + 3.0f, view.Y + 3.0f + 1.6f, ShadowLayer, Alignment::TopLeft, Colorf(0.0f, 0.0f, 0.0f, 0.4f));
+			DrawElement(PickupFood, -1, view.X + 3.0f, view.Y + 3.0f, MainLayer, Alignment::TopLeft, Colorf::White);
+
+			snprintf(stringBuffer, countof(stringBuffer), "%08i", player->_score);
+			_smallFont->DrawString(this, stringBuffer, charOffsetShadow, view.X + 14.0f, view.Y + 5.0f + 1.0f, FontShadowLayer,
+				Alignment::TopLeft, Colorf(0.0f, 0.0f, 0.0f, 0.32f), 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.88f);
+			_smallFont->DrawString(this, stringBuffer, charOffset, view.X + 14.0f, view.Y + 5.0f, FontLayer,
+				Alignment::TopLeft, Font::DefaultColor, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.88f);
+		} else {
+			snprintf(stringBuffer, countof(stringBuffer), "%08i", player->_score);
+			_smallFont->DrawString(this, stringBuffer, charOffsetShadow, view.X + 4.0f, view.Y + 1.0f + 1.0f, FontShadowLayer,
+				Alignment::TopLeft, Colorf(0.0f, 0.0f, 0.0f, 0.32f), 1.2f, 0.0f, 0.0f, 0.0f, 0.0f, 0.88f);
+			_smallFont->DrawString(this, stringBuffer, charOffset, view.X + 4.0f, view.Y + 1.0f, FontLayer,
+				Alignment::TopLeft, Font::DefaultColor, 1.2f, 0.0f, 0.0f, 0.0f, 0.0f, 0.88f);
+		}
+	}
+
+	void HUD::DrawWeaponAmmo(const Rectf& adjustedView, Actors::Player* player)
+	{
+#if defined(WITH_ANGELSCRIPT)
+		if (_levelHandler->_scripts != nullptr && _levelHandler->_scripts->OnDraw(this, Scripting::DrawType::WeaponAmmo)) {
+			return;
+		}
+#endif
+
+		if (!player->_weaponAllowed || player->_playerType == PlayerType::Frog) {
+			return;
+		}
+
+		float right = adjustedView.X + adjustedView.W;
+		float bottom = adjustedView.Y + adjustedView.H;
+
+		WeaponType weapon = player->_currentWeapon;
+		Vector2f pos = Vector2f(right - 40.0f, bottom - 2.0f);
+		AnimState currentWeaponAnim = GetCurrentWeapon(player, weapon, pos);
+
+		char stringBuffer[32];
+		StringView ammoCount;
+		if (player->_weaponAmmo[(int32_t)weapon] == UINT16_MAX) {
+			ammoCount = "x\u221E"_s;
+		} else {
+			stringBuffer[0] = 'x';
+			i32tos(player->_weaponAmmo[(int32_t)weapon] / 256, stringBuffer + 1);
+			ammoCount = stringBuffer;
+		}
+
+		std::int32_t charOffset = 0;
+		std::int32_t charOffsetShadow = 0;
+		_smallFont->DrawString(this, ammoCount, charOffsetShadow, right - 40.0f, bottom - 2.0f + 1.0f, FontShadowLayer,
+			Alignment::BottomLeft, Colorf(0.0f, 0.0f, 0.0f, 0.32f), 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.96f);
+		_smallFont->DrawString(this, ammoCount, charOffset, right - 40.0f, bottom - 2.0f, FontLayer,
+			Alignment::BottomLeft, Font::DefaultColor, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.96f);
+
+		auto* res = _metadata->FindAnimation(currentWeaponAnim);
+		if (res != nullptr) {
+			if (res->Base->FrameDimensions.Y < 20) {
+				pos.Y -= std::round((20 - res->Base->FrameDimensions.Y) * 0.5f);
+			}
+
+			DrawElement(currentWeaponAnim, -1, pos.X, pos.Y + 1.6f, ShadowLayer, Alignment::BottomRight, Colorf(0.0f, 0.0f, 0.0f, 0.4f));
+			DrawElement(currentWeaponAnim, -1, pos.X, pos.Y, MainLayer, Alignment::BottomRight, Colorf::White);
+		}
+	}
+
+	void HUD::DrawActiveBoss(const Rectf& adjustedView)
+	{
+		if (_levelHandler->_activeBoss == nullptr || _levelHandler->_activeBoss->GetMaxHealth() == INT32_MAX) {
+			return;
+		}
+
+		float bottom = adjustedView.Y + adjustedView.H;
+
+		constexpr float TransitionTime = 60.0f;
+		float y, alpha;
+		if (_activeBossTime < TransitionTime) {
+			y = (TransitionTime - _activeBossTime) / 8.0f;
+			y = bottom * 0.1f - (y * y);
+			alpha = std::max(_activeBossTime / TransitionTime, 0.0f);
+		} else {
+			y = bottom * 0.1f;
+			alpha = 1.0f;
+		}
+
+		float perc = 0.08f + 0.84f * _levelHandler->_activeBoss->GetHealth() / _levelHandler->_activeBoss->GetMaxHealth();
+
+		DrawElement(BossHealthBar, 0, ViewSize.X * 0.5f, y + 2.0f, ShadowLayer, Alignment::Center, Colorf(0.0f, 0.0f, 0.0f, 0.1f * alpha));
+		DrawElement(BossHealthBar, 0, ViewSize.X * 0.5f, y + 1.0f, ShadowLayer, Alignment::Center, Colorf(0.0f, 0.0f, 0.0f, 0.2f * alpha));
+
+		DrawElement(BossHealthBar, 0, ViewSize.X * 0.5f, y, MainLayer, Alignment::Center, Colorf(1.0f, 1.0f, 1.0f, alpha));
+		DrawElementClipped(BossHealthBar, 1, ViewSize.X * 0.5f, y, MainLayer + 2, Alignment::Center, Colorf(1.0f, 1.0f, 1.0f, alpha), perc, 1.0f);
+	}
+
 	void HUD::DrawLevelText(int32_t& charOffset)
 	{
 		constexpr float StillTime = 350.0f;
@@ -580,9 +697,9 @@ namespace Jazz2::UI
 			alpha = 1.0f;
 		}
 
-		DrawElement("PickupCoin"_s, -1, ViewSize.X * 0.5f, ViewSize.Y * 0.92f + 2.5f + offset, ShadowLayer,
+		DrawElement(PickupCoin, -1, ViewSize.X * 0.5f, ViewSize.Y * 0.92f + 2.5f + offset, ShadowLayer,
 			Alignment::Right, Colorf(0.0f, 0.0f, 0.0f, 0.2f * alpha), 0.8f, 0.8f);
-		DrawElement("PickupCoin"_s, -1, ViewSize.X * 0.5f, ViewSize.Y * 0.92f + offset, MainLayer,
+		DrawElement(PickupCoin, -1, ViewSize.X * 0.5f, ViewSize.Y * 0.92f + offset, MainLayer,
 			Alignment::Right, Colorf(1.0f, 1.0f, 1.0f, alpha * alpha), 0.8f, 0.8f);
 
 		char stringBuffer[32];
@@ -627,9 +744,9 @@ namespace Jazz2::UI
 		}
 
 		float animAlpha = alpha * alpha;
-		DrawElement("PickupGem"_s, -1, ViewSize.X * 0.5f, ViewSize.Y * 0.92f + 2.5f + offset, ShadowLayer, Alignment::Right,
+		DrawElement(PickupGem, -1, ViewSize.X * 0.5f, ViewSize.Y * 0.92f + 2.5f + offset, ShadowLayer, Alignment::Right,
 			Colorf(0.0f, 0.0f, 0.0f, 0.4f * animAlpha), 0.8f, 0.8f);
-		DrawElement("PickupGem"_s, -1, ViewSize.X * 0.5f, ViewSize.Y * 0.92f + offset, MainLayer, Alignment::Right,
+		DrawElement(PickupGem, -1, ViewSize.X * 0.5f, ViewSize.Y * 0.92f + offset, MainLayer, Alignment::Right,
 			Colorf(1.0f, 1.0f, 1.0f, 0.8f * animAlpha), 0.8f, 0.8f);
 
 		char stringBuffer[32];
@@ -649,18 +766,18 @@ namespace Jazz2::UI
 		}
 	}
 
-	void HUD::DrawElement(const StringView& name, int32_t frame, float x, float y, uint16_t z, Alignment align, const Colorf& color, float scaleX, float scaleY, bool additiveBlending, float angle)
+	void HUD::DrawElement(AnimState state, int32_t frame, float x, float y, uint16_t z, Alignment align, const Colorf& color, float scaleX, float scaleY, bool additiveBlending, float angle)
 	{
-		auto it = _graphics->find(String::nullTerminatedView(name));
-		if (it == _graphics->end()) {
+		auto* res = _metadata->FindAnimation(state);
+		if (res == nullptr) {
 			return;
 		}
 
 		if (frame < 0) {
-			frame = it->second.FrameOffset + ((int32_t)(AnimTime * it->second.FrameCount / it->second.AnimDuration) % it->second.FrameCount);
+			frame = res->FrameOffset + ((int32_t)(AnimTime * res->FrameCount / res->AnimDuration) % res->FrameCount);
 		}
 
-		GenericGraphicResource* base = it->second.Base;
+		GenericGraphicResource* base = res->Base;
 		Vector2f size = Vector2f(base->FrameDimensions.X * scaleX, base->FrameDimensions.Y * scaleY);
 		Vector2f adjustedPos = ApplyAlignment(align, Vector2f(x - ViewSize.X * 0.5f, ViewSize.Y * 0.5f - y), size);
 
@@ -680,18 +797,18 @@ namespace Jazz2::UI
 		DrawTexture(*base->TextureDiffuse.get(), adjustedPos, z, size, texCoords, color, additiveBlending, angle);
 	}
 
-	void HUD::DrawElementClipped(const StringView& name, int32_t frame, float x, float y, uint16_t z, Alignment align, const Colorf& color, float clipX, float clipY)
+	void HUD::DrawElementClipped(AnimState state, int32_t frame, float x, float y, uint16_t z, Alignment align, const Colorf& color, float clipX, float clipY)
 	{
-		auto it = _graphics->find(String::nullTerminatedView(name));
-		if (it == _graphics->end()) {
+		auto* res = _metadata->FindAnimation(state);
+		if (res == nullptr) {
 			return;
 		}
 
 		if (frame < 0) {
-			frame = it->second.FrameOffset + ((int32_t)(AnimTime * it->second.FrameCount / it->second.AnimDuration) % it->second.FrameCount);
+			frame = res->FrameOffset + ((int32_t)(AnimTime * res->FrameCount / res->AnimDuration) % res->FrameCount);
 		}
 
-		GenericGraphicResource* base = it->second.Base;
+		GenericGraphicResource* base = res->Base;
 		Vector2f size = Vector2f(base->FrameDimensions.X * clipX, base->FrameDimensions.Y * clipY);
 		Vector2f adjustedPos = ApplyAlignment(align, Vector2f(x - ViewSize.X * 0.5f - (1.0f - clipX) * 0.5f * base->FrameDimensions.X,
 			ViewSize.Y * 0.5f - y - (1.0f - clipY) * 0.5f * base->FrameDimensions.Y), size);
@@ -715,12 +832,12 @@ namespace Jazz2::UI
 		DrawTexture(*base->TextureDiffuse.get(), adjustedPos, z, size, texCoords, color);
 	}
 
-	StringView HUD::GetCurrentWeapon(Actors::Player* player, WeaponType weapon, Vector2f& offset)
+	AnimState HUD::GetCurrentWeapon(Actors::Player* player, WeaponType weapon, Vector2f& offset)
 	{
 		if (weapon == WeaponType::Toaster && player->_inWater) {
 			offset.X += 1;
 			offset.Y += 2;
-			return "WeaponToasterDisabled"_s;
+			return WeaponToasterDisabled;
 		} else if (weapon == WeaponType::Seeker) {
 			offset.X += 2;
 		} else if (weapon == WeaponType::TNT) {
@@ -734,44 +851,44 @@ namespace Jazz2::UI
 				default:
 				case WeaponType::Blaster:
 					if (player->_playerType == PlayerType::Spaz) {
-						return "WeaponPowerUpBlasterSpaz"_s;
+						return WeaponPowerUpBlasterSpaz;
 					} else if (player->_playerType == PlayerType::Lori) {
-						return "WeaponPowerUpBlasterLori"_s;
+						return WeaponPowerUpBlasterLori;
 					} else {
-						return "WeaponPowerUpBlasterJazz"_s;
+						return WeaponPowerUpBlasterJazz;
 					}
 
-				case WeaponType::Bouncer: return "WeaponPowerUpBouncer"_s;
-				case WeaponType::Freezer: return "WeaponPowerUpFreezer"_s;
-				case WeaponType::Seeker: return "WeaponPowerUpSeeker"_s;
-				case WeaponType::RF: return "WeaponPowerUpRF"_s;
-				case WeaponType::Toaster: return "WeaponPowerUpToaster"_s;
-				case WeaponType::TNT: return "WeaponPowerUpTNT"_s;
-				case WeaponType::Pepper: return "WeaponPowerUpPepper"_s;
-				case WeaponType::Electro: return "WeaponPowerUpElectro"_s;
-				case WeaponType::Thunderbolt: return "WeaponPowerUpThunderbolt"_s;
+				case WeaponType::Bouncer: return WeaponPowerUpBouncer;
+				case WeaponType::Freezer: return WeaponPowerUpFreezer;
+				case WeaponType::Seeker: return WeaponPowerUpSeeker;
+				case WeaponType::RF: return WeaponPowerUpRF;
+				case WeaponType::Toaster: return WeaponPowerUpToaster;
+				case WeaponType::TNT: return WeaponPowerUpTNT;
+				case WeaponType::Pepper: return WeaponPowerUpPepper;
+				case WeaponType::Electro: return WeaponPowerUpElectro;
+				case WeaponType::Thunderbolt: return WeaponPowerUpThunderbolt;
 			}
 		} else {
 			switch (weapon) {
 				default:
 				case WeaponType::Blaster:
 					if (player->_playerType == PlayerType::Spaz) {
-						return "WeaponBlasterSpaz"_s;
+						return WeaponBlasterSpaz;
 					} else if (player->_playerType == PlayerType::Lori) {
-						return "WeaponBlasterLori"_s;
+						return WeaponBlasterLori;
 					} else {
-						return "WeaponBlasterJazz"_s;
+						return WeaponBlasterJazz;
 					}
 
-				case WeaponType::Bouncer: return "WeaponBouncer"_s;
-				case WeaponType::Freezer: return "WeaponFreezer"_s;
-				case WeaponType::Seeker: return "WeaponSeeker"_s;
-				case WeaponType::RF: return "WeaponRF"_s;
-				case WeaponType::Toaster: return "WeaponToaster"_s;
-				case WeaponType::TNT: return "WeaponTNT"_s;
-				case WeaponType::Pepper: return "WeaponPepper"_s;
-				case WeaponType::Electro: return "WeaponElectro"_s;
-				case WeaponType::Thunderbolt: return "WeaponThunderbolt"_s;
+				case WeaponType::Bouncer: return WeaponBouncer;
+				case WeaponType::Freezer: return WeaponFreezer;
+				case WeaponType::Seeker: return WeaponSeeker;
+				case WeaponType::RF: return WeaponRF;
+				case WeaponType::Toaster: return WeaponToaster;
+				case WeaponType::TNT: return WeaponTNT;
+				case WeaponType::Pepper: return WeaponPepper;
+				case WeaponType::Electro: return WeaponElectro;
+				case WeaponType::Thunderbolt: return WeaponThunderbolt;
 			}
 		}
 	}
@@ -782,12 +899,12 @@ namespace Jazz2::UI
 			return;
 		}
 
-		auto it = _graphics->find(String::nullTerminatedView("WeaponWheel"_s));
-		if (it == _graphics->end()) {
+		auto* res = _metadata->FindAnimation(WeaponWheel);
+		if (res == nullptr) {
 			return;
 		}
 
-		Texture& lineTexture = *it->second.Base->TextureDiffuse.get();
+		Texture& lineTexture = *res->Base->TextureDiffuse.get();
 
 		if (!_levelHandler->_playerFrozenEnabled) {
 			_levelHandler->_playerFrozenEnabled = true;
@@ -841,7 +958,7 @@ namespace Jazz2::UI
 
 		float alphaInner = std::min(Vector2f(h, v).Length() * easing * 1.5f - 0.6f, 1.0f);
 		if (alphaInner > 0.0f) {
-			DrawElement("WeaponWheelInner"_s, -1, center.X, center.Y, MainLayer + 5, Alignment::Center, Colorf(1.0f, 1.0f, 1.0f, alphaInner), easing, easing, true, -requestedAngle);
+			DrawElement(WeaponWheelInner, -1, center.X, center.Y, MainLayer + 5, Alignment::Center, Colorf(1.0f, 1.0f, 1.0f, alphaInner), easing, easing, true, -requestedAngle);
 		}
 
 		float angle = -fPiOver2;
@@ -851,7 +968,7 @@ namespace Jazz2::UI
 				float y = sinf(angle) * distance;
 
 				Vector2f pos = Vector2f(center.X + x, center.Y + y);
-				StringView weapon = GetCurrentWeapon(player, (WeaponType)i, pos);
+				AnimState weapon = GetCurrentWeapon(player, (WeaponType)i, pos);
 				Colorf color2;
 				float scale;
 				bool isSelected = (j == requestedIndex);
@@ -864,7 +981,7 @@ namespace Jazz2::UI
 					scale = 0.9f;
 				}
 
-				DrawElement("WeaponWheelDim"_s, -1, pos.X, pos.Y, ShadowLayer - 10, Alignment::Center, Colorf(0.0f, 0.0f, 0.0f, alpha * 0.6f), 5.0f, 5.0f);
+				DrawElement(WeaponWheelDim, -1, pos.X, pos.Y, ShadowLayer - 10, Alignment::Center, Colorf(0.0f, 0.0f, 0.0f, alpha * 0.6f), 5.0f, 5.0f);
 				DrawElement(weapon, -1, pos.X, pos.Y, MainLayer + 10, Alignment::Center, Colorf(1.0f, 1.0f, 1.0f, isSelected ? alpha : alpha * 0.7f), scale, scale);
 
 				if (PreferencesCache::WeaponWheel == WeaponWheelStyle::EnabledWithAmmoCount) {
@@ -1046,7 +1163,7 @@ namespace Jazz2::UI
 		DrawRenderCommand(command);
 	}
 
-	HUD::TouchButtonInfo HUD::CreateTouchButton(PlayerActions action, const StringView& identifier, Alignment align, float x, float y, float w, float h)
+	HUD::TouchButtonInfo HUD::CreateTouchButton(PlayerActions action, AnimState state, Alignment align, float x, float y, float w, float h)
 	{
 		TouchButtonInfo info;
 		info.Action = action;
@@ -1054,14 +1171,7 @@ namespace Jazz2::UI
 		info.Top = y * LevelHandler::DefaultWidth * 0.5f;
 		info.Width = w * LevelHandler::DefaultWidth * 0.5f;
 		info.Height = h * LevelHandler::DefaultWidth * 0.5f;
-
-		if (!identifier.empty()) {
-			auto it = _graphics->find(String::nullTerminatedView(identifier));
-			info.Graphics = (it != _graphics->end() ? &it->second : nullptr);
-		} else {
-			info.Graphics = nullptr;
-		}
-
+		info.Graphics = (state != AnimState::Default ? _metadata->FindAnimation(state) : nullptr);
 		info.CurrentPointerId = -1;
 		info.Align = align;
 		return info;
@@ -1114,12 +1224,10 @@ namespace Jazz2::UI
 			return;
 		}
 
+		_rgbLightsAnim += 0.06f;
 		_rgbLightsTime += RgbLights::RefreshRate;
 
 		float health = std::clamp((float)player->_health / player->_maxHealth, 0.0f, 1.0f);
-		if (std::abs(health - _rgbHealthLast) < 0.001f && _rgbAmbientLight == _levelHandler->_ambientColor.W) {
-			return;
-		}
 
 		_rgbHealthLast = lerp(_rgbHealthLast, health, 0.2f);
 		_rgbAmbientLight = _levelHandler->_ambientColor.W;
@@ -1129,12 +1237,11 @@ namespace Jazz2::UI
 
 		Color* captionTile = _levelHandler->_tileMap->GetCaptionTile();
 		if (captionTile != nullptr) {
-			uint8_t colorMultiplier = (uint8_t)(0.2f * 255.0f * _rgbAmbientLight);
 			for (int32_t i = 0; i < countof(KeyLayout); i++) {
 				int32_t x = KeyLayout[i] % AURA_KEYBOARD_WIDTH;
 				int32_t y = KeyLayout[i] / AURA_KEYBOARD_WIDTH;
 				Color tileColor = captionTile[y * 32 + x];
-				colors[AURA_COLORS_LIMITED_SIZE + i] = Color(tileColor.R() * colorMultiplier / 255, tileColor.G() * colorMultiplier / 255, tileColor.B() * colorMultiplier / 255);
+				colors[AURA_COLORS_LIMITED_SIZE + i] = ApplyRgbGradientAlpha(tileColor, x, y, _rgbLightsAnim, _rgbAmbientLight);
 			}
 		}
 
@@ -1175,6 +1282,22 @@ namespace Jazz2::UI
 
 		rgbLights.Update(colors);
 #endif
+	}
+
+	Color HUD::ApplyRgbGradientAlpha(Color color, std::int32_t x, std::int32_t y, float animProgress, float ambientLight)
+	{
+		constexpr std::int32_t Width = AURA_KEYBOARD_WIDTH;
+		constexpr std::int32_t Height = AURA_KEYBOARD_HEIGHT;
+		constexpr float AnimationMult = 0.11f;
+		constexpr std::int32_t Spacing = 1;
+
+		float ambientLightLower = std::clamp(ambientLight, 0.0f, 0.5f) * 2.0f;
+		float ambientLightUpper = (std::clamp(ambientLight, 0.5f, 0.8f) - 0.5f) * 2.0f;
+
+		float distance = sqrtf(powf((float)(Width - x), 2) + powf((float)(Height - y), 2));
+		float value = cosf(AnimationMult * distance / (0.1f * Spacing) + animProgress);
+		float alpha = lerp(powf((value + 1) * 0.5f, 12.0f) * ambientLightLower, 0.8f, ambientLightUpper);
+		return Color(std::clamp((std::uint32_t)(color.R * alpha), 0u, 255u), std::clamp((std::uint32_t)(color.G * alpha), 0u, 255u), std::clamp((std::uint32_t)(color.B * alpha), 0u, 255u));
 	}
 
 	AuraLight HUD::KeyToAuraLight(KeySym key)

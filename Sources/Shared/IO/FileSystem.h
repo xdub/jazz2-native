@@ -95,15 +95,15 @@ namespace Death::IO
 			EnumerationOptions _options;
 
 			char _path[MaxPathLength];
-			char* _fileNamePart = nullptr;
+			char* _fileNamePart;
 #if defined(DEATH_TARGET_WINDOWS)
-			bool _firstFile = true;
-			void* _hFindFile = NULL;
+			bool _firstFile;
+			void* _hFindFile;
 #else
 #	if defined(DEATH_TARGET_ANDROID)
-			AAssetDir* _assetDir = nullptr;
+			AAssetDir* _assetDir;
 #	endif
-			DIR* _dirStream = nullptr;
+			DIR* _dirStream;
 #endif
 		};
 
@@ -154,6 +154,8 @@ namespace Death::IO
 		static Containers::String GetExternalStorage();
 #elif defined(DEATH_TARGET_UNIX)
 		static Containers::String GetLocalStorage();
+#elif defined(DEATH_TARGET_WINDOWS)
+		static Containers::String GetWindowsDirectory();
 #endif
 
 		/** @brief Returns true if the specified path is a directory */

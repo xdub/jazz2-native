@@ -1,14 +1,17 @@
 ﻿#include "TileMap.h"
 
 #include "../LevelHandler.h"
+#include "../PreferencesCache.h"
 
-#include "../../nCine/Graphics/RenderQueue.h"
+#include "../../nCine/tracy.h"
 #include "../../nCine/Base/Random.h"
+#include "../../nCine/Graphics/RenderQueue.h"
+#include "../../nCine/Graphics/RenderResources.h"
 
 namespace Jazz2::Tiles
 {
-	TileMap::TileMap(ITileMapOwner* owner, const StringView& tileSetPath, std::uint16_t captionTileId, PitType pitType, bool applyPalette)
-		: _owner(owner), _sprLayerIndex(-1), _pitType(pitType), _renderCommandsCount(0), _collapsingTimer(0.0f),
+	TileMap::TileMap(const StringView& tileSetPath, std::uint16_t captionTileId, bool applyPalette)
+		: _owner(nullptr), _sprLayerIndex(-1), _pitType(PitType::FallForever), _renderCommandsCount(0), _collapsingTimer(0.0f),
 			_triggerState(TriggerCount), _texturedBackgroundLayer(-1), _texturedBackgroundPass(this)
 	{
 		auto& tileSetPart = _tileSets.emplace_back();
@@ -23,7 +26,17 @@ namespace Jazz2::Tiles
 		}
 	}
 
-	Vector2i TileMap::Size()
+	TileMap::~TileMap()
+	{
+		TracyPlot("TileMap Render Commands", 0LL);
+	}
+
+	void TileMap::SetOwner(ITileMapOwner* owner)
+	{
+		_owner = owner;
+	}
+
+	Vector2i TileMap::GetSize() const
 	{
 		if (_sprLayerIndex == -1) {
 			return Vector2i();
@@ -32,7 +45,7 @@ namespace Jazz2::Tiles
 		return _layers[_sprLayerIndex].LayoutSize;
 	}
 
-	Vector2i TileMap::LevelBounds()
+	Vector2i TileMap::GetLevelBounds() const
 	{
 		if (_sprLayerIndex == -1) {
 			return Vector2i();
@@ -42,8 +55,20 @@ namespace Jazz2::Tiles
 		return Vector2i(layoutSize.X * TileSet::DefaultTileSize, layoutSize.Y * TileSet::DefaultTileSize);
 	}
 
+	PitType TileMap::GetPitType() const
+	{
+		return _pitType;
+	}
+
+	void TileMap::SetPitType(PitType value)
+	{
+		_pitType = value;
+	}
+
 	void TileMap::OnUpdate(float timeMult)
 	{
+		ZoneScopedC(0xA09359);
+
 		SceneNode::OnUpdate(timeMult);
 
 		// Update animated tiles
@@ -126,6 +151,8 @@ namespace Jazz2::Tiles
 
 	bool TileMap::OnDraw(RenderQueue& renderQueue)
 	{
+		ZoneScopedC(0xA09359);
+
 		SceneNode::OnDraw(renderQueue);
 
 		_renderCommandsCount = 0;
@@ -135,6 +162,8 @@ namespace Jazz2::Tiles
 		}
 
 		DrawDebris(renderQueue);
+
+		TracyPlot("TileMap Render Commands", static_cast<int64_t>(_renderCommandsCount));
 
 		return true;
 	}
@@ -333,20 +362,20 @@ namespace Jazz2::Tiles
 			for (std::int32_t x = hx1t; x <= hx2t; x++) {
 				LayerTile& tile = sprLayerLayout[y * layoutSize.X + x];
 
-				if (tile.DestructType == TileDestructType::Weapon && (params.DestructType & TileDestructType::Weapon) == TileDestructType::Weapon) {
+				if ((tile.DestructType & TileDestructType::Weapon) == TileDestructType::Weapon && (params.DestructType & TileDestructType::Weapon) == TileDestructType::Weapon) {
 					if (tile.DestructFrameIndex < (_animatedTiles[tile.DestructAnimation].Tiles.size() - 2) &&
 						((tile.TileParams & (1 << (std::uint16_t)params.UsedWeaponType)) != 0 || params.UsedWeaponType == WeaponType::Freezer)) {
 						return true;
 					}
-				} else if (tile.DestructType == TileDestructType::Special && (params.DestructType & TileDestructType::Special) == TileDestructType::Special) {
+				} else if ((tile.DestructType & TileDestructType::Special) == TileDestructType::Special && (params.DestructType & TileDestructType::Special) == TileDestructType::Special) {
 					if (tile.DestructFrameIndex < (_animatedTiles[tile.DestructAnimation].Tiles.size() - 2)) {
 						return true;
 					}
-				} else if (tile.DestructType == TileDestructType::Speed && (params.DestructType & TileDestructType::Speed) == TileDestructType::Speed) {
+				} else if ((tile.DestructType & TileDestructType::Speed) == TileDestructType::Speed && (params.DestructType & TileDestructType::Speed) == TileDestructType::Speed) {
 					if (tile.DestructFrameIndex < (_animatedTiles[tile.DestructAnimation].Tiles.size() - 2) && tile.TileParams <= params.Speed) {
 						return true;
 					}
-				} else if (tile.DestructType == TileDestructType::Collapse && (params.DestructType & TileDestructType::Collapse) == TileDestructType::Collapse) {
+				} else if ((tile.DestructType & TileDestructType::Collapse) == TileDestructType::Collapse && (params.DestructType & TileDestructType::Collapse) == TileDestructType::Collapse) {
 					bool found = false;
 					for (auto& current : _activeCollapsingTiles) {
 						if (current == Vector2i(x, y)) {
@@ -518,6 +547,8 @@ namespace Jazz2::Tiles
 
 	void TileMap::AdvanceCollapsingTileTimers(float timeMult)
 	{
+		ZoneScopedC(0xA09359);
+
 		_collapsingTimer -= timeMult;
 		if (_collapsingTimer > 0.0f) {
 			return;
@@ -547,6 +578,8 @@ namespace Jazz2::Tiles
 
 	void TileMap::DrawLayer(RenderQueue& renderQueue, TileMapLayer& layer)
 	{
+		ZoneScopedNC("Layer", 0xA09359);
+
 		if (!layer.Visible) {
 			return;
 		}
@@ -629,9 +662,6 @@ namespace Jazz2::Tiles
 					break;
 			}
 
-			float remX = fmodf(xt, (float)TileSet::DefaultTileSize);
-			float remY = fmodf(yt, (float)TileSet::DefaultTileSize);
-
 			// Calculate the index (on the layer map) of the first tile that needs to be drawn to the position determined earlier
 			std::int32_t tileX, tileY, tileAbsX, tileAbsY;
 
@@ -658,11 +688,13 @@ namespace Jazz2::Tiles
 				}
 			}
 
-			// update x1 and y1 with the remainder so that we start at the tile boundary
-			// minus 1 because indices are updated in the beginning of the loops
+			// Update x1 and y1 with the remainder, so that we start at the tile boundary
+			// minus 1, because indices are updated in the beginning of the loops
+			float remX = fmodf(xt, (float)TileSet::DefaultTileSize);
+			float remY = fmodf(yt, (float)TileSet::DefaultTileSize);
 			x1 -= remX - (float)TileSet::DefaultTileSize;
 			y1 -= remY - (float)TileSet::DefaultTileSize;
-
+			
 			// Save the tile Y at the left border so that we can roll back to it at the start of every row iteration
 			std::int32_t tileYs = tileY;
 
@@ -705,13 +737,14 @@ namespace Jazz2::Tiles
 					}
 
 					auto command = RentRenderCommand(layer.Description.RendererType);
+					command->setType(RenderCommand::CommandTypes::TileMap);
 					command->material().setBlendingFactors(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 					Vector2i texSize = tileSet->TextureDiffuse->size();
 					float texScaleX = TileSet::DefaultTileSize / float(texSize.X);
-					float texBiasX = (tileId % tileSet->TilesPerRow) * TileSet::DefaultTileSize / float(texSize.X);
+					float texBiasX = ((tileId % tileSet->TilesPerRow) * (TileSet::DefaultTileSize + 2.0f) + 1.0f) / float(texSize.X);
 					float texScaleY = TileSet::DefaultTileSize / float(texSize.Y);
-					float texBiasY = (tileId / tileSet->TilesPerRow) * TileSet::DefaultTileSize / float(texSize.Y);
+					float texBiasY = ((tileId / tileSet->TilesPerRow) * (TileSet::DefaultTileSize + 2.0f) + 1.0f) / float(texSize.Y);
 
 					// ToDo: Flip normal map somehow
 					if ((tile.Flags & LayerTileFlags::FlipX) == LayerTileFlags::FlipX) {
@@ -723,13 +756,6 @@ namespace Jazz2::Tiles
 						texScaleY *= -1;
 					}
 
-					if ((viewSize.X & 1) == 1) {
-						texBiasX += 0.5f / float(texSize.X);
-					}
-					if ((viewSize.Y & 1) == 1) {
-						texBiasY -= 0.5f / float(texSize.Y);
-					}
-
 					auto instanceBlock = command->material().uniformBlock(Material::InstanceBlockName);
 					instanceBlock->uniform(Material::TexRectUniformName)->setFloatValue(texScaleX, texBiasX, texScaleY, texBiasY);
 					instanceBlock->uniform(Material::SpriteSizeUniformName)->setFloatValue(TileSet::DefaultTileSize, TileSet::DefaultTileSize);
@@ -738,7 +764,15 @@ namespace Jazz2::Tiles
 					color.W *= tile.Alpha / 255.0f;
 					instanceBlock->uniform(Material::ColorUniformName)->setFloatVector(color.Data());
 
-					command->setTransformation(Matrix4x4f::Translation(std::floor(x2 + (TileSet::DefaultTileSize / 2)), std::floor(y2 + (TileSet::DefaultTileSize / 2)), 0.0f));
+					float x4 = x2 + (TileSet::DefaultTileSize / 2);
+					float y4 = y2 + (TileSet::DefaultTileSize / 2);
+
+					if (!PreferencesCache::UnalignedViewport) {
+						x4 = std::floor(x4);
+						y4 = std::floor(y4);
+					}
+
+					command->setTransformation(Matrix4x4f::Translation(x4, y4, 0.0f));
 					command->setLayer(layer.Description.Depth);
 					command->material().setTexture(*tileSet->TextureDiffuse);
 
@@ -770,6 +804,7 @@ namespace Jazz2::Tiles
 			_renderCommandsCount++;
 		} else {
 			command = _renderCommands.emplace_back(std::make_unique<RenderCommand>()).get();
+			_renderCommandsCount++;
 			command->material().setBlendingEnabled(true);
 		}
 
@@ -1024,9 +1059,9 @@ namespace Jazz2::Tiles
 
 		Vector2i texSize = tileSet->TextureDiffuse->size();
 		float texScaleX = float(QuarterSize) / float(texSize.X);
-		float texBiasX = ((tileId % tileSet->TilesPerRow) * TileSet::DefaultTileSize) / float(texSize.X);
+		float texBiasX = ((tileId % tileSet->TilesPerRow) * (TileSet::DefaultTileSize + 2.0f) + 1.0f) / float(texSize.X);
 		float texScaleY = float(QuarterSize) / float(texSize.Y);
-		float texBiasY = ((tileId / tileSet->TilesPerRow) * TileSet::DefaultTileSize) / float(texSize.Y);
+		float texBiasY = ((tileId / tileSet->TilesPerRow) * (TileSet::DefaultTileSize + 2.0f) + 1.0f) / float(texSize.Y);
 
 		// TODO: Implement flip here
 		/*if (isFlippedX) {
@@ -1148,6 +1183,8 @@ namespace Jazz2::Tiles
 
 	void TileMap::UpdateDebris(float timeMult)
 	{
+		ZoneScopedC(0xA09359);
+
 		std::int32_t size = (std::int32_t)_debrisList.size();
 		for (std::int32_t i = 0; i < size; i++) {
 			DestructibleDebris& debris = _debrisList[i];
@@ -1224,8 +1261,23 @@ namespace Jazz2::Tiles
 
 	void TileMap::DrawDebris(RenderQueue& renderQueue)
 	{
-		for (auto& debris : _debrisList) {
+		ZoneScopedNC("Debris", 0xA09359);
+
+		constexpr float MaxDebrisSize = 128.0f;
+
+		Rectf viewportRect = RenderResources::currentViewport()->cullingRect();
+		viewportRect.X -= MaxDebrisSize;
+		viewportRect.Y -= MaxDebrisSize;
+		viewportRect.W += MaxDebrisSize * 2.0f;
+		viewportRect.H += MaxDebrisSize * 2.0f;
+
+		for (const auto& debris : _debrisList) {
+			if (!viewportRect.Contains(debris.Pos)) {
+				continue;
+			}
+
 			auto command = RentRenderCommand(LayerRendererType::Default);
+			command->setType(RenderCommand::CommandTypes::Particle);
 
 			if ((debris.Flags & DebrisFlags::AdditiveBlending) == DebrisFlags::AdditiveBlending) {
 				command->material().setBlendingFactors(GL_SRC_ALPHA, GL_ONE);
@@ -1286,9 +1338,9 @@ namespace Jazz2::Tiles
 		Vector2i viewSize = _owner->GetViewSize();
 		Vector2f viewCenter = _owner->GetCameraPos();
 
-		auto command = &_texturedBackgroundPass._outputRenderCommand;
+		auto* command = &_texturedBackgroundPass._outputRenderCommand;
 
-		auto instanceBlock = command->material().uniformBlock(Material::InstanceBlockName);
+		auto* instanceBlock = command->material().uniformBlock(Material::InstanceBlockName);
 		instanceBlock->uniform(Material::TexRectUniformName)->setFloatValue(1.0f, 0.0f, 1.0f, 0.0f);
 		instanceBlock->uniform(Material::SpriteSizeUniformName)->setFloatValue((float)viewSize.X, (float)viewSize.Y);
 		instanceBlock->uniform(Material::ColorUniformName)->setFloatVector(Colorf(1.0f, 1.0f, 1.0f, 1.0f).Data());
@@ -1417,9 +1469,9 @@ namespace Jazz2::Tiles
 
 				Vector2i texSize = tileSet->TextureDiffuse->size();
 				float texScaleX = TileSet::DefaultTileSize / float(texSize.X);
-				float texBiasX = (tileId % tileSet->TilesPerRow) * TileSet::DefaultTileSize / float(texSize.X);
+				float texBiasX = ((tileId % tileSet->TilesPerRow) * (TileSet::DefaultTileSize + 2.0f) + 1.0f) / float(texSize.X);
 				float texScaleY = TileSet::DefaultTileSize / float(texSize.Y);
-				float texBiasY = (tileId / tileSet->TilesPerRow) * TileSet::DefaultTileSize / float(texSize.Y);
+				float texBiasY = ((tileId / tileSet->TilesPerRow) * (TileSet::DefaultTileSize + 2.0f) + 1.0f) / float(texSize.Y);
 
 				// TODO: Flip normal map somehow
 				if ((tile.Flags & LayerTileFlags::FlipX) == LayerTileFlags::FlipX) {
@@ -1429,13 +1481,6 @@ namespace Jazz2::Tiles
 				if ((tile.Flags & LayerTileFlags::FlipY) == LayerTileFlags::FlipY) {
 					texBiasY += texScaleY;
 					texScaleY *= -1;
-				}
-
-				if ((targetSize.X & 1) == 1) {
-					texBiasX += 0.5f / float(texSize.X);
-				}
-				if ((targetSize.Y & 1) == 1) {
-					texBiasY -= 0.5f / float(texSize.Y);
 				}
 
 				auto instanceBlock = command->material().uniformBlock(Material::InstanceBlockName);

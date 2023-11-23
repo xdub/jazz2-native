@@ -1,5 +1,6 @@
 ﻿#pragma once
 
+#include "../../AnimState.h"
 #include "../../ContentResolver.h"
 #include "../../LevelInitialization.h"
 #include "../../PlayerActions.h"
@@ -33,16 +34,16 @@ namespace Jazz2::UI::Menu
 		virtual ~IMenuContainer() { }
 
 		template<typename T, typename... Params>
-		void SwitchToSection(Params&&... args)
+		T* SwitchToSection(Params&&... args)
 		{
-			SwitchToSectionDirect(std::make_unique<T>(std::forward<Params>(args)...));
+			return static_cast<T*>(SwitchToSectionDirect(std::make_unique<T>(std::forward<Params>(args)...)));
 		}
 
-		virtual void SwitchToSectionDirect(std::unique_ptr<MenuSection> section) = 0;
+		virtual MenuSection* SwitchToSectionDirect(std::unique_ptr<MenuSection> section) = 0;
 		virtual void LeaveSection() = 0;
 		virtual void ChangeLevel(Jazz2::LevelInitialization&& levelInit) = 0;
 #if defined(WITH_MULTIPLAYER)
-		virtual bool ConnectToServer(const char* address, std::uint16_t port) = 0;
+		virtual bool ConnectToServer(const StringView& address, std::uint16_t port) = 0;
 		virtual bool CreateServer(std::uint16_t port) = 0;
 #endif
 		virtual void ApplyPreferencesChanges(ChangedPreferencesType type) = 0;
@@ -50,9 +51,9 @@ namespace Jazz2::UI::Menu
 		virtual bool ActionHit(PlayerActions action) = 0;
 
 		virtual Vector2i GetViewSize() = 0;
-		virtual void DrawElement(const StringView& name, int32_t frame, float x, float y, uint16_t z, Alignment align,
+		virtual void DrawElement(AnimState state, int32_t frame, float x, float y, uint16_t z, Alignment align,
 			const Colorf& color, float scaleX = 1.0f, float scaleY = 1.0f, bool additiveBlending = false) = 0;
-		virtual void DrawElement(const StringView& name, float x, float y, uint16_t z, Alignment align,
+		virtual void DrawElement(AnimState state, float x, float y, uint16_t z, Alignment align,
 			const Colorf& color, const Vector2f& size, const Vector4f& texCoords) = 0;
 		virtual void DrawSolid(float x, float y, uint16_t z, Alignment align, const Vector2f& size, const Colorf& color, bool additiveBlending = false) = 0;
 		virtual Vector2f MeasureString(const StringView& text, float scale = 1.0f, float charSpacing = 1.0f, float lineSpacing = 1.0f) = 0;

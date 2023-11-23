@@ -1,5 +1,13 @@
 ﻿#include "../Common.h"
 
+#if defined(DEATH_TARGET_WINDOWS)
+extern "C"
+{
+	_declspec(dllexport) unsigned long int NvOptimusEnablement = 0x00000001;
+	_declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 0x00000001;
+};
+#endif
+
 #if defined(DEATH_TARGET_WINDOWS) && !defined(CMAKE_BUILD)
 #	pragma comment(lib, "opengl32.lib")
 #	if defined(_M_X64)
@@ -33,13 +41,6 @@
 #	else
 #		error Unsupported architecture
 #	endif
-
-extern "C"
-{
-	_declspec(dllexport) unsigned long int NvOptimusEnablement = 0x00000001;
-	_declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
-};
-
 #endif
 
 #include "Application.h"
@@ -74,6 +75,11 @@ extern "C"
 
 #if defined(WITH_LUA)
 #	include "LuaStatistics.h"
+#endif
+
+#if defined(WITH_IMGUI)
+#	include "Graphics/ImGuiDrawing.h"
+#	include "Graphics/ImGuiDebugOverlay.h"
 #endif
 
 #if defined(WITH_RENDERDOC)
@@ -346,7 +352,9 @@ void DEATH_TRACE(TraceLevel level, const char* fmt, ...)
 		logEntry[length++] = '\n';
 		logEntry[length] = '\0';
 
-		::OutputDebugString(Death::Utf8::ToUtf16(logEntry));
+		wchar_t logEntryW[MaxEntryLength];
+		Death::Utf8::ToUtf16(logEntryW, logEntry, length);
+		::OutputDebugString(logEntryW);
 #		endif
 	}
 #	endif
@@ -356,11 +364,11 @@ void DEATH_TRACE(TraceLevel level, const char* fmt, ...)
 	uint32_t colorTracy;
 	// clang-format off
 	switch (level) {
-		case TraceLevel::Fatal:		colorTracy = 0xec3e40; break;
-		case TraceLevel::Error:		colorTracy = 0xff9b2b; break;
-		case TraceLevel::Warning:	colorTracy = 0xf5d800; break;
-		case TraceLevel::Info:		colorTracy = 0x01a46d; break;
-		default:					colorTracy = 0x377fc7; break;
+		case TraceLevel::Fatal:		colorTracy = 0xEC3E40; break;
+		case TraceLevel::Error:		colorTracy = 0xD85050; break;
+		case TraceLevel::Warning:	colorTracy = 0xEBC77A; break;
+		case TraceLevel::Info:		colorTracy = 0xD2D2D2; break;
+		default:					colorTracy = 0x969696; break;
 	}
 	// clang-format on
 
@@ -384,6 +392,13 @@ namespace nCine
 
 	Application::~Application() = default;
 
+#if defined(WITH_IMGUI)
+	Application::GuiSettings::GuiSettings()
+		: imguiLayer(0xffff - 1024), imguiViewport(nullptr)
+	{
+	}
+#endif
+
 	Viewport& Application::screenViewport()
 	{
 		return *screenViewport_;
@@ -394,14 +409,14 @@ namespace nCine
 		return frameTimer_->totalNumberFrames();
 	}
 
-	float Application::averageFps() const
-	{
-		return frameTimer_->averageFps();
-	}
-
 	float Application::timeMult() const
 	{
 		return frameTimer_->timeMult();
+	}
+
+	const FrameTimer& Application::frameTimer() const
+	{
+		return *frameTimer_;
 	}
 
 	void Application::resizeScreenViewport(int width, int height)
@@ -418,7 +433,7 @@ namespace nCine
 	void Application::initCommon()
 	{
 		TracyGpuContext;
-		ZoneScoped;
+		ZoneScopedC(0x81A861);
 		// This timestamp is needed to initialize random number generator
 		profileStartTime_ = TimeStamp::now();
 
@@ -486,6 +501,15 @@ namespace nCine
 			screenViewport_->setRootNode(rootNode_.get());
 		}
 
+#if defined(WITH_IMGUI)
+		imguiDrawing_ = std::make_unique<ImGuiDrawing>(appCfg_.withScenegraph);
+
+		// Debug overlay is available even when scenegraph is not
+		if (appCfg_.withDebugOverlay) {
+			debugOverlay_ = std::make_unique<ImGuiDebugOverlay>(0.5f);	// 2 updates per second
+		}
+#endif
+
 		// Initialization of the static random generator seeds
 		Random().Initialize(static_cast<uint64_t>(TimeStamp::now().ticks()), static_cast<uint64_t>(profileStartTime_.ticks()));
 
@@ -494,7 +518,7 @@ namespace nCine
 		timings_[(int)Timings::InitCommon] = profileStartTime_.secondsSince();
 #endif
 		{
-			ZoneScopedN("onInit");
+			ZoneScopedNC("onInit", 0x81A861);
 #if defined(NCINE_PROFILING)
 			profileStartTime_ = TimeStamp::now();
 #endif
@@ -504,6 +528,10 @@ namespace nCine
 #endif
 			LOGI("IAppEventHandler::OnInit() invoked");
 		}
+
+#if defined(WITH_IMGUI)
+		imguiDrawing_->buildFonts();
+#endif
 
 		// Swapping frame now for a cleaner API trace capture when debugging
 		gfxDevice_->update();
@@ -515,12 +543,24 @@ namespace nCine
 	{
 		frameTimer_->addFrame();
 
+#if defined(WITH_IMGUI)
+		{
+			ZoneScopedN("ImGui newFrame");
+#	if defined(NCINE_PROFILING)
+			profileStartTime_ = TimeStamp::now();
+#	endif
+			imguiDrawing_->newFrame();
+#	if defined(NCINE_PROFILING)
+			timings_[(int)Timings::ImGui] = profileStartTime_.secondsSince();
+#	endif
+		}
+#endif
 #if defined(WITH_LUA)
 		LuaStatistics::update();
 #endif
 
 		{
-			ZoneScopedN("OnFrameStart");
+			ZoneScopedNC("OnFrameStart", 0x81A861);
 #if defined(NCINE_PROFILING)
 			profileStartTime_ = TimeStamp::now();
 #endif
@@ -530,10 +570,16 @@ namespace nCine
 #endif
 		}
 
+#if defined(WITH_IMGUI)
+		if (debugOverlay_ != nullptr) {
+			debugOverlay_->update();
+		}
+#endif
+
 		if (appCfg_.withScenegraph) {
-			ZoneScopedN("SceneGraph");
+			ZoneScopedNC("SceneGraph", 0x81A861);
 			{
-				ZoneScopedN("Update");
+				ZoneScopedNC("Update", 0x81A861);
 #if defined(NCINE_PROFILING)
 				profileStartTime_ = TimeStamp::now();
 #endif
@@ -544,7 +590,7 @@ namespace nCine
 			}
 
 			{
-				ZoneScopedN("OnPostUpdate");
+				ZoneScopedNC("OnPostUpdate", 0x81A861);
 #if defined(NCINE_PROFILING)
 				profileStartTime_ = TimeStamp::now();
 #endif
@@ -555,7 +601,7 @@ namespace nCine
 			}
 
 			{
-				ZoneScopedN("Visit");
+				ZoneScopedNC("Visit", 0x81A861);
 #if defined(NCINE_PROFILING)
 				profileStartTime_ = TimeStamp::now();
 #endif
@@ -565,8 +611,22 @@ namespace nCine
 #endif
 			}
 
+#if defined(WITH_IMGUI)
 			{
-				ZoneScopedN("Draw");
+				ZoneScopedN("ImGui endFrame");
+#	if defined(NCINE_PROFILING)
+				profileStartTime_ = TimeStamp::now();
+#	endif
+				RenderQueue* imguiRenderQueue = (guiSettings_.imguiViewport ? guiSettings_.imguiViewport->renderQueue_.get() : screenViewport_->renderQueue_.get());
+				imguiDrawing_->endFrame(*imguiRenderQueue);
+#	if defined(NCINE_PROFILING)
+				timings_[(int)Timings::ImGui] += profileStartTime_.secondsSince();
+#	endif
+			}
+#endif
+
+			{
+				ZoneScopedNC("Draw", 0x81A861);
 #if defined(NCINE_PROFILING)
 				profileStartTime_ = TimeStamp::now();
 #endif
@@ -576,6 +636,19 @@ namespace nCine
 				timings_[(int)Timings::Draw] = profileStartTime_.secondsSince();
 #endif
 			}
+		} else {
+#if defined(WITH_IMGUI)
+			{
+				ZoneScopedN("ImGui endFrame");
+#	if defined(NCINE_PROFILING)
+				profileStartTime_ = TimeStamp::now();
+#	endif
+				imguiDrawing_->endFrame();
+#	if defined(NCINE_PROFILING)
+				timings_[(int)Timings::ImGui] += profileStartTime_.secondsSince();
+#	endif
+			}
+#endif
 		}
 
 		{
@@ -583,7 +656,7 @@ namespace nCine
 		}
 
 		{
-			ZoneScopedN("OnFrameEnd");
+			ZoneScopedNC("OnFrameEnd", 0x81A861);
 #if defined(NCINE_PROFILING)
 			profileStartTime_ = TimeStamp::now();
 #endif
@@ -593,15 +666,22 @@ namespace nCine
 #endif
 		}
 
+#if defined(WITH_IMGUI)
+		if (debugOverlay_ != nullptr) {
+			debugOverlay_->updateFrameTimings();
+		}
+#endif
+
 		gfxDevice_->update();
 		FrameMark;
 		TracyGpuCollect;
 
 		if (appCfg_.frameLimit > 0) {
+			FrameMarkStart("Frame limiting");
 #if defined(DEATH_TARGET_WINDOWS)
 			const std::uint64_t clockFreq = static_cast<std::uint64_t>(clock().frequency());
 			const std::uint64_t frameTimeDuration = (clockFreq / static_cast<std::uint64_t>(appCfg_.frameLimit));
-			const std::uint64_t remainingTime = frameTimeDuration - frameTimer_->frameIntervalAsTicks();
+			const std::int64_t remainingTime = (std::int64_t)frameTimeDuration - (std::int64_t)frameTimer_->frameDurationAsTicks();
 			if (remainingTime > 0) {
 				LARGE_INTEGER dueTime;
 				dueTime.QuadPart = -(LONGLONG)((10000000ULL * remainingTime) / clockFreq);
@@ -611,21 +691,26 @@ namespace nCine
 				::CancelWaitableTimer(_waitableTimer);
 			}
 #else
-			const float frameTimeDuration = 1.0f / static_cast<float>(appCfg_.frameLimit);
-			while (frameTimer_->frameInterval() < frameTimeDuration) {
+			const float frameDuration = 1.0f / static_cast<float>(appCfg_.frameLimit);
+			while (frameTimer_->frameDuration() < frameDuration) {
 				Timer::sleep(0);
 			}
 #endif
+			FrameMarkEnd("Frame limiting");
 		}
 	}
 
 	void Application::shutdownCommon()
 	{
-		ZoneScoped;
+		ZoneScopedC(0x81A861);
 		appEventHandler_->OnShutdown();
 		LOGI("IAppEventHandler::OnShutdown() invoked");
 		appEventHandler_.reset();
 
+#if defined(WITH_IMGUI)
+		imguiDrawing_.reset(nullptr);
+		debugOverlay_.reset(nullptr);
+#endif
 #if defined(WITH_RENDERDOC)
 		RenderDocCapture::removeHooks();
 #endif

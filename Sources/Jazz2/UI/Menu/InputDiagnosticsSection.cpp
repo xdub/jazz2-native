@@ -1,9 +1,12 @@
 ﻿#include "InputDiagnosticsSection.h"
+#include "MenuResources.h"
 #include "../ControlScheme.h"
 
 #include "../../../nCine/Application.h"
 
 #include <Utf8.h>
+
+using namespace Jazz2::UI::Menu::Resources;
 
 namespace Jazz2::UI::Menu
 {
@@ -26,17 +29,29 @@ namespace Jazz2::UI::Menu
 
 		auto& input = theApplication().inputManager();
 
+		bool shouldExit = false;
 		const JoyMappedState* joyStates[ControlScheme::MaxConnectedGamepads];
 		int32_t jc = 0;
 		for (int32_t i = 0; i < IInputManager::MaxNumJoysticks && jc < countof(joyStates); i++) {
 			if (input.isJoyMapped(i)) {
-				joyStates[jc++] = &input.joyMappedState(i);
+				joyStates[jc] = &input.joyMappedState(i);
+				if (joyStates[jc]->isButtonPressed(ButtonName::START) && joyStates[jc]->isButtonPressed(ButtonName::BACK)) {
+					shouldExit = true;
+				}
+
+				jc++;
 			}
 		}
 		_itemCount = jc;
 
 		if (_itemCount > 0 && _selectedIndex >= _itemCount) {
 			_selectedIndex = _itemCount - 1;
+		}
+
+		if (shouldExit) {
+			_root->PlaySfx("MenuSelect"_s, 0.5f);
+			_root->LeaveSection();
+			return;
 		}
 
 		OnHandleInput();
@@ -48,9 +63,9 @@ namespace Jazz2::UI::Menu
 		Vector2f center = Vector2f(viewSize.X * 0.5f, viewSize.Y * 0.5f);
 
 		constexpr float TopLine = 131.0f;
-		_root->DrawElement("MenuDim"_s, center.X, TopLine - 2.0f, IMenuContainer::BackgroundLayer,
+		_root->DrawElement(MenuDim, center.X, TopLine - 2.0f, IMenuContainer::BackgroundLayer,
 			Alignment::Top, Colorf::Black, Vector2f(680.0f, 200.0f), Vector4f(1.0f, 0.0f, 0.7f, 0.0f));
-		_root->DrawElement("MenuLine"_s, 0, center.X, TopLine, IMenuContainer::MainLayer, Alignment::Center, Colorf::White, 1.6f);
+		_root->DrawElement(MenuLine, 0, center.X, TopLine, IMenuContainer::MainLayer, Alignment::Center, Colorf::White, 1.6f);
 
 		int32_t charOffset = 0;
 		_root->DrawStringShadow(_("Input Diagnostics"), charOffset, center.X, TopLine - 21.0f, IMenuContainer::FontLayer,
@@ -98,7 +113,7 @@ namespace Jazz2::UI::Menu
 		float x = center.X * 0.4f + xMultiplier - easing * xMultiplier;
 		float size = 0.85f + easing * 0.12f;
 
-		_root->DrawElement("MenuGlow"_s, 0, center.X * 0.4f + (joyNameStringLength + 3) * 3.2f, TopLine + 20.0f, IMenuContainer::MainLayer, Alignment::Center, Colorf(1.0f, 1.0f, 1.0f, 0.4f * size), 0.6f * (joyNameStringLength + 3), 6.0f, true);
+		_root->DrawElement(MenuGlow, 0, center.X * 0.4f + (joyNameStringLength + 3) * 3.2f, TopLine + 20.0f, IMenuContainer::MainLayer, Alignment::Center, Colorf(1.0f, 1.0f, 1.0f, 0.4f * size), 0.6f * (joyNameStringLength + 3), 6.0f, true);
 
 		_root->DrawStringShadow(buffer, charOffset, x, TopLine + 20.0f, IMenuContainer::FontLayer,
 			Alignment::Left, Font::RandomColor, size, 0.4f, 0.6f, 0.6f, 0.6f, 0.88f);
@@ -197,6 +212,13 @@ namespace Jazz2::UI::Menu
 				sy += 15.0f;
 			}
 		}
+
+		_root->DrawElement(GamepadBack, 0, center.X - 37.0f, viewSize.Y - 18.0f, IMenuContainer::MainLayer, Alignment::Center, Colorf::White, 0.9f, 0.9f);
+		_root->DrawStringShadow("+"_s, charOffset, center.X - 28.0f, viewSize.Y - 18.0f, IMenuContainer::FontLayer,
+			Alignment::Left, Font::DefaultColor, 0.6f, 0.4f, 0.0f, 1.0f, 0.6f, 0.88f);
+		_root->DrawElement(GamepadStart, 0, center.X - 11.0f, viewSize.Y - 18.0f, IMenuContainer::MainLayer, Alignment::Center, Colorf::White, 0.9f, 0.9f);
+		_root->DrawStringShadow("to exit"_s, charOffset, center.X, viewSize.Y - 17.0f, IMenuContainer::FontLayer,
+			Alignment::Left, Font::DefaultColor, 0.8f, 0.4f, 1.2f, 1.2f, 0.46f, 0.8f);
 	}
 
 	void InputDiagnosticsSection::OnHandleInput()

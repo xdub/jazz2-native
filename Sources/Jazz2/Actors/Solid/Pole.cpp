@@ -5,6 +5,8 @@
 #include "../Weapons/Thunderbolt.h"
 #include "../Weapons/TNT.h"
 
+using namespace Jazz2::Tiles;
+
 namespace Jazz2::Actors::Solid
 {
 	Pole::Pole()
@@ -57,7 +59,7 @@ namespace Jazz2::Actors::Solid
 			SetState(ActorState::IsSolidObject, true);
 		}
 
-		SetAnimation("Pole"_s);
+		SetAnimation(AnimState::Default);
 
 		async_return true;
 	}

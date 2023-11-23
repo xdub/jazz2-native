@@ -9,8 +9,10 @@
 namespace nCine
 {
 	RenderCommand::RenderCommand(CommandTypes profilingType)
-		: materialSortKey_(0), layer_(0), numInstances_(0), batchSize_(0), transformationCommitted_(false),
-			profilingType_(profilingType), modelMatrix_(Matrix4x4f::Identity)
+		: materialSortKey_(0), layer_(0), numInstances_(0), batchSize_(0), transformationCommitted_(false), modelMatrix_(Matrix4x4f::Identity)
+#if defined(NCINE_PROFILING)
+			, profilingType_(profilingType)
+#endif
 	{
 	}
 
@@ -23,12 +25,12 @@ namespace nCine
 	{
 		const uint64_t upper = static_cast<uint64_t>(layerSortKey()) << 32;
 		const uint32_t lower = material_.sortKey();
-		materialSortKey_ = upper + lower;
+		materialSortKey_ = upper | lower;
 	}
 
 	void RenderCommand::issue()
 	{
-		ZoneScoped;
+		ZoneScopedC(0x81A861);
 
 		if (geometry_.numVertices_ == 0 && geometry_.numIndices_ == 0) {
 			return;
@@ -73,7 +75,7 @@ namespace nCine
 			return;
 		}
 
-		ZoneScoped;
+		ZoneScopedC(0x81A861);
 
 		const Camera::ProjectionValues cameraValues = RenderResources::currentCamera()->projectionValues();
 		modelMatrix_[3][2] = calculateDepth(layer_, cameraValues.near, cameraValues.far);
@@ -84,7 +86,7 @@ namespace nCine
 				? instanceBlock->uniform(Material::ModelMatrixUniformName)
 				: material_.uniform(Material::ModelMatrixUniformName);
 			if (matrixUniform) {
-				ZoneScopedN("Set model matrix");
+				//ZoneScopedNC("Set model matrix", 0x81A861);
 				matrixUniform->setFloatVector(modelMatrix_.Data());
 			}
 		}
@@ -94,7 +96,7 @@ namespace nCine
 
 	void RenderCommand::commitCameraTransformation()
 	{
-		ZoneScoped;
+		ZoneScopedC(0x81A861);
 
 		RenderResources::CameraUniformData* cameraUniformData = RenderResources::findCameraUniformData(material_.shaderProgram_);
 		if (cameraUniformData == nullptr) {

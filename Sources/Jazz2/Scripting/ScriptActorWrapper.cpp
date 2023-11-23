@@ -16,8 +16,9 @@
 #include "../../nCine/Base/FrameTimer.h"
 #include "../../nCine/Base/Random.h"
 
-using namespace nCine;
 using namespace Jazz2::Actors;
+using namespace Jazz2::Tiles;
+using namespace nCine;
 
 #define AsClassName "ActorBase"
 #define AsClassNameInternal "ActorBaseInternal"
@@ -25,11 +26,7 @@ using namespace Jazz2::Actors;
 namespace Jazz2::Scripting
 {
 	ScriptActorWrapper::ScriptActorWrapper(LevelScriptLoader* levelScripts, asIScriptObject* obj)
-		:
-		_levelScripts(levelScripts),
-		_obj(obj),
-		_refCount(1),
-		_scoreValue(0)
+		: _levelScripts(levelScripts), _obj(obj), _refCount(1), _scoreValue(0)
 	{
 		_isDead = obj->GetWeakRefFlag();
 		_isDead->AddRef();
@@ -126,7 +123,6 @@ shared abstract class )" AsClassName R"(
 
 	void RequestMetadata(const string &in path) { _obj.RequestMetadata(path); }
 	void PlaySfx(const string &in identifier, float gain = 1.0, float pitch = 1.0) { _obj.PlaySfx(identifier, gain, pitch); }
-	void SetAnimation(const string &in identifier) { _obj.SetAnimation(identifier); }
 	void SetAnimation(int state) { _obj.SetAnimation(state); }
 }
 
@@ -170,7 +166,6 @@ shared abstract class CollectibleBase : )" AsClassName R"(
 		r = engine->RegisterObjectMethod(AsClassNameInternal, "void TryStandardMovement(float)", asMETHOD(ScriptActorWrapper, asTryStandardMovement), asCALL_THISCALL); RETURN_ASSERT(r >= 0);
 		r = engine->RegisterObjectMethod(AsClassNameInternal, "void RequestMetadata(const string &in)", asMETHOD(ScriptActorWrapper, asRequestMetadata), asCALL_THISCALL); RETURN_ASSERT(r >= 0);
 		r = engine->RegisterObjectMethod(AsClassNameInternal, "void PlaySfx(const string &in, float, float)", asMETHOD(ScriptActorWrapper, asPlaySfx), asCALL_THISCALL); RETURN_ASSERT(r >= 0);
-		r = engine->RegisterObjectMethod(AsClassNameInternal, "void SetAnimation(const string &in)", asMETHOD(ScriptActorWrapper, asSetAnimation), asCALL_THISCALL); RETURN_ASSERT(r >= 0);
 		r = engine->RegisterObjectMethod(AsClassNameInternal, "void SetAnimation(int)", asMETHOD(ScriptActorWrapper, asSetAnimationState), asCALL_THISCALL); RETURN_ASSERT(r >= 0);
 
 		r = module->AddScriptSection("__" AsClassName, AsLibrary, countof(AsLibrary) - 1, 0); RETURN_ASSERT(r >= 0);
@@ -179,7 +174,7 @@ shared abstract class CollectibleBase : )" AsClassName R"(
 	ScriptActorWrapper* ScriptActorWrapper::Factory(int actorType)
 	{
 		auto ctx = asGetActiveContext();
-		auto owner = reinterpret_cast<LevelScriptLoader*>(ctx->GetEngine()->GetUserData(ScriptLoader::EngineToOwner));
+		auto owner = static_cast<LevelScriptLoader*>(ctx->GetEngine()->GetUserData(ScriptLoader::EngineToOwner));
 
 		// Get the function that is calling the factory, so we can be certain it is the our internal script class
 		asIScriptFunction* func = ctx->GetFunction(0);
@@ -188,7 +183,7 @@ shared abstract class CollectibleBase : )" AsClassName R"(
 			return nullptr;
 		}
 
-		asIScriptObject* obj = reinterpret_cast<asIScriptObject*>(ctx->GetThisPointer());
+		asIScriptObject* obj = static_cast<asIScriptObject*>(ctx->GetThisPointer());
 		switch (actorType) {
 			default:
 			case 0: {
@@ -595,11 +590,6 @@ shared abstract class CollectibleBase : )" AsClassName R"(
 	void ScriptActorWrapper::asPlaySfx(const String& identifier, float gain, float pitch)
 	{
 		PlaySfx(identifier, gain, pitch);
-	}
-
-	void ScriptActorWrapper::asSetAnimation(const String& identifier)
-	{
-		SetAnimation(identifier);
 	}
 
 	void ScriptActorWrapper::asSetAnimationState(int state)

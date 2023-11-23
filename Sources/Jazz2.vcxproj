@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -228,6 +228,7 @@
     <ClInclude Include="$(ExtensionLibraryPath)\IO\FileSystem.h" />
     <ClInclude Include="$(ExtensionLibraryPath)\IO\MemoryStream.h" />
     <ClInclude Include="$(ExtensionLibraryPath)\IO\Stream.h" />
+    <ClInclude Include="$(ExtensionLibraryPath)\Base\Unaligned.h" />
     <ClInclude Include="Common.h" />
     <ClInclude Include="Jazz2\Actors\ActorBase.h" />
     <ClInclude Include="Jazz2\Actors\Collectibles\CarrotCollectible.h" />
@@ -324,6 +325,7 @@
     <ClInclude Include="Jazz2\Actors\Weapons\Thunderbolt.h" />
     <ClInclude Include="Jazz2\Actors\Weapons\TNT.h" />
     <ClInclude Include="Jazz2\Actors\Weapons\ToasterShot.h" />
+    <ClInclude Include="Jazz2\AnimationLoopMode.h" />
     <ClInclude Include="Jazz2\Compatibility\AnimSetMapping.h" />
     <ClInclude Include="Jazz2\Compatibility\EventConverter.h" />
     <ClInclude Include="Jazz2\Compatibility\JJ2Anims.h" />
@@ -340,29 +342,38 @@
     <ClInclude Include="Jazz2\ExitType.h" />
     <ClInclude Include="Jazz2\GameDifficulty.h" />
     <ClInclude Include="Jazz2\IRootController.h" />
+    <ClInclude Include="Jazz2\LevelDescriptor.h" />
     <ClInclude Include="Jazz2\LightEmitter.h" />
     <ClInclude Include="Jazz2\Multiplayer\Backends\enet.h" />
+    <ClInclude Include="Jazz2\Multiplayer\ConnectionResult.h" />
     <ClInclude Include="Jazz2\Multiplayer\INetworkHandler.h" />
     <ClInclude Include="Jazz2\Multiplayer\MultiLevelHandler.h" />
     <ClInclude Include="Jazz2\Multiplayer\NetworkManager.h" />
     <ClInclude Include="Jazz2\Multiplayer\PacketTypes.h" />
     <ClInclude Include="Jazz2\Multiplayer\Peer.h" />
+    <ClInclude Include="Jazz2\Multiplayer\Reason.h" />
     <ClInclude Include="Jazz2\PitType.h" />
     <ClInclude Include="Jazz2\PlayerActions.h" />
     <ClInclude Include="Jazz2\PlayerType.h" />
     <ClInclude Include="Jazz2\PreferencesCache.h" />
+    <ClInclude Include="Jazz2\Resources.h" />
     <ClInclude Include="Jazz2\Scripting\FindAngelScript.h" />
     <ClInclude Include="Jazz2\Scripting\JJ2PlusDefinitions.h" />
     <ClInclude Include="Jazz2\Scripting\LevelScriptLoader.h" />
     <ClInclude Include="Jazz2\Scripting\RegisterArray.h" />
     <ClInclude Include="Jazz2\Scripting\RegisterDictionary.h" />
+    <ClInclude Include="Jazz2\Scripting\RegisterImGuiBindings.h" />
+    <ClInclude Include="Jazz2\Scripting\RegisterMath.h" />
     <ClInclude Include="Jazz2\Scripting\RegisterRef.h" />
     <ClInclude Include="Jazz2\Scripting\RegisterString.h" />
     <ClInclude Include="Jazz2\Scripting\ScriptActorWrapper.h" />
     <ClInclude Include="Jazz2\Scripting\ScriptLoader.h" />
     <ClInclude Include="Jazz2\Scripting\ScriptPlayerWrapper.h" />
     <ClInclude Include="Jazz2\ShieldType.h" />
+    <ClInclude Include="Jazz2\SuspendType.h" />
     <ClInclude Include="Jazz2\Tiles\ITileMapOwner.h" />
+    <ClInclude Include="Jazz2\Tiles\TileCollisionParams.h" />
+    <ClInclude Include="Jazz2\Tiles\TileDestructType.h" />
     <ClInclude Include="Jazz2\UI\Alignment.h" />
     <ClInclude Include="Jazz2\UI\Canvas.h" />
     <ClInclude Include="Jazz2\UI\Cinematics.h" />
@@ -384,7 +395,9 @@
     <ClInclude Include="Jazz2\UI\Menu\InGameMenu.h" />
     <ClInclude Include="Jazz2\UI\Menu\InputDiagnosticsSection.h" />
     <ClInclude Include="Jazz2\UI\Menu\LanguageSelectSection.h" />
+    <ClInclude Include="Jazz2\UI\Menu\LoadingSection.h" />
     <ClInclude Include="Jazz2\UI\Menu\MainMenu.h" />
+    <ClInclude Include="Jazz2\UI\Menu\MenuResources.h" />
     <ClInclude Include="Jazz2\UI\Menu\MenuSection.h" />
     <ClInclude Include="Jazz2\UI\Menu\OptionsSection.h" />
     <ClInclude Include="Jazz2\UI\Menu\PauseSection.h" />
@@ -418,6 +431,8 @@
     <ClInclude Include="nCine\Audio\IAudioLoader.h" />
     <ClInclude Include="nCine\Audio\IAudioPlayer.h" />
     <ClInclude Include="nCine\Audio\IAudioReader.h" />
+    <ClInclude Include="nCine\Backends\ImGuiGlfwInput.h" />
+    <ClInclude Include="nCine\Backends\ImGuiSdlInput.h" />
     <ClInclude Include="nCine\Base\Algorithms.h" />
     <ClInclude Include="nCine\Base\BitArray.h" />
     <ClInclude Include="nCine\Base\BitSet.h" />
@@ -476,8 +491,11 @@
     <ClInclude Include="nCine\Graphics\GL\GLViewport.h" />
     <ClInclude Include="nCine\Backends\Qt5GfxDevice.h" />
     <ClInclude Include="nCine\Backends\SdlGfxDevice.h" />
+    <ClInclude Include="nCine\Graphics\IDebugOverlay.h" />
     <ClInclude Include="nCine\Graphics\IGfxCapabilities.h" />
     <ClInclude Include="nCine\Graphics\IGfxDevice.h" />
+    <ClInclude Include="nCine\Graphics\ImGuiDebugOverlay.h" />
+    <ClInclude Include="nCine\Graphics\ImGuiDrawing.h" />
     <ClInclude Include="nCine\Graphics\ITextureLoader.h" />
     <ClInclude Include="nCine\Graphics\ITextureSaver.h" />
     <ClInclude Include="nCine\Graphics\Material.h" />
@@ -520,6 +538,7 @@
     <ClInclude Include="nCine\Backends\GlfwInputManager.h" />
     <ClInclude Include="nCine\Input\IInputEventHandler.h" />
     <ClInclude Include="nCine\Input\IInputManager.h" />
+    <ClInclude Include="nCine\Input\ImGuiJoyMappedInput.h" />
     <ClInclude Include="nCine\Input\InputEvents.h" />
     <ClInclude Include="nCine\Input\JoyMapping.h" />
     <ClInclude Include="nCine\Input\JoyMappingDb.h" />
@@ -582,6 +601,7 @@
     <ClInclude Include="$(ExtensionLibraryPath)\Containers\StaticArray.h" />
     <ClInclude Include="$(ExtensionLibraryPath)\Containers\Tags.h" />
     <ClInclude Include="$(ExtensionLibraryPath)\Containers\DateTime.h" />
+    <ClInclude Include="$(ExtensionLibraryPath)\Threading\Interlocked.h" />
     <ClInclude Include="simdjson\simdjson.h" />
   </ItemGroup>
   <ItemGroup>
@@ -595,6 +615,7 @@
     <ClCompile Include="$(ExtensionLibraryPath)\IO\FileStream.cpp" />
     <ClCompile Include="$(ExtensionLibraryPath)\IO\FileSystem.cpp" />
     <ClCompile Include="$(ExtensionLibraryPath)\IO\MemoryStream.cpp" />
+    <ClCompile Include="$(ExtensionLibraryPath)\IO\Stream.cpp" />
     <ClCompile Include="Jazz2\Actors\ActorBase.cpp" />
     <ClCompile Include="Jazz2\Actors\Collectibles\CarrotCollectible.cpp" />
     <ClCompile Include="Jazz2\Actors\Collectibles\CarrotFlyCollectible.cpp" />
@@ -699,13 +720,17 @@
     <ClCompile Include="Jazz2\Compatibility\JJ2Level.cpp" />
     <ClCompile Include="Jazz2\Compatibility\JJ2Strings.cpp" />
     <ClCompile Include="Jazz2\Compatibility\JJ2Tileset.cpp" />
+    <ClCompile Include="Jazz2\Multiplayer\ConnectionResult.cpp" />
     <ClCompile Include="Jazz2\Multiplayer\MultiLevelHandler.cpp" />
     <ClCompile Include="Jazz2\Multiplayer\NetworkManager.cpp" />
     <ClCompile Include="Jazz2\PreferencesCache.cpp" />
+    <ClCompile Include="Jazz2\Resources.cpp" />
     <ClCompile Include="Jazz2\Scripting\JJ2PlusDefinitions.cpp" />
     <ClCompile Include="Jazz2\Scripting\LevelScriptLoader.cpp" />
     <ClCompile Include="Jazz2\Scripting\RegisterArray.cpp" />
     <ClCompile Include="Jazz2\Scripting\RegisterDictionary.cpp" />
+    <ClCompile Include="Jazz2\Scripting\RegisterImGuiBindings.cpp" />
+    <ClCompile Include="Jazz2\Scripting\RegisterMath.cpp" />
     <ClCompile Include="Jazz2\Scripting\RegisterRef.cpp" />
     <ClCompile Include="Jazz2\Scripting\RegisterString.cpp" />
     <ClCompile Include="Jazz2\Scripting\ScriptActorWrapper.cpp" />
@@ -729,6 +754,7 @@
     <ClCompile Include="Jazz2\UI\Menu\InGameMenu.cpp" />
     <ClCompile Include="Jazz2\UI\Menu\InputDiagnosticsSection.cpp" />
     <ClCompile Include="Jazz2\UI\Menu\LanguageSelectSection.cpp" />
+    <ClCompile Include="Jazz2\UI\Menu\LoadingSection.cpp" />
     <ClCompile Include="Jazz2\UI\Menu\MainMenu.cpp" />
     <ClCompile Include="Jazz2\UI\Menu\OptionsSection.cpp" />
     <ClCompile Include="Jazz2\UI\Menu\PauseSection.cpp" />
@@ -757,6 +783,8 @@
     <ClCompile Include="nCine\Audio\AudioStreamPlayer.cpp" />
     <ClCompile Include="nCine\Audio\IAudioLoader.cpp" />
     <ClCompile Include="nCine\Audio\IAudioPlayer.cpp" />
+    <ClCompile Include="nCine\Backends\ImGuiGlfwInput.cpp" />
+    <ClCompile Include="nCine\Backends\ImGuiSdlInput.cpp" />
     <ClCompile Include="nCine\Base\Algorithms.cpp" />
     <ClCompile Include="nCine\Base\BitArray.cpp" />
     <ClCompile Include="nCine\Base\Clock.cpp" />
@@ -799,6 +827,8 @@
     <ClCompile Include="nCine\Backends\Qt5GfxDevice.cpp" />
     <ClCompile Include="nCine\Backends\SdlGfxDevice.cpp" />
     <ClCompile Include="nCine\Graphics\IGfxDevice.cpp" />
+    <ClCompile Include="nCine\Graphics\ImGuiDebugOverlay.cpp" />
+    <ClCompile Include="nCine\Graphics\ImGuiDrawing.cpp" />
     <ClCompile Include="nCine\Graphics\ITextureLoader.cpp" />
     <ClCompile Include="nCine\Graphics\ITextureSaver.cpp" />
     <ClCompile Include="nCine\Graphics\Material.cpp" />
@@ -839,6 +869,7 @@
     <ClCompile Include="nCine\Backends\GlfwKeys.cpp" />
     <ClCompile Include="nCine\I18n.cpp" />
     <ClCompile Include="nCine\Input\IInputManager.cpp" />
+    <ClCompile Include="nCine\Input\ImGuiJoyMappedInput.cpp" />
     <ClCompile Include="nCine\Input\JoyMapping.cpp" />
     <ClCompile Include="nCine\Backends\Qt5InputManager.cpp" />
     <ClCompile Include="nCine\Backends\Qt5JoyMapping.cpp" />

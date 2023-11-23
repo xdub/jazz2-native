@@ -30,8 +30,12 @@ namespace Jazz2::UI
 			return _node.get();
 		}
 
-		Vector2i GetViewSize() {
+		Vector2i GetViewSize() const {
 			return _view->size();
+		}
+
+		Vector2f GetTargetSize() const {
+			return (_antialiasing._target != nullptr ? _antialiasing._targetSize : _targetSize);
 		}
 
 	protected:
@@ -65,7 +69,7 @@ namespace Jazz2::UI
 
 	private:
 		std::unique_ptr<SceneNode> _node;
-#if defined(ALLOW_RESCALE_SHADERS)
+#if !defined(DISABLE_RESCALE_SHADERS)
 		Shader* _resizeShader;
 #endif
 		RenderCommand _renderCommand;

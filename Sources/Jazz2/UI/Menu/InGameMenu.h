@@ -3,6 +3,7 @@
 #include "IMenuContainer.h"
 #include "MenuSection.h"
 #include "../../IStateHandler.h"
+#include "../../LevelHandler.h"
 #include "../Canvas.h"
 #include "../../ContentResolver.h"
 
@@ -27,11 +28,11 @@ namespace Jazz2::UI::Menu
 		void OnTouchEvent(const nCine::TouchEvent& event);
 		void OnInitializeViewport(int32_t width, int32_t height);
 
-		void SwitchToSectionDirect(std::unique_ptr<MenuSection> section) override;
+		MenuSection* SwitchToSectionDirect(std::unique_ptr<MenuSection> section) override;
 		void LeaveSection() override;
 		void ChangeLevel(Jazz2::LevelInitialization&& levelInit) override;
 #if defined(WITH_MULTIPLAYER)
-		bool ConnectToServer(const char* address, std::uint16_t port) override;
+		bool ConnectToServer(const StringView& address, std::uint16_t port) override;
 		bool CreateServer(std::uint16_t port) override;
 #endif
 		void ApplyPreferencesChanges(ChangedPreferencesType type) override;
@@ -42,9 +43,9 @@ namespace Jazz2::UI::Menu
 			return _canvasBackground->ViewSize;
 		}
 
-		void DrawElement(const StringView& name, int32_t frame, float x, float y, uint16_t z, Alignment align, const Colorf& color,
+		void DrawElement(AnimState state, int32_t frame, float x, float y, uint16_t z, Alignment align, const Colorf& color,
 			float scaleX = 1.0f, float scaleY = 1.0f, bool additiveBlending = false) override;
-		void DrawElement(const StringView& name, float x, float y, uint16_t z, Alignment align, const Colorf& color,
+		void DrawElement(AnimState state, float x, float y, uint16_t z, Alignment align, const Colorf& color,
 			const Vector2f& size, const Vector4f& texCoords) override;
 		void DrawSolid(float x, float y, uint16_t z, Alignment align, const Vector2f& size, const Colorf& color, bool additiveBlending = false) override;
 		Vector2f MeasureString(const StringView& text, float scale = 1.0f, float charSpacing = 1.0f, float lineSpacing = 1.0f) override;
@@ -103,11 +104,9 @@ namespace Jazz2::UI::Menu
 		std::unique_ptr<MenuClippedCanvas> _canvasClipped;
 		std::unique_ptr<MenuOverlayCanvas> _canvasOverlay;
 		ActiveCanvas _activeCanvas;
-		HashMap<String, GraphicResource>* _graphics;
+		Metadata* _metadata;
 		Font* _smallFont;
 		Font* _mediumFont;
-
-		HashMap<String, SoundResource>* _sounds;
 		SmallVector<std::shared_ptr<AudioBufferPlayer>> _playingSounds;
 
 		SmallVector<std::unique_ptr<MenuSection>, 8> _sections;

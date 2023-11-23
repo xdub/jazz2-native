@@ -11,6 +11,7 @@ set(HEADERS
 	${NCINE_SOURCE_DIR}/Shared/IntrinsicsSse4.h
 	${NCINE_SOURCE_DIR}/Shared/IntrinsicsSsse3.h
 	${NCINE_SOURCE_DIR}/Shared/Utf8.h
+	${NCINE_SOURCE_DIR}/Shared/Base/Unaligned.h
 	${NCINE_SOURCE_DIR}/Shared/Containers/Array.h
 	${NCINE_SOURCE_DIR}/Shared/Containers/ArrayView.h
 	${NCINE_SOURCE_DIR}/Shared/Containers/DateTime.h
@@ -29,6 +30,7 @@ set(HEADERS
 	${NCINE_SOURCE_DIR}/Shared/IO/HttpRequest.h
 	${NCINE_SOURCE_DIR}/Shared/IO/MemoryStream.h
 	${NCINE_SOURCE_DIR}/Shared/IO/Stream.h
+	${NCINE_SOURCE_DIR}/Shared/Threading/Interlocked.h
 )
 
 list(APPEND HEADERS
@@ -69,6 +71,7 @@ list(APPEND HEADERS
 	${NCINE_SOURCE_DIR}/nCine/Graphics/DrawableNode.h
 	${NCINE_SOURCE_DIR}/nCine/Graphics/Geometry.h
 	${NCINE_SOURCE_DIR}/nCine/Graphics/GfxCapabilities.h
+	${NCINE_SOURCE_DIR}/nCine/Graphics/IDebugOverlay.h
 	${NCINE_SOURCE_DIR}/nCine/Graphics/IGfxCapabilities.h
 	${NCINE_SOURCE_DIR}/nCine/Graphics/IGfxDevice.h
 	${NCINE_SOURCE_DIR}/nCine/Graphics/ITextureLoader.h
@@ -154,6 +157,7 @@ list(APPEND HEADERS
 list(APPEND HEADERS
 	${NCINE_SOURCE_DIR}/Common.h
 	${NCINE_SOURCE_DIR}/TermLogo.h
+	${NCINE_SOURCE_DIR}/Jazz2/AnimationLoopMode.h
 	${NCINE_SOURCE_DIR}/Jazz2/AnimState.h
 	${NCINE_SOURCE_DIR}/Jazz2/ContentResolver.h
 	${NCINE_SOURCE_DIR}/Jazz2/ContentResolver.Shaders.h
@@ -163,6 +167,7 @@ list(APPEND HEADERS
 	${NCINE_SOURCE_DIR}/Jazz2/ILevelHandler.h
 	${NCINE_SOURCE_DIR}/Jazz2/IRootController.h
 	${NCINE_SOURCE_DIR}/Jazz2/IStateHandler.h
+	${NCINE_SOURCE_DIR}/Jazz2/LevelDescriptor.h
 	${NCINE_SOURCE_DIR}/Jazz2/LevelHandler.h
 	${NCINE_SOURCE_DIR}/Jazz2/LevelInitialization.h
 	${NCINE_SOURCE_DIR}/Jazz2/LightEmitter.h
@@ -170,7 +175,9 @@ list(APPEND HEADERS
 	${NCINE_SOURCE_DIR}/Jazz2/PlayerActions.h
 	${NCINE_SOURCE_DIR}/Jazz2/PlayerType.h
 	${NCINE_SOURCE_DIR}/Jazz2/PreferencesCache.h
+	${NCINE_SOURCE_DIR}/Jazz2/Resources.h
 	${NCINE_SOURCE_DIR}/Jazz2/ShieldType.h
+	${NCINE_SOURCE_DIR}/Jazz2/SuspendType.h
 	${NCINE_SOURCE_DIR}/Jazz2/WeaponType.h
 	${NCINE_SOURCE_DIR}/Jazz2/WeatherType.h
 	${NCINE_SOURCE_DIR}/Jazz2/Actors/ActorBase.h
@@ -302,11 +309,17 @@ list(APPEND HEADERS
 	${NCINE_SOURCE_DIR}/Jazz2/Scripting/JJ2PlusDefinitions.h
 	${NCINE_SOURCE_DIR}/Jazz2/Scripting/LevelScriptLoader.h
 	${NCINE_SOURCE_DIR}/Jazz2/Scripting/RegisterArray.h
+	${NCINE_SOURCE_DIR}/Jazz2/Scripting/RegisterDictionary.h
+	${NCINE_SOURCE_DIR}/Jazz2/Scripting/RegisterImGuiBindings.h
+	${NCINE_SOURCE_DIR}/Jazz2/Scripting/RegisterMath.h
 	${NCINE_SOURCE_DIR}/Jazz2/Scripting/RegisterRef.h
 	${NCINE_SOURCE_DIR}/Jazz2/Scripting/RegisterString.h
 	${NCINE_SOURCE_DIR}/Jazz2/Scripting/ScriptActorWrapper.h
 	${NCINE_SOURCE_DIR}/Jazz2/Scripting/ScriptLoader.h
 	${NCINE_SOURCE_DIR}/Jazz2/Scripting/ScriptPlayerWrapper.h
+	${NCINE_SOURCE_DIR}/Jazz2/Tiles/ITileMapOwner.h
+	${NCINE_SOURCE_DIR}/Jazz2/Tiles/TileCollisionParams.h
+	${NCINE_SOURCE_DIR}/Jazz2/Tiles/TileDestructType.h
 	${NCINE_SOURCE_DIR}/Jazz2/Tiles/TileMap.h
 	${NCINE_SOURCE_DIR}/Jazz2/Tiles/TileSet.h
 	${NCINE_SOURCE_DIR}/Jazz2/UI/Canvas.h
@@ -330,7 +343,9 @@ list(APPEND HEADERS
 	${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/InGameMenu.h
 	${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/InputDiagnosticsSection.h
 	${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/LanguageSelectSection.h
+	${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/LoadingSection.h
 	${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/MainMenu.h
+	${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/MenuResources.h
 	${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/OptionsSection.h
 	${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/PauseSection.h
 	${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/RefreshCacheSection.h

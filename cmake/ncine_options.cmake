@@ -56,7 +56,7 @@ option(NCINE_WITH_AUDIO "Enable OpenAL support and thus sound" ON)
 option(NCINE_WITH_VORBIS "Enable Ogg Vorbis audio file support" ON)
 option(NCINE_WITH_OPENMPT "Enable module (libopenmpt) audio file support" ON)
 option(NCINE_WITH_ANGELSCRIPT "Enable AngelScript scripting support" OFF)
-
+option(NCINE_WITH_IMGUI "Enable integration with Dear ImGui" OFF)
 option(NCINE_WITH_TRACY "Enable integration with Tracy frame profiler" OFF)
 option(NCINE_WITH_RENDERDOC "Enable integration with RenderDoc" OFF)
 
@@ -79,6 +79,7 @@ endif()
 
 # Shared library options
 option(DEATH_TRACE "Enable runtime event tracing" ON)
+option(DEATH_WITH_VC_LTL "Build with VC-LTL on Windows" ON)
 
 # Check if we can use IFUNC for CPU dispatch. Linux with glibc and Android with API 18+ has it,
 # but e.g. Alpine Linux with musl doesn't, and on Android with API < 30 we don't get AT_HWCAP passed
@@ -86,7 +87,11 @@ option(DEATH_TRACE "Enable runtime event tracing" ON)
 # which makes it pretty useless. Plus it also needs a certain binutils version and a capable compiler,
 # so it's easiest to just verify the whole thing. The feature is supported on ELF platforms only,
 # so general Linux/BSD but not Apple.
-if(UNIX AND NOT APPLE)
+if(NCINE_BUILD_ANDROID)
+	# Support is checked later against Android NDK toolchain (see "/android/app/src/main/cpp/CMakeLists.txt").
+	set(_DEATH_CPU_CAN_USE_IFUNC ON)
+	set(_DEATH_CPU_USE_IFUNC_DEFAULT ON)
+elseif(UNIX AND NOT APPLE)
 	include(CheckCXXSourceCompiles)
 	set(CMAKE_REQUIRED_QUIET ON)
 	check_cxx_source_compiles("\
@@ -138,6 +143,7 @@ option(DEATH_CPU_USE_RUNTIME_DISPATCH "Build with runtime dispatch for CPU-depen
 
 # Jazz² Resurrection options
 option(SHAREWARE_DEMO_ONLY "Show only Shareware Demo episode" OFF)
+option(DISABLE_RESCALE_SHADERS "Disable all rescaling options" OFF)
 
 if(EMSCRIPTEN)
 	# Multiplayer is not supported on Emscripten yet

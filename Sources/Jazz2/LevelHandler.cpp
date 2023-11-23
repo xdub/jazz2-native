@@ -11,6 +11,7 @@
 #include "../nCine/MainApplication.h"
 #include "../nCine/IAppEventHandler.h"
 #include "../nCine/ServiceLocator.h"
+#include "../nCine/tracy.h"
 #include "../nCine/Input/IInputEventHandler.h"
 #include "../nCine/Graphics/Camera.h"
 #include "../nCine/Graphics/Sprite.h"
@@ -34,22 +35,47 @@ using namespace nCine;
 
 namespace Jazz2
 {
-	LevelHandler::LevelHandler(IRootController* root, const LevelInitialization& levelInit)
-		: _root(root), _eventSpawner(this), _levelFileName(levelInit.LevelName), _episodeName(levelInit.EpisodeName),
-			_difficulty(levelInit.Difficulty), _isReforged(levelInit.IsReforged), _cheatsUsed(levelInit.CheatsUsed), _cheatsBufferLength(0),
-			_nextLevelType(ExitType::None), _nextLevelTime(0.0f), _elapsedFrames(0.0f), _checkpointFrames(0.0f),
+	namespace Resources
+	{
+		static constexpr AnimState Snow = (AnimState)0;
+		static constexpr AnimState Rain = (AnimState)1;
+	}
+
+	using namespace Jazz2::Resources;
+
+	LevelHandler::LevelHandler(IRootController* root)
+		: _root(root), _eventSpawner(this), _difficulty(GameDifficulty::Default), _isReforged(false), _cheatsUsed(false),
+			_cheatsBufferLength(0), _nextLevelType(ExitType::None), _nextLevelTime(0.0f), _elapsedFrames(0.0f), _checkpointFrames(0.0f),
 			_shakeDuration(0.0f), _waterLevel(FLT_MAX), _ambientLightTarget(1.0f), _weatherType(WeatherType::None),
 			_downsamplePass(this), _blurPass1(this), _blurPass2(this), _blurPass3(this), _blurPass4(this),
 			_pressedKeys((uint32_t)KeySym::COUNT), _pressedActions(0), _overrideActions(0), _playerFrozenEnabled(false),
 			_lastPressedNumericKey(UINT32_MAX)
 	{
+	}
+
+	LevelHandler::~LevelHandler()
+	{
+		// Remove nodes from UpscaleRenderPass
+		_combineRenderer->setParent(nullptr);
+		_hud->setParent(nullptr);
+
+		TracyPlot("Actors", 0LL);
+	}
+
+	bool LevelHandler::Initialize(const LevelInitialization& levelInit)
+	{
+		ZoneScopedC(0x4876AF);
+
 		constexpr float DefaultGravity = 0.3f;
 
-		if (_isReforged) {
-			Gravity = DefaultGravity;
-		} else {
-			Gravity = DefaultGravity * 0.8f;
-		}
+		_levelFileName = levelInit.LevelName;
+		_episodeName = levelInit.EpisodeName;
+		_difficulty = levelInit.Difficulty;
+		_isReforged = levelInit.IsReforged;
+		_cheatsUsed = levelInit.CheatsUsed;
+
+		// Higher gravity in Reforged mode
+		Gravity = (_isReforged ? DefaultGravity : DefaultGravity * 0.8f);
 
 		auto& resolver = ContentResolver::Get();
 		resolver.BeginLoading();
@@ -59,13 +85,16 @@ namespace Jazz2
 		_rootNode = std::make_unique<SceneNode>();
 		_rootNode->setVisitOrderState(SceneNode::VisitOrderState::Disabled);
 
-		if (!ContentResolver::Get().LoadLevel(this, "/"_s.joinWithoutEmptyParts({ _episodeName, _levelFileName }), _difficulty)) {
-			LOGE("Cannot load specified level");
-			return;
+		LevelDescriptor descriptor;
+		if (!resolver.TryLoadLevel("/"_s.joinWithoutEmptyParts({ _episodeName, _levelFileName }), _difficulty, descriptor)) {
+			LOGE("Cannot load level \"%s/%s\"", _episodeName.data(), _levelFileName.data());
+			return false;
 		}
 
+		AttachComponents(std::move(descriptor));
+
 		// Process carry overs
-		for (int32_t i = 0; i < countof(levelInit.PlayerCarryOvers); i++) {
+		for (std::int32_t i = 0; i < countof(levelInit.PlayerCarryOvers); i++) {
 			if (levelInit.PlayerCarryOvers[i].Type == PlayerType::None) {
 				continue;
 			}
@@ -79,7 +108,7 @@ namespace Jazz2
 			}
 
 			std::shared_ptr<Actors::Player> player = std::make_shared<Actors::Player>();
-			uint8_t playerParams[2] = { (uint8_t)levelInit.PlayerCarryOvers[i].Type, (uint8_t)i };
+			std::uint8_t playerParams[2] = { (std::uint8_t)levelInit.PlayerCarryOvers[i].Type, (std::uint8_t)i };
 			player->OnActivated(Actors::ActorActivationDetails(
 				this,
 				Vector3i(spawnPosition.X + (i * 30), spawnPosition.Y - (i * 30), PlayerZ - i),
@@ -113,13 +142,7 @@ namespace Jazz2
 		_eventMap->PreloadEventsAsync();
 
 		resolver.EndLoading();
-	}
-
-	LevelHandler::~LevelHandler()
-	{
-		// Remove nodes from UpscaleRenderPass
-		_combineRenderer->setParent(nullptr);
-		_hud->setParent(nullptr);
+		return true;
 	}
 
 	Recti LevelHandler::LevelBounds() const
@@ -150,41 +173,50 @@ namespace Jazz2
 	void LevelHandler::SetAmbientLight(float value)
 	{
 		_ambientLightTarget = value;
+
+		// Skip transition if it was changed at the beginning of level
+		if (_elapsedFrames < FrameTimer::FramesPerSecond * 0.25f) {
+			_ambientColor.W = value;
+		}
 	}
 
-	void LevelHandler::OnLevelLoaded(const StringView& fullPath, const StringView& name, const StringView& nextLevel, const StringView& secretLevel, std::unique_ptr<Tiles::TileMap>& tileMap, std::unique_ptr<Events::EventMap>& eventMap, const StringView& musicPath, const Vector4f& ambientColor, WeatherType weatherType, uint8_t weatherIntensity, uint16_t waterLevel, SmallVectorImpl<String>& levelTexts)
+	void LevelHandler::AttachComponents(LevelDescriptor&& descriptor)
 	{
-		if (!name.empty()) {
-			theApplication().gfxDevice().setWindowTitle(StringView(NCINE_APP_NAME " - ") + name);
+		ZoneScopedC(0x4876AF);
+
+		if (!descriptor.DisplayName.empty()) {
+			theApplication().gfxDevice().setWindowTitle(StringView(NCINE_APP_NAME " - ", countof(NCINE_APP_NAME " - ") - 1) + descriptor.DisplayName);
 		} else {
-			theApplication().gfxDevice().setWindowTitle(NCINE_APP_NAME);
+			theApplication().gfxDevice().setWindowTitle(StringView(NCINE_APP_NAME, countof(NCINE_APP_NAME) - 1));
 		}
 
-		_defaultNextLevel = nextLevel;
-		_defaultSecretLevel = secretLevel;
+		_defaultNextLevel = std::move(descriptor.NextLevel);
+		_defaultSecretLevel = std::move(descriptor.SecretLevel);
 
-		_tileMap = std::move(tileMap);
+		_tileMap = std::move(descriptor.TileMap);
+		_tileMap->SetOwner(this);
 		_tileMap->setParent(_rootNode.get());
 
-		_eventMap = std::move(eventMap);
+		_eventMap = std::move(descriptor.EventMap);
+		_eventMap->SetLevelHandler(this);
 
-		Vector2i levelBounds = _tileMap->LevelBounds();
+		Vector2i levelBounds = _tileMap->GetLevelBounds();
 		_levelBounds = Recti(0, 0, levelBounds.X, levelBounds.Y);
 		_viewBounds = Rectf((float)_levelBounds.X, (float)_levelBounds.Y, (float)_levelBounds.W, (float)_levelBounds.H);
 		_viewBoundsTarget = _viewBounds;		
 
-		_ambientColor = ambientColor;
-		_ambientLightTarget = ambientColor.W;
+		_ambientColor = descriptor.AmbientColor;
+		_ambientLightTarget = descriptor.AmbientColor.W;
 
-		_weatherType = weatherType;
-		_weatherIntensity = weatherIntensity;
-		_waterLevel = waterLevel;
+		_weatherType = descriptor.Weather;
+		_weatherIntensity = descriptor.WeatherIntensity;
+		_waterLevel = descriptor.WaterLevel;
 
 #if defined(WITH_AUDIO)
-		if (!musicPath.empty()) {
-			_music = ContentResolver::Get().GetMusic(musicPath);
+		if (!descriptor.MusicPath.empty()) {
+			_music = ContentResolver::Get().GetMusic(descriptor.MusicPath);
 			if (_music != nullptr) {
-				_musicCurrentPath = musicPath;
+				_musicCurrentPath = std::move(descriptor.MusicPath);
 				_musicDefaultPath = _musicCurrentPath;
 				_music->setLooping(true);
 				_music->setGain(PreferencesCache::MasterVolume * PreferencesCache::MusicVolume);
@@ -194,13 +226,13 @@ namespace Jazz2
 		}
 #endif
 
-		_levelTexts = std::move(levelTexts);
+		_levelTexts = std::move(descriptor.LevelTexts);
 
 #if defined(WITH_ANGELSCRIPT) || defined(DEATH_TRACE)
 		// TODO: Allow script signing
 		if (PreferencesCache::AllowUnsignedScripts) {
-			const StringView foundDot = fullPath.findLastOr('.', fullPath.end());
-			String scriptPath = (foundDot == fullPath.end() ? StringView(fullPath) : fullPath.prefix(foundDot.begin())) + ".j2as"_s;
+			const StringView foundDot = descriptor.FullPath.findLastOr('.', descriptor.FullPath.end());
+			String scriptPath = (foundDot == descriptor.FullPath.end() ? StringView(descriptor.FullPath) : descriptor.FullPath.prefix(foundDot.begin())) + ".j2as"_s;
 			if (fs::IsReadableFile(scriptPath)) {
 #	if defined(WITH_ANGELSCRIPT)
 				_scripts = std::make_unique<Scripting::LevelScriptLoader>(this, scriptPath);
@@ -214,19 +246,24 @@ namespace Jazz2
 
 	void LevelHandler::OnBeginFrame()
 	{
+		ZoneScopedC(0x4876AF);
+
 		float timeMult = theApplication().timeMult();
 
-		UpdatePressedActions();
+		if (_pauseMenu == nullptr) {
+			UpdatePressedActions();
 
-		if (PlayerActionHit(0, PlayerActions::Menu) && _pauseMenu == nullptr && _nextLevelType == ExitType::None) {
-			PauseGame();
-		}
+			if (PlayerActionHit(0, PlayerActions::Menu) && _nextLevelType == ExitType::None) {
+				PauseGame();
+			}
 #if defined(DEATH_DEBUG)
-		if (PlayerActionPressed(0, PlayerActions::ChangeWeapon) && PlayerActionHit(0, PlayerActions::Jump)) {
-			_cheatsUsed = true;
-			BeginLevelChange(ExitType::Warp | ExitType::FastTransition, nullptr);
-		}
+			if (PreferencesCache::AllowCheats && PlayerActionPressed(0, PlayerActions::ChangeWeapon) && PlayerActionHit(0, PlayerActions::Jump)) {
+				_cheatsUsed = true;
+				BeginLevelChange(ExitType::Warp | ExitType::FastTransition, nullptr);
+			}
 #endif
+		}
+
 #if defined(WITH_AUDIO)
 		// Destroy stopped players and resume music after Sugar Rush
 		if (_sugarRushMusic != nullptr && _sugarRushMusic->isStopped()) {
@@ -236,7 +273,7 @@ namespace Jazz2
 			}
 		}
 
-		for (int32_t i = (int32_t)_playingSounds.size() - 1; i >= 0; i--) {
+		for (std::int32_t i = (std::int32_t)_playingSounds.size() - 1; i >= 0; i--) {
 			if (_playingSounds[i]->isStopped()) {
 				_playingSounds.erase(&_playingSounds[i]);
 			} else {
@@ -245,92 +282,13 @@ namespace Jazz2
 		}
 #endif
 
-		if (_pauseMenu == nullptr) {
+		if (!IsPausable() || _pauseMenu == nullptr) {
 			if (_nextLevelType != ExitType::None) {
 				_nextLevelTime -= timeMult;
-
-				bool playersReady = true;
-				for (auto player : _players) {
-					// Exit type was already provided in BeginLevelChange()
-					playersReady &= player->OnLevelChanging(ExitType::None);
-				}
-
-				if (playersReady && _nextLevelTime <= 0.0f) {
-					StringView realNextLevel;
-					if (!_nextLevel.empty()) {
-						realNextLevel = _nextLevel;
-					} else {
-						realNextLevel = ((_nextLevelType & ExitType::TypeMask) == ExitType::Bonus ? _defaultSecretLevel : _defaultNextLevel);
-					}
-
-					LevelInitialization levelInit;
-
-					if (!realNextLevel.empty()) {
-						auto found = realNextLevel.partition('/');
-						if (found[2].empty()) {
-							levelInit.EpisodeName = _episodeName;
-							levelInit.LevelName = realNextLevel;
-						} else {
-							levelInit.EpisodeName = found[0];
-							levelInit.LevelName = found[2];
-						}
-					}
-
-					levelInit.Difficulty = _difficulty;
-					levelInit.IsReforged = _isReforged;
-					levelInit.CheatsUsed = _cheatsUsed;
-					levelInit.LastExitType = _nextLevelType;
-					levelInit.LastEpisodeName = _episodeName;
-
-					for (int32_t i = 0; i < _players.size(); i++) {
-						levelInit.PlayerCarryOvers[i] = _players[i]->PrepareLevelCarryOver();
-					}
-
-					_root->ChangeLevel(std::move(levelInit));
-					return;
-				}
+				ProcessQueuedNextLevel();
 			}
 
-			if (_difficulty != GameDifficulty::Multiplayer) {
-				if (!_players.empty()) {
-					auto& pos = _players[0]->GetPos();
-					int32_t tx1 = (int32_t)pos.X / Tiles::TileSet::DefaultTileSize;
-					int32_t ty1 = (int32_t)pos.Y / Tiles::TileSet::DefaultTileSize;
-					int32_t tx2 = tx1;
-					int32_t ty2 = ty1;
-
-					tx1 -= ActivateTileRange;
-					ty1 -= ActivateTileRange;
-					tx2 += ActivateTileRange;
-					ty2 += ActivateTileRange;
-
-					int32_t tx1d = tx1 - 4;
-					int32_t ty1d = ty1 - 4;
-					int32_t tx2d = tx2 + 4;
-					int32_t ty2d = ty2 + 4;
-
-					for (auto& actor : _actors) {
-						if ((actor->_state & (Actors::ActorState::IsCreatedFromEventMap | Actors::ActorState::IsFromGenerator)) != Actors::ActorState::None) {
-							Vector2i originTile = actor->_originTile;
-							if (originTile.X < tx1d || originTile.Y < ty1d || originTile.X > tx2d || originTile.Y > ty2d) {
-								if (actor->OnTileDeactivated()) {
-									if ((actor->_state & Actors::ActorState::IsFromGenerator) == Actors::ActorState::IsFromGenerator) {
-										_eventMap->ResetGenerator(originTile.X, originTile.Y);
-									}
-
-									_eventMap->Deactivate(originTile.X, originTile.Y);
-
-									actor->_state |= Actors::ActorState::IsDestroyed;
-								}
-							}
-						}
-					}
-
-					_eventMap->ActivateEvents(tx1, ty1, tx2, ty2, true);
-				}
-
-				_eventMap->ProcessGenerators(timeMult);
-			}
+			ProcessEvents(timeMult);
 
 			// Weather
 			if (_weatherType != WeatherType::None) {
@@ -351,9 +309,9 @@ namespace Jazz2
 
 					WeatherType realWeatherType = (_weatherType & ~WeatherType::OutdoorsOnly);
 					if (realWeatherType == WeatherType::Rain) {
-						auto it = _commonResources->Graphics.find(String::nullTerminatedView("Rain"_s));
-						if (it != _commonResources->Graphics.end()) {
-							auto& resBase = it->second.Base;
+						auto* res = _commonResources->FindAnimation(Rain);
+						if (res != nullptr) {
+							auto& resBase = res->Base;
 							Vector2i texSize = resBase->TextureDiffuse->size();
 							float scale = Random().FastFloat(0.4f, 1.1f);
 							float speedX = Random().FastFloat(2.2f, 2.7f) * scale;
@@ -375,7 +333,7 @@ namespace Jazz2
 
 							debris.Time = 180.0f;
 
-							uint32_t curAnimFrame = it->second.FrameOffset + Random().Next(0, it->second.FrameCount);
+							uint32_t curAnimFrame = res->FrameOffset + Random().Next(0, res->FrameCount);
 							uint32_t col = curAnimFrame % resBase->FrameConfiguration.X;
 							uint32_t row = curAnimFrame / resBase->FrameConfiguration.X;
 							debris.TexScaleX = (float(resBase->FrameDimensions.X) / float(texSize.X));
@@ -389,9 +347,9 @@ namespace Jazz2
 							_tileMap->CreateDebris(debris);
 						}
 					} else {
-						auto it = _commonResources->Graphics.find(String::nullTerminatedView("Snow"_s));
-						if (it != _commonResources->Graphics.end()) {
-							auto& resBase = it->second.Base;
+						auto* res = _commonResources->FindAnimation(Snow);
+						if (res != nullptr) {
+							auto& resBase = res->Base;
 							Vector2i texSize = resBase->TextureDiffuse->size();
 							float scale = Random().FastFloat(0.4f, 1.1f);
 							float speedX = Random().FastFloat(-1.6f, -1.2f) * scale;
@@ -414,7 +372,7 @@ namespace Jazz2
 
 							debris.Time = 180.0f;
 
-							uint32_t curAnimFrame = it->second.FrameOffset + Random().Next(0, it->second.FrameCount);
+							uint32_t curAnimFrame = res->FrameOffset + Random().Next(0, res->FrameCount);
 							uint32_t col = curAnimFrame % resBase->FrameConfiguration.X;
 							uint32_t row = curAnimFrame / resBase->FrameConfiguration.X;
 							debris.TexScaleX = (float(resBase->FrameDimensions.X) / float(texSize.X));
@@ -447,9 +405,11 @@ namespace Jazz2
 
 	void LevelHandler::OnEndFrame()
 	{
+		ZoneScopedC(0x4876AF);
+
 		float timeMult = theApplication().timeMult();
 
-		if (_pauseMenu == nullptr) {
+		if (!IsPausable() || _pauseMenu == nullptr) {
 			ResolveCollisions(timeMult);
 
 			// Ambient Light Transition
@@ -458,7 +418,7 @@ namespace Jazz2
 				if (std::abs(_ambientColor.W - _ambientLightTarget) < step) {
 					_ambientColor.W = _ambientLightTarget;
 				} else {
-					_ambientColor.W += step * ((_ambientLightTarget < _ambientColor.W) ? -1 : 1);
+					_ambientColor.W += step * ((_ambientLightTarget < _ambientColor.W) ? -1.0f : 1.0f);
 				}
 			}
 
@@ -468,10 +428,36 @@ namespace Jazz2
 		}
 
 		_lightingView->setClearColor(_ambientColor.W, 0.0f, 0.0f, 1.0f);
+
+#if defined(DEATH_DEBUG) && defined(WITH_IMGUI)
+		if (PreferencesCache::ShowPerformanceMetrics) {
+			ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+
+			std::size_t actorsCount = _actors.size();
+			for (std::size_t i = 0; i < actorsCount; i++) {
+				auto* actor = _actors[i].get();
+
+				auto pos = WorldPosToScreenSpace(actor->_pos);
+				auto aabbMin = WorldPosToScreenSpace({ actor->AABB.L, actor->AABB.T });
+				auto aabbMax = WorldPosToScreenSpace({ actor->AABB.R, actor->AABB.B });
+				auto aabbInnerMin = WorldPosToScreenSpace({ actor->AABBInner.L, actor->AABBInner.T });
+				auto aabbInnerMax = WorldPosToScreenSpace({ actor->AABBInner.R, actor->AABBInner.B });
+
+				drawList->AddRect(ImVec2(pos.x - 2.4f, pos.y - 2.4f), ImVec2(pos.x + 2.4f, pos.y + 2.4f), ImColor(0, 0, 0, 220));
+				drawList->AddRect(ImVec2(pos.x - 1.0f, pos.y - 1.0f), ImVec2(pos.x + 1.0f, pos.y + 1.0f), ImColor(120, 255, 200, 220));
+				drawList->AddRect(aabbMin, aabbMax, ImColor(120, 200, 255, 180));
+				drawList->AddRect(aabbInnerMin, aabbInnerMax, ImColor(255, 255, 255));
+			}
+		}
+#endif
+
+		TracyPlot("Actors", static_cast<int64_t>(_actors.size()));
 	}
 
 	void LevelHandler::OnInitializeViewport(int32_t width, int32_t height)
 	{
+		ZoneScopedC(0x4876AF);
+
 		constexpr float defaultRatio = (float)DefaultWidth / DefaultHeight;
 		float currentRatio = (float)width / height;
 
@@ -679,7 +665,7 @@ namespace Jazz2
 		_actors.emplace_back(actor);
 	}
 
-	std::shared_ptr<AudioBufferPlayer> LevelHandler::PlaySfx(AudioBuffer* buffer, const Vector3f& pos, bool sourceRelative, float gain, float pitch)
+	std::shared_ptr<AudioBufferPlayer> LevelHandler::PlaySfx(Actors::ActorBase* self, const StringView& identifier, AudioBuffer* buffer, const Vector3f& pos, bool sourceRelative, float gain, float pitch)
 	{
 		auto& player = _playingSounds.emplace_back(std::make_shared<AudioBufferPlayer>(buffer));
 		player->setPosition(Vector3f(pos.X, pos.Y, 100.0f));
@@ -702,7 +688,7 @@ namespace Jazz2
 		auto it = _commonResources->Sounds.find(String::nullTerminatedView(identifier));
 		if (it != _commonResources->Sounds.end()) {
 			int32_t idx = (it->second.Buffers.size() > 1 ? Random().Next(0, (int32_t)it->second.Buffers.size()) : 0);
-			auto& player = _playingSounds.emplace_back(std::make_shared<AudioBufferPlayer>(it->second.Buffers[idx].get()));
+			auto& player = _playingSounds.emplace_back(std::make_shared<AudioBufferPlayer>(&it->second.Buffers[idx]->Buffer));
 			player->setPosition(Vector3f(pos.X, pos.Y, 100.0f));
 			player->setGain(gain * PreferencesCache::MasterVolume * PreferencesCache::SfxVolume);
 
@@ -720,10 +706,10 @@ namespace Jazz2
 		}
 	}
 
-	void LevelHandler::WarpCameraToTarget(const std::shared_ptr<Actors::ActorBase>& actor, bool fast)
+	void LevelHandler::WarpCameraToTarget(Actors::ActorBase* actor, bool fast)
 	{
 		// TODO: Allow multiple cameras
-		if (_players[0] != actor.get()) {
+		if (_players[0] != actor) {
 			return;
 		}
 
@@ -975,7 +961,7 @@ namespace Jazz2
 		_root->GoToMainMenu(false);
 	}
 
-	bool LevelHandler::HandlePlayerDied(const std::shared_ptr<Actors::ActorBase>& player)
+	bool LevelHandler::HandlePlayerDied(Actors::Player* player)
 	{
 		if (_activeBoss != nullptr) {
 			if (_activeBoss->OnPlayerDied()) {
@@ -987,7 +973,17 @@ namespace Jazz2
 		return true;
 	}
 
-	void LevelHandler::HandlePlayerWarped(const std::shared_ptr<Actors::ActorBase>& player, const Vector2f& prevPos, bool fast)
+	bool LevelHandler::HandlePlayerFireWeapon(Actors::Player* player, WeaponType& weaponType, std::uint16_t& ammoDecrease)
+	{
+		return true;
+	}
+
+	bool LevelHandler::HandlePlayerSpring(Actors::Player* player, const Vector2f& pos, const Vector2f& force, bool keepSpeedX, bool keepSpeedY)
+	{
+		return true;
+	}
+
+	void LevelHandler::HandlePlayerWarped(Actors::Player* player, const Vector2f& prevPos, bool fast)
 	{
 		if (fast) {
 			WarpCameraToTarget(player, true);
@@ -999,7 +995,7 @@ namespace Jazz2
 		}
 	}
 
-	void LevelHandler::SetCheckpoint(Vector2f pos)
+	void LevelHandler::SetCheckpoint(const Vector2f& pos)
 	{
 		_checkpointFrames = ElapsedFrames();
 
@@ -1018,7 +1014,7 @@ namespace Jazz2
 		LimitCameraView(0, 0);
 
 		if (!_players.empty()) {
-			WarpCameraToTarget(_players[0]->shared_from_this());
+			WarpCameraToTarget(_players[0]);
 		}
 
 		if (_difficulty != GameDifficulty::Multiplayer) {
@@ -1061,7 +1057,7 @@ namespace Jazz2
 		auto it = _commonResources->Sounds.find(String::nullTerminatedView("SugarRush"_s));
 		if (it != _commonResources->Sounds.end()) {
 			int32_t idx = (it->second.Buffers.size() > 1 ? Random().Next(0, (int32_t)it->second.Buffers.size()) : 0);
-			_sugarRushMusic = _playingSounds.emplace_back(std::make_shared<AudioBufferPlayer>(it->second.Buffers[idx].get()));
+			_sugarRushMusic = _playingSounds.emplace_back(std::make_shared<AudioBufferPlayer>(&it->second.Buffers[idx]->Buffer));
 			_sugarRushMusic->setPosition(Vector3f(0.0f, 0.0f, 100.0f));
 			_sugarRushMusic->setGain(PreferencesCache::MasterVolume * PreferencesCache::MusicVolume);
 			_sugarRushMusic->setSourceRelative(true);
@@ -1251,17 +1247,118 @@ namespace Jazz2
 		}
 	}
 
+	void LevelHandler::BeforeActorDestroyed(Actors::ActorBase* actor)
+	{
+		// Nothing to do here
+	}
+
+	void LevelHandler::ProcessEvents(float timeMult)
+	{
+		ZoneScopedC(0x4876AF);
+
+		if (!_players.empty()) {
+			std::size_t playerCount = _players.size();
+			SmallVector<AABBi, 2> playerZones;
+			playerZones.reserve(playerCount * 2);
+			for (std::size_t i = 0; i < playerCount; i++) {
+				auto pos = _players[i]->GetPos();
+				std::int32_t tx = (std::int32_t)pos.X / TileSet::DefaultTileSize;
+				std::int32_t ty = (std::int32_t)pos.Y / TileSet::DefaultTileSize;
+
+				const auto& activationRange = playerZones.emplace_back(tx - ActivateTileRange, ty - ActivateTileRange, tx + ActivateTileRange, ty + ActivateTileRange);
+				playerZones.emplace_back(activationRange.L - 4, activationRange.T - 4, activationRange.R + 4, activationRange.B + 4);
+			}
+
+			for (auto& actor : _actors) {
+				if ((actor->_state & (Actors::ActorState::IsCreatedFromEventMap | Actors::ActorState::IsFromGenerator)) != Actors::ActorState::None) {
+					Vector2i originTile = actor->_originTile;
+					bool isInside = false;
+					for (std::size_t i = 1; i < playerZones.size(); i += 2) {
+						if (playerZones[i].Contains(originTile)) {
+							isInside = true;
+							break;
+						}
+					}
+
+					if (!isInside && actor->OnTileDeactivated()) {
+						if ((actor->_state & Actors::ActorState::IsFromGenerator) == Actors::ActorState::IsFromGenerator) {
+							_eventMap->ResetGenerator(originTile.X, originTile.Y);
+						}
+
+						_eventMap->Deactivate(originTile.X, originTile.Y);
+						actor->_state |= Actors::ActorState::IsDestroyed;
+					}
+				}
+			}
+
+			for (std::size_t i = 0; i < playerZones.size(); i += 2) {
+				const auto& activationZone = playerZones[i];
+				_eventMap->ActivateEvents(activationZone.L, activationZone.T, activationZone.R, activationZone.B, true);
+			}
+		}
+
+		_eventMap->ProcessGenerators(timeMult);
+	}
+
+	void LevelHandler::ProcessQueuedNextLevel()
+	{
+		bool playersReady = true;
+		for (auto player : _players) {
+			// Exit type was already provided in BeginLevelChange()
+			playersReady &= player->OnLevelChanging(ExitType::None);
+		}
+
+		if (playersReady && _nextLevelTime <= 0.0f) {
+			LevelInitialization levelInit;
+			PrepareNextLevelInitialization(levelInit);
+			_root->ChangeLevel(std::move(levelInit));
+		}
+	}
+
+	void LevelHandler::PrepareNextLevelInitialization(LevelInitialization& levelInit)
+	{
+		StringView realNextLevel;
+		if (!_nextLevel.empty()) {
+			realNextLevel = _nextLevel;
+		} else {
+			realNextLevel = ((_nextLevelType & ExitType::TypeMask) == ExitType::Bonus ? _defaultSecretLevel : _defaultNextLevel);
+		}
+
+		if (!realNextLevel.empty()) {
+			auto found = realNextLevel.partition('/');
+			if (found[2].empty()) {
+				levelInit.EpisodeName = _episodeName;
+				levelInit.LevelName = realNextLevel;
+			} else {
+				levelInit.EpisodeName = found[0];
+				levelInit.LevelName = found[2];
+			}
+		}
+
+		levelInit.Difficulty = _difficulty;
+		levelInit.IsReforged = _isReforged;
+		levelInit.CheatsUsed = _cheatsUsed;
+		levelInit.LastExitType = _nextLevelType;
+		levelInit.LastEpisodeName = _episodeName;
+
+		for (std::int32_t i = 0; i < _players.size(); i++) {
+			levelInit.PlayerCarryOvers[i] = _players[i]->PrepareLevelCarryOver();
+		}
+	}
+
 	void LevelHandler::ResolveCollisions(float timeMult)
 	{
+		ZoneScopedC(0x4876AF);
+
 		auto it = _actors.begin();
 		while (it != _actors.end()) {
 			Actors::ActorBase* actor = it->get();
 			if (actor->GetState(Actors::ActorState::IsDestroyed)) {
+				BeforeActorDestroyed(actor);
 				if (actor->CollisionProxyID != Collisions::NullNode) {
 					_collisions.DestroyProxy(actor->CollisionProxyID);
 					actor->CollisionProxyID = Collisions::NullNode;
 				}
-
 				it = _actors.erase(it);
 				continue;
 			}
@@ -1329,35 +1426,40 @@ namespace Jazz2
 
 	void LevelHandler::UpdateCamera(float timeMult)
 	{
+		ZoneScopedC(0x4876AF);
+
+		constexpr float SlowRatioX = 0.3f;
+		constexpr float SlowRatioY = 0.3f;
+		constexpr float FastRatioX = 0.2f;
+		constexpr float FastRatioY = 0.04f;
+
 		if (_players.empty()) {
 			return;
 		}
 
-		auto targetObj = _players[0];
+		auto* targetObj = _players[0];
 
 		// View Bounds Animation
 		if (_viewBounds != _viewBoundsTarget) {
 			if (std::abs(_viewBounds.X - _viewBoundsTarget.X) < 2.0f) {
 				_viewBounds = _viewBoundsTarget;
 			} else {
-				constexpr float transitionSpeed = 0.02f;
-				float dx = (_viewBoundsTarget.X - _viewBounds.X) * transitionSpeed * timeMult;
+				constexpr float TransitionSpeed = 0.02f;
+				float dx = (_viewBoundsTarget.X - _viewBounds.X) * TransitionSpeed * timeMult;
 				_viewBounds.X += dx;
 				_viewBounds.W -= dx;
 			}
 		}
 
 		// The position to focus on
+		Vector2i halfView = _view->size() / 2;
 		Vector2f focusPos = targetObj->_pos;
-
 		_cameraLastPos.X = lerp(_cameraLastPos.X, focusPos.X, 0.5f * timeMult);
 		_cameraLastPos.Y = lerp(_cameraLastPos.Y, focusPos.Y, 0.5f * timeMult);
 
-		Vector2i halfView = _view->size() / 2;
-
 		Vector2f speed = targetObj->_speed;
-		_cameraDistanceFactor.X = lerp(_cameraDistanceFactor.X, speed.X * 8.0f, 0.2f * timeMult);
-		_cameraDistanceFactor.Y = lerp(_cameraDistanceFactor.Y, speed.Y * 5.0f, 0.04f * timeMult);
+		_cameraDistanceFactor.X = lerp(_cameraDistanceFactor.X, speed.X * 8.0f, (std::abs(speed.X) < 2.0f ? SlowRatioX : FastRatioX) * timeMult);
+		_cameraDistanceFactor.Y = lerp(_cameraDistanceFactor.Y, speed.Y * 5.0f, (std::abs(speed.Y) < 2.0f ? SlowRatioY : FastRatioY) * timeMult);
 
 		if (_shakeDuration > 0.0f) {
 			_shakeDuration -= timeMult;
@@ -1373,12 +1475,18 @@ namespace Jazz2
 
 		// Clamp camera position to level bounds
 		if (_viewBounds.W > halfView.X * 2) {
-			_cameraPos.X = std::floor(std::clamp(_cameraLastPos.X + _cameraDistanceFactor.X, _viewBounds.X + halfView.X, _viewBounds.X + _viewBounds.W - halfView.X) + _shakeOffset.X);
+			_cameraPos.X = std::clamp(_cameraLastPos.X + _cameraDistanceFactor.X, _viewBounds.X + halfView.X, _viewBounds.X + _viewBounds.W - halfView.X) + _shakeOffset.X;
+			if (!PreferencesCache::UnalignedViewport || std::abs(_cameraDistanceFactor.X) < 1.0f) {
+				_cameraPos.X = std::floor(_cameraPos.X);
+			}
 		} else {
 			_cameraPos.X = std::floor(_viewBounds.X + _viewBounds.W * 0.5f + _shakeOffset.X);
 		}
 		if (_viewBounds.H > halfView.Y * 2) {
-			_cameraPos.Y = std::floor(std::clamp(_cameraLastPos.Y + _cameraDistanceFactor.Y, _viewBounds.Y + halfView.Y, _viewBounds.Y + _viewBounds.H - halfView.Y - 1.0f) + _shakeOffset.Y);
+			_cameraPos.Y = std::clamp(_cameraLastPos.Y + _cameraDistanceFactor.Y, _viewBounds.Y + halfView.Y, _viewBounds.Y + _viewBounds.H - halfView.Y - 1.0f) + _shakeOffset.Y;
+			if (!PreferencesCache::UnalignedViewport || std::abs(_cameraDistanceFactor.Y) < 1.0f) {
+				_cameraPos.Y = std::floor(_cameraPos.Y);
+			}
 		} else {
 			_cameraPos.Y = std::floor(_viewBounds.Y + _viewBounds.H * 0.5f + _shakeOffset.Y);
 		}
@@ -1396,7 +1504,7 @@ namespace Jazz2
 		if (width > 0.0f) {
 			_levelBounds.W = width;
 		} else {
-			_levelBounds.W = _tileMap->LevelBounds().X - left;
+			_levelBounds.W = _tileMap->GetLevelBounds().X - left;
 		}
 
 		if (left == 0 && width == 0) {
@@ -1425,6 +1533,16 @@ namespace Jazz2
 		if (_shakeDuration < duration) {
 			_shakeDuration = duration;
 		}
+	}
+
+	bool LevelHandler::GetTrigger(std::uint8_t triggerId)
+	{
+		return _tileMap->GetTrigger(triggerId);
+	}
+
+	void LevelHandler::SetTrigger(std::uint8_t triggerId, bool newState)
+	{
+		_tileMap->SetTrigger(triggerId, newState);
 	}
 
 	void LevelHandler::SetWeather(WeatherType type, uint8_t intensity)
@@ -1481,6 +1599,8 @@ namespace Jazz2
 
 	void LevelHandler::UpdatePressedActions()
 	{
+		ZoneScopedC(0x4876AF);
+
 		auto& input = theApplication().inputManager();
 		_pressedActions = ((_pressedActions & 0xffffffffu) << 32);
 
@@ -1598,22 +1718,26 @@ namespace Jazz2
 	{
 		// Show in-game pause menu
 		_pauseMenu = std::make_shared<UI::Menu::InGameMenu>(this);
-		// Prevent updating of all level objects
-		_rootNode->setUpdateEnabled(false);
+		if (IsPausable()) {
+			// Prevent updating of all level objects
+			_rootNode->setUpdateEnabled(false);
+		}
 
 #if defined(WITH_AUDIO)
 		// Use low-pass filter on music and pause all SFX
 		if (_music != nullptr) {
 			_music->setLowPass(0.1f);
 		}
-		for (auto& sound : _playingSounds) {
-			if (sound->isPlaying()) {
-				sound->pause();
+		if (IsPausable()) {
+			for (auto& sound : _playingSounds) {
+				if (sound->isPlaying()) {
+					sound->pause();
+				}
 			}
-		}
-		// If Sugar Rush music is playing, pause it and play normal music instead
-		if (_sugarRushMusic != nullptr && _music != nullptr) {
-			_music->play();
+			// If Sugar Rush music is playing, pause it and play normal music instead
+			if (_sugarRushMusic != nullptr && _music != nullptr) {
+				_music->play();
+			}
 		}
 #endif
 	}
@@ -1645,14 +1769,28 @@ namespace Jazz2
 		_pressedActions |= (1ull << (int32_t)PlayerActions::Menu) | (1ull << (32 + (int32_t)PlayerActions::Menu));
 	}
 
+#if defined(WITH_IMGUI)
+	ImVec2 LevelHandler::WorldPosToScreenSpace(const Vector2f pos)
+	{
+		Vector2i originalSize = _view->size();
+		Vector2f upscaledSize = _upscalePass.GetTargetSize();
+		Vector2i halfView = originalSize / 2;
+		return ImVec2(
+			(pos.X - _cameraPos.X + halfView.X) * upscaledSize.X / originalSize.X,
+			(pos.Y - _cameraPos.Y + halfView.Y) * upscaledSize.Y / originalSize.Y
+		);
+	}
+#endif
+
 	bool LevelHandler::LightingRenderer::OnDraw(RenderQueue& renderQueue)
 	{
 		_renderCommandsCount = 0;
 		_emittedLightsCache.clear();
 
 		// Collect all active light emitters
-		for (auto& actor : _owner->_actors) {
-			actor->OnEmitLights(_emittedLightsCache);
+		std::size_t actorsCount = _owner->_actors.size();
+		for (std::size_t i = 0; i < actorsCount; i++) {
+			_owner->_actors[i]->OnEmitLights(_emittedLightsCache);
 		}
 
 		for (auto& light : _emittedLightsCache) {
@@ -1677,6 +1815,7 @@ namespace Jazz2
 			return command;
 		} else {
 			std::unique_ptr<RenderCommand>& command = _renderCommands.emplace_back(std::make_unique<RenderCommand>());
+			_renderCommandsCount++;
 			command->material().setShader(_owner->_lightingShader);
 			command->material().setBlendingEnabled(true);
 			command->material().setBlendingFactors(GL_SRC_ALPHA, GL_ONE);

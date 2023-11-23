@@ -1,4 +1,5 @@
 ﻿#include "InGameMenu.h"
+#include "MenuResources.h"
 #include "PauseSection.h"
 #include "../ControlScheme.h"
 #include "../../PreferencesCache.h"
@@ -8,6 +9,8 @@
 #include "../../../nCine/Graphics/RenderQueue.h"
 #include "../../../nCine/Audio/AudioReaderMpt.h"
 #include "../../../nCine/Base/Random.h"
+
+using namespace Jazz2::UI::Menu::Resources;
 
 namespace Jazz2::UI::Menu
 {
@@ -24,10 +27,8 @@ namespace Jazz2::UI::Menu
 
 		auto& resolver = ContentResolver::Get();
 
-		Metadata* metadata = resolver.RequestMetadata("UI/MainMenu"_s);
-		ASSERT_MSG(metadata != nullptr, "Cannot load required metadata");
-		_graphics = &metadata->Graphics;
-		_sounds = &metadata->Sounds;
+		_metadata = resolver.RequestMetadata("UI/MainMenu"_s);
+		ASSERT_MSG(_metadata != nullptr, "Cannot load required metadata");
 
 		_smallFont = resolver.GetFont(FontType::Small);
 		_mediumFont = resolver.GetFont(FontType::Medium);
@@ -118,12 +119,12 @@ namespace Jazz2::UI::Menu
 		}
 
 		if (_owner->_touchButtonsTimer > 0.0f && _owner->_sections.size() >= 2) {
-			_owner->DrawElement("MenuLineArrow"_s, -1, static_cast<float>(center.X), 40.0f, ShadowLayer, Alignment::Center, Colorf::White);
+			_owner->DrawElement(MenuLineArrow, -1, static_cast<float>(center.X), 40.0f, ShadowLayer, Alignment::Center, Colorf::White);
 		}
 
 		// Title
-		_owner->DrawElement("MenuCarrot"_s, -1, center.X - 76.0f * logoTranslateX, 64.0f + logoTranslateY + 2.0f, ShadowLayer + 200, Alignment::Center, Colorf(0.0f, 0.0f, 0.0f, 0.3f), 0.8f * logoScale, 0.8f * logoScale);
-		_owner->DrawElement("MenuCarrot"_s, -1, center.X - 76.0f * logoTranslateX, 64.0f + logoTranslateY, MainLayer + 200, Alignment::Center, Colorf::White, 0.8f * logoScale, 0.8f * logoScale);
+		_owner->DrawElement(MenuCarrot, -1, center.X - 76.0f * logoTranslateX, 64.0f + logoTranslateY + 2.0f, ShadowLayer + 200, Alignment::Center, Colorf(0.0f, 0.0f, 0.0f, 0.3f), 0.8f * logoScale, 0.8f * logoScale);
+		_owner->DrawElement(MenuCarrot, -1, center.X - 76.0f * logoTranslateX, 64.0f + logoTranslateY, MainLayer + 200, Alignment::Center, Colorf::White, 0.8f * logoScale, 0.8f * logoScale);
 
 		_owner->_mediumFont->DrawString(this, "Jazz"_s, charOffsetShadow, center.X - 63.0f, 70.0f + logoTranslateY + 2.0f, FontShadowLayer + 200,
 			Alignment::Left, Colorf(0.0f, 0.0f, 0.0f, 0.32f), 0.75f * logoTextScale, 1.65f, 3.0f, 3.0f, 0.0f, 0.92f);
@@ -149,7 +150,7 @@ namespace Jazz2::UI::Menu
 		// Copyright
 		Vector2f bottomLeft = bottomRight;
 		bottomLeft.X = 24.0f;
-		_owner->DrawStringShadow("© 2016-2023  Dan R."_s, charOffset, bottomLeft.X, bottomLeft.Y, IMenuContainer::FontLayer,
+		_owner->DrawStringShadow("© 2016-" NCINE_BUILD_YEAR "  Dan R."_s, charOffset, bottomLeft.X, bottomLeft.Y, IMenuContainer::FontLayer,
 			Alignment::BottomLeft, Colorf(0.45f, 0.45f, 0.45f, 0.5f), 0.7f, 0.4f, 1.2f, 1.2f, 0.46f, 0.8f);
 
 		if (!_owner->_sections.empty()) {
@@ -194,7 +195,7 @@ namespace Jazz2::UI::Menu
 		return true;
 	}
 
-	void InGameMenu::SwitchToSectionDirect(std::unique_ptr<MenuSection> section)
+	MenuSection* InGameMenu::SwitchToSectionDirect(std::unique_ptr<MenuSection> section)
 	{
 		if (!_sections.empty()) {
 			auto& lastSection = _sections.back();
@@ -208,6 +209,8 @@ namespace Jazz2::UI::Menu
 			Recti clipRectangle = currentSection->GetClipRectangle(_canvasBackground->ViewSize);
 			_root->_upscalePass.SetClipRectangle(clipRectangle);
 		}
+
+		return currentSection.get();
 	}
 
 	void InGameMenu::LeaveSection()
@@ -235,7 +238,7 @@ namespace Jazz2::UI::Menu
 	}
 
 #if defined(WITH_MULTIPLAYER)
-	bool InGameMenu::ConnectToServer(const char* address, std::uint16_t port)
+	bool InGameMenu::ConnectToServer(const StringView& address, std::uint16_t port)
 	{
 		return _root->_root->ConnectToServer(address, port);
 	}
@@ -264,24 +267,25 @@ namespace Jazz2::UI::Menu
 		}
 
 		if ((type & ChangedPreferencesType::Language) == ChangedPreferencesType::Language) {
+			// All sections have to be recreated to load new language
 			_sections.clear();
 			SwitchToSection<PauseSection>();
 		}
 	}
 
-	void InGameMenu::DrawElement(const StringView& name, int32_t frame, float x, float y, uint16_t z, Alignment align, const Colorf& color, float scaleX, float scaleY, bool additiveBlending)
+	void InGameMenu::DrawElement(AnimState state, int32_t frame, float x, float y, uint16_t z, Alignment align, const Colorf& color, float scaleX, float scaleY, bool additiveBlending)
 	{
-		auto it = _graphics->find(String::nullTerminatedView(name));
-		if (it == _graphics->end()) {
+		auto* res = _metadata->FindAnimation(state);
+		if (res == nullptr) {
 			return;
 		}
 
 		if (frame < 0) {
-			frame = it->second.FrameOffset + ((int32_t)(_canvasBackground->AnimTime * it->second.FrameCount / it->second.AnimDuration) % it->second.FrameCount);
+			frame = res->FrameOffset + ((int32_t)(_canvasBackground->AnimTime * res->FrameCount / res->AnimDuration) % res->FrameCount);
 		}
 
 		Canvas* currentCanvas = GetActiveCanvas();
-		GenericGraphicResource* base = it->second.Base;
+		GenericGraphicResource* base = res->Base;
 		Vector2f size = Vector2f(base->FrameDimensions.X * scaleX, base->FrameDimensions.Y * scaleY);
 		Vector2f adjustedPos = Canvas::ApplyAlignment(align, Vector2f(x - currentCanvas->ViewSize.X * 0.5f, currentCanvas->ViewSize.Y * 0.5f - y), size);
 
@@ -301,15 +305,15 @@ namespace Jazz2::UI::Menu
 		currentCanvas->DrawTexture(*base->TextureDiffuse.get(), adjustedPos, z, size, texCoords, color, additiveBlending);
 	}
 
-	void InGameMenu::DrawElement(const StringView& name, float x, float y, uint16_t z, Alignment align, const Colorf& color, const Vector2f& size, const Vector4f& texCoords)
+	void InGameMenu::DrawElement(AnimState state, float x, float y, uint16_t z, Alignment align, const Colorf& color, const Vector2f& size, const Vector4f& texCoords)
 	{
-		auto it = _graphics->find(String::nullTerminatedView(name));
-		if (it == _graphics->end()) {
+		auto* res = _metadata->FindAnimation(state);
+		if (res == nullptr) {
 			return;
 		}
 
 		Canvas* currentCanvas = GetActiveCanvas();
-		GenericGraphicResource* base = it->second.Base;
+		GenericGraphicResource* base = res->Base;
 		Vector2f adjustedPos = Canvas::ApplyAlignment(align, Vector2f(x - currentCanvas->ViewSize.X * 0.5f, currentCanvas->ViewSize.Y * 0.5f - y), size);
 
 		currentCanvas->DrawTexture(*base->TextureDiffuse.get(), adjustedPos, z, size, texCoords, color, false);
@@ -341,10 +345,10 @@ namespace Jazz2::UI::Menu
 
 	void InGameMenu::PlaySfx(const StringView& identifier, float gain)
 	{
-		auto it = _sounds->find(String::nullTerminatedView(identifier));
-		if (it != _sounds->end()) {
+		auto it = _metadata->Sounds.find(String::nullTerminatedView(identifier));
+		if (it != _metadata->Sounds.end()) {
 			int32_t idx = (it->second.Buffers.size() > 1 ? Random().Next(0, (int32_t)it->second.Buffers.size()) : 0);
-			auto& player = _playingSounds.emplace_back(std::make_shared<AudioBufferPlayer>(it->second.Buffers[idx].get()));
+			auto& player = _playingSounds.emplace_back(std::make_shared<AudioBufferPlayer>(&it->second.Buffers[idx]->Buffer));
 			player->setPosition(Vector3f(0.0f, 0.0f, 100.0f));
 			player->setGain(gain * PreferencesCache::MasterVolume * PreferencesCache::SfxVolume);
 			player->setSourceRelative(true);

@@ -3,6 +3,7 @@
 #include "ActorBase.h"
 #include "../LevelInitialization.h"
 #include "../ShieldType.h"
+#include "../SuspendType.h"
 
 #if defined(WITH_ANGELSCRIPT)
 namespace Jazz2::Scripting
@@ -216,6 +217,7 @@ namespace Jazz2::Actors
 		float _invulnerableBlinkTime;
 		float _jumpTime;
 		float _idleTime;
+		float _hitFloorTime;
 		float _keepRunningTime;
 		float _lastPoleTime;
 		Vector2i _lastPolePos;
@@ -248,6 +250,7 @@ namespace Jazz2::Actors
 		void OnEmitLights(SmallVectorImpl<LightEmitter>& lights) override;
 
 		bool OnHandleCollision(std::shared_ptr<ActorBase> other) override;
+		void OnHitSpring(const Vector2f& pos, const Vector2f& force, bool keepSpeedX, bool keepSpeedY, bool& removeSpecialMove);
 		void OnHitFloor(float timeMult) override;
 		void OnHitCeiling(float timeMult) override;
 		void OnHitWall(float timeMult) override;
@@ -264,6 +267,7 @@ namespace Jazz2::Actors
 
 		std::shared_ptr<AudioBufferPlayer> PlayPlayerSfx(const StringView& identifier, float gain = 1.0f, float pitch = 1.0f);
 		bool SetPlayerTransition(AnimState state, bool cancellable, bool removeControl, SpecialMoveType specialMove, const std::function<void()>& callback = nullptr);
+		bool SetPlayerTransition(AnimState state, bool cancellable, bool removeControl, SpecialMoveType specialMove, std::function<void()>&& callback);
 		void InitialPoleStage(bool horizontal);
 		void NextPoleStage(bool horizontal, bool positive, int stagesLeft, float lastSpeed);
 		void EndDamagingMove();

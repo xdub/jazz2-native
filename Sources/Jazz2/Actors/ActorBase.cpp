@@ -1,5 +1,7 @@
 ﻿#include "ActorBase.h"
+#include "../ContentResolver.h"
 #include "../ILevelHandler.h"
+#include "../PreferencesCache.h"
 #include "../Events/EventMap.h"
 #include "../Tiles/TileMap.h"
 #include "../Collisions/DynamicTreeBroadPhase.h"
@@ -13,34 +15,21 @@
 #	pragma message("WITH_COROUTINES is not defined, building without asynchronous loading support")
 #endif
 
+#include "../../nCine/tracy.h"
 #include "../../nCine/Primitives/Matrix4x4.h"
 #include "../../nCine/Base/Random.h"
 #include "../../nCine/Base/FrameTimer.h"
 
+using namespace Jazz2::Tiles;
 using namespace nCine;
 
 namespace Jazz2::Actors
 {
 	ActorBase::ActorBase()
-		:
-		_state(ActorState::None),
-		_levelHandler(nullptr),
-		_internalForceY(0.0f),
-		_elasticity(0.0f),
-		_friction(1.5f),
-		_unstuckCooldown(0.0f),
-		_frozenTimeLeft(0.0f),
-		_maxHealth(1),
-		_health(1),
-		_spawnFrames(0.0f),
-		_metadata(nullptr),
-		_renderer(this),
-		_currentAnimation(nullptr),
-		_currentTransition(nullptr),
-		_currentAnimationState(AnimState::Uninitialized),
-		_currentTransitionState(AnimState::Idle),
-		_currentTransitionCancellable(false),
-		CollisionProxyID(Collisions::NullNode)
+		: _state(ActorState::None), _levelHandler(nullptr), _internalForceY(0.0f), _elasticity(0.0f), _friction(1.5f),
+			_unstuckCooldown(0.0f), _frozenTimeLeft(0.0f), _maxHealth(1), _health(1), _spawnFrames(0.0f), _metadata(nullptr),
+			_renderer(this), _currentAnimation(nullptr), _currentTransition(nullptr), _currentTransitionCancellable(false),
+			CollisionProxyID(Collisions::NullNode)
 	{
 	}
 
@@ -63,7 +52,7 @@ namespace Jazz2::Actors
 		_renderer.setFlippedX(value);
 		
 		// Recalculate hotspot
-		GraphicResource* res = (_currentTransitionState != AnimState::Idle ? _currentTransition : _currentAnimation);
+		GraphicResource* res = (_currentTransition != nullptr ? _currentTransition : _currentAnimation);
 		if (res != nullptr) {
 			_renderer.Hotspot.X = -((res->Base->FrameDimensions.X / 2) - (IsFacingLeft() ? (res->Base->FrameDimensions.X - res->Base->Hotspot.X) : res->Base->Hotspot.X));
 			_renderer.Hotspot.Y = -((res->Base->FrameDimensions.Y / 2) - res->Base->Hotspot.Y);
@@ -182,6 +171,8 @@ namespace Jazz2::Actors
 
 	void ActorBase::TryStandardMovement(float timeMult, TileCollisionParams& params)
 	{
+		ZoneScoped;
+
 		if (_unstuckCooldown > 0.0f) {
 			_unstuckCooldown -= timeMult;
 		}
@@ -406,22 +397,27 @@ namespace Jazz2::Actors
 
 	void ActorBase::CreateParticleDebris()
 	{
-		auto tilemap = _levelHandler->TileMap();
+		auto* tilemap = _levelHandler->TileMap();
 		if (tilemap != nullptr) {
-			tilemap->CreateParticleDebris(_currentTransitionState != AnimState::Idle ? _currentTransition : _currentAnimation,
+			tilemap->CreateParticleDebris(_currentTransition != nullptr ? _currentTransition : _currentAnimation,
 				Vector3f(_pos.X, _pos.Y, (float)_renderer.layer()), Vector2f::Zero, _renderer.CurrentFrame, IsFacingLeft());
 		}
 	}
 
-	void ActorBase::CreateSpriteDebris(const StringView& identifier, int count)
+	void ActorBase::CreateSpriteDebris(AnimState state, int count)
 	{
-		auto tilemap = _levelHandler->TileMap();
+		auto* tilemap = _levelHandler->TileMap();
 		if (tilemap != nullptr && _metadata != nullptr) {
-			auto it = _metadata->Graphics.find(String::nullTerminatedView(identifier));
-			if (it != _metadata->Graphics.end()) {
-				tilemap->CreateSpriteDebris(&it->second, Vector3f(_pos.X, _pos.Y, (float)_renderer.layer()), count);
+			auto* res = _metadata->FindAnimation(state);
+			if (res != nullptr) {
+				tilemap->CreateSpriteDebris(res, Vector3f(_pos.X, _pos.Y, (float)_renderer.layer()), count);
 			}
 		}
+	}
+
+	float ActorBase::GetIceShrapnelScale() const
+	{
+		return 1.0f;
 	}
 
 	std::shared_ptr<AudioBufferPlayer> ActorBase::PlaySfx(const StringView& identifier, float gain, float pitch)
@@ -429,138 +425,54 @@ namespace Jazz2::Actors
 		auto it = _metadata->Sounds.find(String::nullTerminatedView(identifier));
 		if (it != _metadata->Sounds.end()) {
 			int idx = (it->second.Buffers.size() > 1 ? Random().Next(0, (int)it->second.Buffers.size()) : 0);
-			return _levelHandler->PlaySfx(it->second.Buffers[idx].get(), Vector3f(_pos.X, _pos.Y, 0.0f), false, gain, pitch);
+			return _levelHandler->PlaySfx(this, identifier, &it->second.Buffers[idx]->Buffer, Vector3f(_pos.X, _pos.Y, 0.0f), false, gain, pitch);
 		} else {
 			return nullptr;
 		}
 	}
 
-	void ActorBase::SetAnimation(const StringView& identifier)
-	{
-		if (_metadata == nullptr) {
-			LOGE("No metadata loaded");
-			return;
-		}
-
-		auto it = _metadata->Graphics.find(String::nullTerminatedView(identifier));
-		if (it == _metadata->Graphics.end()) {
-			LOGE("No animation found for \"%s\"", identifier.data());
-			return;
-		}
-
-		_currentAnimation = &it->second;
-		_currentAnimationState = AnimState::Idle;
-
-		RefreshAnimation();
-	}
-
-	bool ActorBase::SetAnimation(AnimState state)
+	bool ActorBase::SetAnimation(AnimState state, bool skipAnimation)
 	{
 		if (_metadata == nullptr) {
 			LOGE("No metadata loaded");
 			return false;
 		}
 
-		if (_currentTransitionState != AnimState::Idle && !_currentTransitionCancellable) {
-			return false;
+		if (_currentAnimation != nullptr && _currentAnimation->State == state) {
+			return true;
 		}
 
-		if (_currentAnimation != nullptr && _currentAnimation->HasState(state)) {
-			_currentAnimationState = state;
-			return false;
-		}
-
-		AnimationCandidate candidates[AnimationCandidatesCount];
-		int count = FindAnimationCandidates(state, candidates);
-		if (count == 0) {
+		auto* anim = _metadata->FindAnimation(state);
+		if (anim == nullptr) {
 			//LOGE("No animation found for state 0x%08x", state);
 			return false;
 		}
 
-		if (_currentTransitionState != AnimState::Idle) {
-			_currentTransitionState = AnimState::Idle;
+		if (_currentTransition == nullptr || _currentTransitionCancellable) {
+			if (_currentTransition != nullptr) {
+				_currentTransition = nullptr;
 
-			if (_currentTransitionCallback != nullptr) {
-				auto oldCallback = std::move(_currentTransitionCallback);
-				_currentTransitionCallback = nullptr;
-				oldCallback();
+				if (_currentTransitionCallback != nullptr) {
+					auto oldCallback = std::move(_currentTransitionCallback);
+					_currentTransitionCallback = nullptr;
+					oldCallback();
+				}
 			}
+
+			_currentAnimation = anim;
+			RefreshAnimation(skipAnimation);
+		} else {
+			// It will be set after active transition
+			_currentAnimation = anim;
 		}
-
-		int index = (count > 1 ? nCine::Random().Next(0, count) : 0);
-		_currentAnimation = candidates[index].Resource;
-		_currentAnimationState = state;
-
-		RefreshAnimation();
-
-		return true;
-	}
-
-	bool ActorBase::SetTransition(const StringView& identifier, bool cancellable, const std::function<void()>& callback)
-	{
-		if (_metadata == nullptr) {
-			return false;
-		}
-
-		auto it = _metadata->Graphics.find(String::nullTerminatedView(identifier));
-		if (it == _metadata->Graphics.end()) {
-			if (callback != nullptr) {
-				callback();
-			}
-			return false;
-		}
-
-		if (_currentTransitionCallback != nullptr) {
-			auto oldCallback = std::move(_currentTransitionCallback);
-			_currentTransitionCallback = nullptr;
-			oldCallback();
-		}
-
-		_currentTransition = &it->second;
-		_currentTransitionState = AnimState::TransitionByName;
-		_currentTransitionCancellable = cancellable;
-		_currentTransitionCallback = callback;
-
-		RefreshAnimation();
-
-		return true;
-	}
-
-	bool ActorBase::SetTransition(const StringView& identifier, bool cancellable, std::function<void()>&& callback)
-	{
-		if (_metadata == nullptr) {
-			return false;
-		}
-
-		auto it = _metadata->Graphics.find(String::nullTerminatedView(identifier));
-		if (it == _metadata->Graphics.end()) {
-			if (callback != nullptr) {
-				callback();
-			}
-			return false;
-		}
-
-		if (_currentTransitionCallback != nullptr) {
-			auto oldCallback = std::move(_currentTransitionCallback);
-			_currentTransitionCallback = nullptr;
-			oldCallback();
-		}
-
-		_currentTransition = &it->second;
-		_currentTransitionState = AnimState::TransitionByName;
-		_currentTransitionCancellable = cancellable;
-		_currentTransitionCallback = std::move(callback);
-
-		RefreshAnimation();
 
 		return true;
 	}
 
 	bool ActorBase::SetTransition(AnimState state, bool cancellable, const std::function<void()>& callback)
 	{
-		AnimationCandidate candidates[AnimationCandidatesCount];
-		int count = FindAnimationCandidates(state, candidates);
-		if (count == 0) {
+		auto* anim = _metadata->FindAnimation(state);
+		if (anim == nullptr) {
 			if (callback != nullptr) {
 				callback();
 			}
@@ -573,12 +485,9 @@ namespace Jazz2::Actors
 			oldCallback();
 		}
 
-		int index = (count > 1 ? nCine::Random().Next(0, count) : 0);
-		_currentTransition = candidates[index].Resource;
-		_currentTransitionState = state;
+		_currentTransition = anim;
 		_currentTransitionCancellable = cancellable;
 		_currentTransitionCallback = callback;
-
 		RefreshAnimation();
 
 		return true;
@@ -586,9 +495,8 @@ namespace Jazz2::Actors
 
 	bool ActorBase::SetTransition(AnimState state, bool cancellable, std::function<void()>&& callback)
 	{
-		AnimationCandidate candidates[AnimationCandidatesCount];
-		int count = FindAnimationCandidates(state, candidates);
-		if (count == 0) {
+		auto* anim = _metadata->FindAnimation(state);
+		if (anim == nullptr) {
 			if (callback != nullptr) {
 				callback();
 			}
@@ -601,12 +509,9 @@ namespace Jazz2::Actors
 			oldCallback();
 		}
 
-		int index = (count > 1 ? nCine::Random().Next(0, count) : 0);
-		_currentTransition = candidates[index].Resource;
-		_currentTransitionState = state;
+		_currentTransition = anim;
 		_currentTransitionCancellable = cancellable;
-		_currentTransitionCallback = std::move(callback);
-		
+		_currentTransitionCallback = std::move(callback);		
 		RefreshAnimation();
 
 		return true;
@@ -614,30 +519,26 @@ namespace Jazz2::Actors
 
 	void ActorBase::CancelTransition()
 	{
-		if (_currentTransitionState != AnimState::Idle && _currentTransitionCancellable) {
+		if (_currentTransition != nullptr && _currentTransitionCancellable) {
 			if (_currentTransitionCallback != nullptr) {
 				auto oldCallback = std::move(_currentTransitionCallback);
 				_currentTransitionCallback = nullptr;
 				oldCallback();
 			}
 
-			_currentTransitionState = AnimState::Idle;
-
+			_currentTransition = nullptr;
 			RefreshAnimation();
 		}
 	}
 
 	void ActorBase::ForceCancelTransition()
 	{
-		if (_currentTransitionState == AnimState::Idle) {
-			return;
+		if (_currentTransition != nullptr) {
+			_currentTransition = nullptr;
+			_currentTransitionCancellable = true;
+			_currentTransitionCallback = nullptr;
+			RefreshAnimation();
 		}
-
-		_currentTransitionCancellable = true;
-		_currentTransitionCallback = nullptr;
-		_currentTransitionState = AnimState::Idle;
-
-		RefreshAnimation();
 	}
 
 	void ActorBase::OnAnimationStarted()
@@ -647,8 +548,8 @@ namespace Jazz2::Actors
 
 	void ActorBase::OnAnimationFinished()
 	{
-		if (_currentTransitionState != AnimState::Idle) {
-			_currentTransitionState = AnimState::Idle;
+		if (_currentTransition != nullptr) {
+			_currentTransition = nullptr;
 
 			RefreshAnimation();
 
@@ -674,8 +575,8 @@ namespace Jazz2::Actors
 			return IsCollidingWithAngled(other);
 		}
 
-		GraphicResource* res1 = (_currentTransitionState != AnimState::Idle ? _currentTransition : _currentAnimation);
-		GraphicResource* res2 = (other->_currentTransitionState != AnimState::Idle ? other->_currentTransition : other->_currentAnimation);
+		GraphicResource* res1 = (_currentTransition != nullptr ? _currentTransition : _currentAnimation);
+		GraphicResource* res2 = (other->_currentTransition != nullptr ? other->_currentTransition : other->_currentAnimation);
 		if (res1 == nullptr || res2 == nullptr) {
 			if (res1 != nullptr) {
 				return IsCollidingWith(other->AABBInner);
@@ -830,13 +731,12 @@ namespace Jazz2::Actors
 	{
 		bool perPixel = (_state & ActorState::SkipPerPixelCollisions) != ActorState::SkipPerPixelCollisions;
 		if (!perPixel) {
-			AABBf inter2 = AABBf::Intersect(aabb, AABBInner);
-			return (inter2.R > 0 && inter2.B > 0);
+			return aabb.Overlaps(AABBInner);
 		} else if (std::abs(_renderer.rotation()) > 0.1f) {
 			return IsCollidingWithAngled(aabb);
 		}
 
-		GraphicResource* res = (_currentTransitionState != AnimState::Idle ? _currentTransition : _currentAnimation);
+		GraphicResource* res = (_currentTransition != nullptr ? _currentTransition : _currentAnimation);
 		if (res == nullptr) {
 			return false;
 		}
@@ -894,8 +794,8 @@ namespace Jazz2::Actors
 
 	bool ActorBase::IsCollidingWithAngled(ActorBase* other)
 	{
-		GraphicResource* res1 = (_currentTransitionState != AnimState::Idle ? _currentTransition : _currentAnimation);
-		GraphicResource* res2 = (other->_currentTransitionState != AnimState::Idle ? other->_currentTransition : other->_currentAnimation);
+		GraphicResource* res1 = (_currentTransition != nullptr ? _currentTransition : _currentAnimation);
+		GraphicResource* res2 = (other->_currentTransition != nullptr ? other->_currentTransition : other->_currentAnimation);
 		if (res1 == nullptr || res2 == nullptr) {
 			return false;
 		}
@@ -994,7 +894,7 @@ namespace Jazz2::Actors
 
 	bool ActorBase::IsCollidingWithAngled(const AABBf& aabb)
 	{
-		GraphicResource* res = (_currentTransitionState != AnimState::Idle ? _currentTransition : _currentAnimation);
+		GraphicResource* res = (_currentTransition != nullptr ? _currentTransition : _currentAnimation);
 		if (res == nullptr) {
 			return false;
 		}
@@ -1069,7 +969,7 @@ namespace Jazz2::Actors
 		}
 
 		if ((_state & ActorState::SkipPerPixelCollisions) != ActorState::SkipPerPixelCollisions) {
-			GraphicResource* res = (_currentTransitionState != AnimState::Idle ? _currentTransition : _currentAnimation);
+			GraphicResource* res = (_currentTransition != nullptr ? _currentTransition : _currentAnimation);
 			if (res == nullptr) {
 				return;
 			}
@@ -1105,14 +1005,14 @@ namespace Jazz2::Actors
 				AABB.B = AABB.T + size.Y;
 			}
 		} else {
-			OnUpdateHitbox();
+			OnUpdateHitbox(); 
 			AABB = AABBInner;
 		}
 	}
 
-	void ActorBase::RefreshAnimation()
+	void ActorBase::RefreshAnimation(bool skipAnimation)
 	{
-		GraphicResource* res = (_currentTransitionState != AnimState::Idle ? _currentTransition : _currentAnimation);
+		GraphicResource* res = (_currentTransition != nullptr ? _currentTransition : _currentAnimation);
 		if (res == nullptr) {
 			return;
 		}
@@ -1129,16 +1029,20 @@ namespace Jazz2::Actors
 			_renderer.LoopMode = AnimationLoopMode::FixedSingle;
 		} else {
 			_renderer.FirstFrame = res->FrameOffset;
-
 			_renderer.LoopMode = res->LoopMode;
 		}
 
 		_renderer.FrameCount = res->FrameCount;
 		_renderer.AnimDuration = res->AnimDuration;
-		_renderer.AnimTime = 0.0f;
+		_renderer.AnimTime = (skipAnimation && res->AnimDuration >= 0.0f && _renderer.LoopMode != AnimationLoopMode::FixedSingle ? _renderer.AnimDuration : 0.0f);
 
-		_renderer.Hotspot.X = -((res->Base->FrameDimensions.X / 2) - (IsFacingLeft() ? (res->Base->FrameDimensions.X - res->Base->Hotspot.X) : res->Base->Hotspot.X));
-		_renderer.Hotspot.Y = -((res->Base->FrameDimensions.Y / 2) - res->Base->Hotspot.Y);
+		_renderer.Hotspot.X = -((res->Base->FrameDimensions.X * 0.5f) - (IsFacingLeft() ? (res->Base->FrameDimensions.X - res->Base->Hotspot.X) : res->Base->Hotspot.X));
+		_renderer.Hotspot.Y = -((res->Base->FrameDimensions.Y * 0.5f) - res->Base->Hotspot.Y);
+
+		if (!PreferencesCache::UnalignedViewport) {
+			_renderer.Hotspot.X = std::round(_renderer.Hotspot.X);
+			_renderer.Hotspot.Y = std::round(_renderer.Hotspot.Y);
+		}
 
 		_renderer.setTexture(res->Base->TextureDiffuse.get());
 		_renderer.UpdateVisibleFrames();
@@ -1150,30 +1054,22 @@ namespace Jazz2::Actors
 		}
 	}
 
-	int ActorBase::FindAnimationCandidates(AnimState state, AnimationCandidate candidates[AnimationCandidatesCount])
+	void ActorBase::PreloadMetadataAsync(const StringView& path)
 	{
-		if (_metadata == nullptr) {
-			LOGE("No metadata loaded");
-			return 0;
-		}
-
-		int i = 0;
-		auto it = _metadata->Graphics.begin();
-		while (it != _metadata->Graphics.end()) {
-			if (i >= AnimationCandidatesCount) {
-				break;
-			}
-
-			if (it->second.HasState(state)) {
-				candidates[i].Identifier = &it->first;
-				candidates[i].Resource = &it->second;
-				i++;
-			}
-			++it;
-		}
-
-		return i;
+		ContentResolver::Get().PreloadMetadataAsync(path);
 	}
+
+	void ActorBase::RequestMetadata(const StringView& path)
+	{
+		_metadata = ContentResolver::Get().RequestMetadata(path);
+	}
+	
+#if !defined(WITH_COROUTINES)
+	void ActorBase::RequestMetadataAsync(const StringView& path)
+	{
+		_metadata = ContentResolver::Get().RequestMetadata(path);
+	}
+#endif
 
 	void ActorBase::UpdateFrozenState(float timeMult)
 	{
@@ -1187,11 +1083,12 @@ namespace Jazz2::Actors
 				_renderer.AnimPaused = false;
 				_renderer.Initialize(ActorRendererType::Default);
 
+				float scale = GetIceShrapnelScale();
 				for (int i = 0; i < 10; i++) {
-					Explosion::Create(_levelHandler, Vector3i((int)_pos.X, (int)_pos.Y, _renderer.layer() + 10), Explosion::Type::IceShrapnel);
+					Explosion::Create(_levelHandler, Vector3i((int)_pos.X, (int)_pos.Y, _renderer.layer() + 10), Explosion::Type::IceShrapnel, scale);
 				}
 
-				Explosion::Create(_levelHandler, Vector3i((int)_pos.X, (int)_pos.Y, _renderer.layer() + 90), Explosion::Type::SmokeWhite);
+				Explosion::Create(_levelHandler, Vector3i((int)_pos.X, (int)_pos.Y, _renderer.layer() + 90), Explosion::Type::SmokeWhite, scale);
 
 				_levelHandler->PlayCommonSfx("IceBreak"_s, Vector3f(_pos.X, _pos.Y, 0.0f));
 			}
@@ -1200,13 +1097,13 @@ namespace Jazz2::Actors
 
 	void ActorBase::HandleFrozenStateChange(ActorBase* shot)
 	{
-		if (auto freezerShot = dynamic_cast<Actors::Weapons::FreezerShot*>(shot)) {
+		if (auto* freezerShot = dynamic_cast<Weapons::FreezerShot*>(shot)) {
 			if (dynamic_cast<ActorBase*>(freezerShot->GetOwner()) != this) {
 				_frozenTimeLeft = freezerShot->FrozenDuration();
 				_renderer.AnimPaused = true;
 				freezerShot->DecreaseHealth(INT32_MAX);
 			}
-		} else if(auto toasterShot = dynamic_cast<Actors::Weapons::ToasterShot*>(shot)) {
+		} else if(auto* toasterShot = dynamic_cast<Weapons::ToasterShot*>(shot)) {
 			_frozenTimeLeft = std::min(1.0f, _frozenTimeLeft);
 		}
 	}
@@ -1269,8 +1166,6 @@ namespace Jazz2::Actors
 		if (free) {
 			AABBInner = aabb;
 			_pos = newPos;
-			_renderer.setPosition(std::round(newPos.X), std::round(newPos.Y));
-
 			if ((_state & ActorState::ForceDisableCollisions) != ActorState::ForceDisableCollisions) {
 				_state |= ActorState::IsDirty;
 			}
@@ -1282,6 +1177,16 @@ namespace Jazz2::Actors
 	{
 		_externalForce.X += x;
 		_externalForce.Y += y;
+	}
+
+	ActorBase::ActorRenderer::ActorRenderer(ActorBase* owner)
+		: BaseSprite(nullptr, nullptr, 0.0f, 0.0f), AnimPaused(false), LoopMode(AnimationLoopMode::Loop), FirstFrame(0),
+			FrameCount(0), AnimDuration(0.0f), AnimTime(0.0f), CurrentFrame(0), _owner(owner),
+			_rendererType((ActorRendererType)-1), _rendererTransition(0.0f)
+	{
+		type_ = ObjectType::Sprite;
+		renderCommand_.setType(RenderCommand::CommandTypes::Sprite);
+		Initialize(ActorRendererType::Default);
 	}
 
 	void ActorBase::ActorRenderer::Initialize(ActorRendererType type)
@@ -1320,12 +1225,27 @@ namespace Jazz2::Actors
 	{
 		_owner->OnUpdate(timeMult);
 
+		Vector2f pos = _owner->_pos;
+		if (!PreferencesCache::UnalignedViewport || (_owner->_state & ActorState::IsDirty) != ActorState::IsDirty) {
+			if (!PreferencesCache::UnalignedViewport || (FrameDimensions.X & 1) == 0) {
+				pos.X = std::round(pos.X);
+			} else {
+				pos.X = std::floor(pos.X);
+			}
+			if (!PreferencesCache::UnalignedViewport || (FrameDimensions.Y & 1) == 0) {
+				pos.Y = std::round(pos.Y);
+			} else {
+				pos.Y = std::floor(pos.Y);
+			}
+		}
+		setPosition(pos.X, pos.Y);
+
 		if (IsAnimationRunning()) {
 			switch (LoopMode) {
 				case AnimationLoopMode::Loop:
 					AnimTime += timeMult * FrameTimer::SecondsPerFrame;
 					if (AnimTime > AnimDuration) {
-						int n = (int)(AnimTime / AnimDuration);
+						std::int32_t n = (std::int32_t)(AnimTime / AnimDuration);
 						AnimTime -= AnimDuration * n;
 						_owner->OnAnimationFinished();
 					}
@@ -1410,7 +1330,7 @@ namespace Jazz2::Actors
 		if (FrameCount > 0 && AnimDuration > 0.0f) {
 			// Calculate currently visible frame
 			float frameTemp = (FrameCount * AnimTime) / AnimDuration;
-			CurrentFrame = (int)frameTemp;
+			CurrentFrame = (std::int32_t)frameTemp;
 
 			// Normalize current frame when exceeding anim duration
 			if (LoopMode == AnimationLoopMode::Once || LoopMode == AnimationLoopMode::FixedSingle) {
@@ -1422,17 +1342,17 @@ namespace Jazz2::Actors
 		CurrentFrame = FirstFrame + std::clamp(CurrentFrame, 0, FrameCount - 1);
 
 		// Set current animation frame rectangle
-		int col = CurrentFrame % FrameConfiguration.X;
-		int row = CurrentFrame / FrameConfiguration.X;
+		std::int32_t col = CurrentFrame % FrameConfiguration.X;
+		std::int32_t row = CurrentFrame / FrameConfiguration.X;
 		setTexRect(Recti(FrameDimensions.X * col, FrameDimensions.Y * row, FrameDimensions.X, FrameDimensions.Y));
-		setAbsAnchorPoint((float)Hotspot.X, (float)Hotspot.Y);
+		setAbsAnchorPoint(Hotspot.X, Hotspot.Y);
 	}
 
 	int ActorBase::ActorRenderer::NormalizeFrame(int frame, int min, int max)
 	{
-		if (frame >= min && frame < max) return frame;
-
-		if (frame < min) {
+		if (frame >= min && frame < max) {
+			return frame;
+		} else if (frame < min) {
 			return max + ((frame - min) % max);
 		} else {
 			return min + (frame % (max - min));

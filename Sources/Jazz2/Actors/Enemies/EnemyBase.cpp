@@ -16,15 +16,12 @@
 
 #include <numeric>
 
+using namespace Jazz2::Tiles;
+
 namespace Jazz2::Actors::Enemies
 {
 	EnemyBase::EnemyBase()
-		:
-		CanCollideWithAmmo(true),
-		_canHurtPlayer(true),
-		_scoreValue(0),
-		_lastHitDir(LastHitDirection::None),
-		_blinkingTimeout(0.0f)
+		: CanCollideWithAmmo(true), _canHurtPlayer(true), _scoreValue(0), _lastHitDir(LastHitDirection::None), _blinkingTimeout(0.0f)
 	{
 		SetState(ActorState::TriggersTNT, true);
 	}
@@ -100,23 +97,21 @@ namespace Jazz2::Actors::Enemies
 			return false;
 		}
 
-		bool tilesetReduced = GetState(ActorState::CollideWithTilesetReduced);
-		bool skipPerPixelCollisions = GetState(ActorState::SkipPerPixelCollisions);
+		ActorState prevState = GetState();
 		SetState(ActorState::CollideWithTilesetReduced, false);
 		SetState(ActorState::SkipPerPixelCollisions, true);
 
 		bool success;
 		TileCollisionParams params = { TileDestructType::None, true };
-		AABBf aabbAbove = AABBf(x < 0.0f ? AABBInner.L - 8.0f - x : AABBInner.R, AABBInner.T, x < 0.0f ? AABBInner.L : AABBInner.R + 8.0f + x, AABBInner.B - 2.0f);
+		AABBf aabbAbove = AABBf(x < 0.0f ? AABBInner.L - 8.0f + x : AABBInner.R, AABBInner.T, x < 0.0f ? AABBInner.L : AABBInner.R + 8.0f + x, AABBInner.B - 2.0f);
 		if (_levelHandler->IsPositionEmpty(this, aabbAbove, params)) {
-			AABBf aabbBelow = AABBf(x < 0.0f ? AABBInner.L - 8.0f - x : AABBInner.R + 2.0f, AABBInner.B, x < 0.0f ? AABBInner.L - 2.0f : AABBInner.R + 8.0f + x, AABBInner.B + 8.0f);
+			AABBf aabbBelow = AABBf(x < 0.0f ? AABBInner.L - 8.0f + x : AABBInner.R + 2.0f, AABBInner.B, x < 0.0f ? AABBInner.L - 2.0f : AABBInner.R + 8.0f + x, AABBInner.B + 8.0f);
 			success = !_levelHandler->IsPositionEmpty(this, aabbBelow, params);
 		} else {
 			success = false;
 		}
-
-		SetState(ActorState::CollideWithTilesetReduced, tilesetReduced);
-		SetState(ActorState::SkipPerPixelCollisions, skipPerPixelCollisions);
+		
+		SetState(prevState);
 
 		return success;
 	}
@@ -222,7 +217,7 @@ namespace Jazz2::Actors::Enemies
 			return;
 		}
 
-		GraphicResource* res = (_currentTransitionState != AnimState::Idle ? _currentTransition : _currentAnimation);
+		GraphicResource* res = (_currentTransition != nullptr ? _currentTransition : _currentAnimation);
 		Texture* texture = res->Base->TextureDiffuse.get();
 		float x = _pos.X - res->Base->Hotspot.X;
 		float y = _pos.Y - res->Base->Hotspot.Y;

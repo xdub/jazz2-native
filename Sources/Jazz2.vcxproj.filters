@@ -205,6 +205,15 @@
     <Filter Include="Source Files\Jazz2\Multiplayer">
       <UniqueIdentifier>{66756cef-10ce-4ae3-ade6-87422c5ddb2e}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\Shared\Threading">
+      <UniqueIdentifier>{5e949f82-18ce-4137-97f1-bbcc7d2285c9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\Jazz2\Multiplayer\Backends">
+      <UniqueIdentifier>{8e8a53f2-8324-4eaa-ab44-82141d569c85}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\Shared\Base">
+      <UniqueIdentifier>{0fd6dab6-c92b-45ba-a620-98604d239e84}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Resources.h">
@@ -1320,9 +1329,6 @@
     <ClInclude Include="$(ExtensionLibraryPath)\Containers\Tags.h">
       <Filter>Header Files\Shared\Containers</Filter>
     </ClInclude>
-    <ClInclude Include="$(ExtensionLibraryPath)\Containers\DateTime.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="Jazz2\Multiplayer\NetworkManager.h">
       <Filter>Header Files\Jazz2\Multiplayer</Filter>
     </ClInclude>
@@ -1343,6 +1349,72 @@
     </ClInclude>
     <ClInclude Include="Jazz2\Tiles\ITileMapOwner.h">
       <Filter>Header Files\Jazz2\Tiles</Filter>
+    </ClInclude>
+    <ClInclude Include="$(ExtensionLibraryPath)\Threading\Interlocked.h">
+      <Filter>Header Files\Shared\Threading</Filter>
+    </ClInclude>
+    <ClInclude Include="Jazz2\UI\Menu\LoadingSection.h">
+      <Filter>Header Files\Jazz2\UI\Menu</Filter>
+    </ClInclude>
+    <ClInclude Include="Jazz2\LevelDescriptor.h">
+      <Filter>Header Files\Jazz2</Filter>
+    </ClInclude>
+    <ClInclude Include="Jazz2\Multiplayer\Backends\enet.h">
+      <Filter>Header Files\Jazz2\Multiplayer\Backends</Filter>
+    </ClInclude>
+    <ClInclude Include="Jazz2\Resources.h">
+      <Filter>Header Files\Jazz2</Filter>
+    </ClInclude>
+    <ClInclude Include="Jazz2\SuspendType.h">
+      <Filter>Header Files\Jazz2</Filter>
+    </ClInclude>
+    <ClInclude Include="Jazz2\AnimationLoopMode.h">
+      <Filter>Header Files\Jazz2</Filter>
+    </ClInclude>
+    <ClInclude Include="Jazz2\Tiles\TileCollisionParams.h">
+      <Filter>Header Files\Jazz2\Tiles</Filter>
+    </ClInclude>
+    <ClInclude Include="Jazz2\Tiles\TileDestructType.h">
+      <Filter>Header Files\Jazz2\Tiles</Filter>
+    </ClInclude>
+    <ClInclude Include="Jazz2\UI\Menu\MenuResources.h">
+      <Filter>Header Files\Jazz2\UI\Menu</Filter>
+    </ClInclude>
+    <ClInclude Include="Jazz2\Multiplayer\Reason.h">
+      <Filter>Header Files\Jazz2\Multiplayer</Filter>
+    </ClInclude>
+    <ClInclude Include="$(ExtensionLibraryPath)\Base\Unaligned.h">
+      <Filter>Header Files\Shared\Base</Filter>
+    </ClInclude>
+    <ClInclude Include="Jazz2\Multiplayer\ConnectionResult.h">
+      <Filter>Header Files\Jazz2\Multiplayer</Filter>
+    </ClInclude>
+    <ClInclude Include="$(ExtensionLibraryPath)\Containers\DateTime.h">
+      <Filter>Header Files\Shared\Containers</Filter>
+    </ClInclude>
+    <ClInclude Include="nCine\Graphics\ImGuiDrawing.h">
+      <Filter>Header Files\nCine\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="nCine\Graphics\ImGuiDebugOverlay.h">
+      <Filter>Header Files\nCine\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="nCine\Input\ImGuiJoyMappedInput.h">
+      <Filter>Header Files\nCine\Input</Filter>
+    </ClInclude>
+    <ClInclude Include="nCine\Backends\ImGuiSdlInput.h">
+      <Filter>Header Files\nCine\Backends</Filter>
+    </ClInclude>
+    <ClInclude Include="nCine\Backends\ImGuiGlfwInput.h">
+      <Filter>Header Files\nCine\Backends</Filter>
+    </ClInclude>
+    <ClInclude Include="nCine\Graphics\IDebugOverlay.h">
+      <Filter>Header Files\nCine\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="Jazz2\Scripting\RegisterImGuiBindings.h">
+      <Filter>Header Files\Jazz2\Scripting</Filter>
+    </ClInclude>
+    <ClInclude Include="Jazz2\Scripting\RegisterMath.h">
+      <Filter>Header Files\Jazz2\Scripting</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -2242,6 +2314,39 @@
     </ClCompile>
     <ClCompile Include="Jazz2\Actors\RemoteActor.cpp">
       <Filter>Source Files\Jazz2\Actors</Filter>
+    </ClCompile>
+    <ClCompile Include="Jazz2\UI\Menu\LoadingSection.cpp">
+      <Filter>Source Files\Jazz2\UI\Menu</Filter>
+    </ClCompile>
+    <ClCompile Include="$(ExtensionLibraryPath)\IO\Stream.cpp">
+      <Filter>Source Files\Shared\IO</Filter>
+    </ClCompile>
+    <ClCompile Include="Jazz2\Resources.cpp">
+      <Filter>Source Files\Jazz2</Filter>
+    </ClCompile>
+    <ClCompile Include="Jazz2\Multiplayer\ConnectionResult.cpp">
+      <Filter>Source Files\Jazz2\Multiplayer</Filter>
+    </ClCompile>
+    <ClCompile Include="nCine\Input\ImGuiJoyMappedInput.cpp">
+      <Filter>Source Files\nCine\Input</Filter>
+    </ClCompile>
+    <ClCompile Include="nCine\Backends\ImGuiSdlInput.cpp">
+      <Filter>Source Files\nCine\Backends</Filter>
+    </ClCompile>
+    <ClCompile Include="nCine\Backends\ImGuiGlfwInput.cpp">
+      <Filter>Source Files\nCine\Backends</Filter>
+    </ClCompile>
+    <ClCompile Include="nCine\Graphics\ImGuiDebugOverlay.cpp">
+      <Filter>Source Files\nCine\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="nCine\Graphics\ImGuiDrawing.cpp">
+      <Filter>Source Files\nCine\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="Jazz2\Scripting\RegisterImGuiBindings.cpp">
+      <Filter>Source Files\Jazz2\Scripting</Filter>
+    </ClCompile>
+    <ClCompile Include="Jazz2\Scripting\RegisterMath.cpp">
+      <Filter>Source Files\Jazz2\Scripting</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

@@ -6,19 +6,17 @@
 namespace Jazz2::Actors
 {
 	Explosion::Explosion()
-		:
-		_lightBrightness(0.0f),
-		_lightIntensity(0.0f),
-		_lightRadiusNear(0.0f),
-		_lightRadiusFar(0.0f)
+		: _lightBrightness(0.0f), _lightIntensity(0.0f), _lightRadiusNear(0.0f), _lightRadiusFar(0.0f), _scale(1.0f)
 	{
 	}
 
-	void Explosion::Create(ILevelHandler* levelHandler, const Vector3i& pos, Type type)
+	void Explosion::Create(ILevelHandler* levelHandler, const Vector3i& pos, Type type, float scale)
 	{
 		std::shared_ptr<Explosion> explosion = std::make_shared<Explosion>();
-		uint8_t explosionParams[2];
-		*(uint16_t*)&explosionParams[0] = (uint16_t)type;
+		std::uint8_t explosionParams[8];
+		*(std::uint16_t*)&explosionParams[0] = (uint16_t)type;
+		// 2-3: unused
+		*(float*)&explosionParams[4] = scale;
 		explosion->OnActivated(ActorActivationDetails(
 			levelHandler,
 			pos,
@@ -29,58 +27,41 @@ namespace Jazz2::Actors
 
 	Task<bool> Explosion::OnActivatedAsync(const ActorActivationDetails& details)
 	{
-		_type = (Type)*(uint16_t*)&details.Params[0];
+		_type = (Type)*(std::uint16_t*)&details.Params[0];
+		_scale = *(float*)&details.Params[4];
 
 		SetState(ActorState::ForceDisableCollisions, true);
 		SetState(ActorState::CanBeFrozen | ActorState::CollideWithTileset | ActorState::CollideWithOtherActors | ActorState::ApplyGravitation, false);
 
 		async_await RequestMetadataAsync("Common/Explosions"_s);
 
-		switch (_type) {
-			default:
-			case Type::Tiny: SetAnimation("Tiny"_s); break;
-			case Type::TinyBlue: SetAnimation("TinyBlue"_s); break;
-			case Type::TinyDark: SetAnimation("TinyDark"_s); break;
-			case Type::Small: SetAnimation("Small"_s); break;
-			case Type::SmallDark: SetAnimation("SmallDark"_s); break;
-			case Type::Large: {
-				SetAnimation("Large"_s);
+		// IceShrapnels are randomized below
+		if (_type != Type::IceShrapnel) {
+			SetAnimation((AnimState)_type);
+		}
 
+		switch (_type) {
+			case Type::Large: {
 				_lightIntensity = 0.8f;
 				_lightBrightness = 0.9f;
-				_lightRadiusFar = 55.0f;
+				_lightRadiusFar = 55.0f * _scale;
 				break;
 			}
-
-			case Type::SmokeBrown: SetAnimation("SmokeBrown"_s); break;
-			case Type::SmokeGray: SetAnimation("SmokeGray"_s); break;
-			case Type::SmokeWhite: SetAnimation("SmokeWhite"_s); break;
-			case Type::SmokePoof: SetAnimation("SmokePoof"_s); break;
-
-			case Type::WaterSplash: SetAnimation("WaterSplash"_s); break;
-
 			case Type::Pepper: {
-				SetAnimation("Pepper"_s);
-
 				_lightIntensity = 0.5f;
 				_lightBrightness = 0.2f;
-				_lightRadiusNear = 7.0f;
-				_lightRadiusFar = 14.0f;
+				_lightRadiusNear = 7.0f * _scale;
+				_lightRadiusFar = 14.0f * _scale;
 				break;
 			}
 			case Type::RF: {
-				SetAnimation("RF"_s);
-
 				_lightIntensity = 0.8f;
 				_lightBrightness = 0.9f;
-				_lightRadiusFar = 50.0f;
+				_lightRadiusFar = 50.0f * _scale;
 				break;
 			}
 			case Type::IceShrapnel: {
-				constexpr StringView IceShrapnels[] = {
-					"IceShrapnel1"_s, "IceShrapnel2"_s, "IceShrapnel3"_s, "IceShrapnel4"_s
-				};
-				SetAnimation(IceShrapnels[Random().Fast(0, countof(IceShrapnels))]);
+				SetAnimation((AnimState)((std::uint32_t)Type::IceShrapnel + Random().Fast(0, 4)));
 
 				SetState(ActorState::CollideWithTileset | ActorState::ApplyGravitation | ActorState::SkipPerPixelCollisions, true);
 				SetState(ActorState::ForceDisableCollisions, false);
@@ -90,21 +71,21 @@ namespace Jazz2::Actors
 				_renderer.setAlphaF(1.0f);
 				float speedX = Random().FastFloat(0.5f, 2.0f);
 				_renderer.AnimDuration /= speedX * 0.7f;
-				_speed = Vector2f(speedX * (Random().NextBool() ? -1.0f : 1.0f), Random().FastFloat(-4.0f, -1.0f));
+				_speed = Vector2f(speedX * _scale * (Random().NextBool() ? -1.0f : 1.0f), _scale * Random().FastFloat(-4.0f, -1.0f));
+				_pos += _speed * _scale * _scale;
 				_elasticity = 0.2f;
 				SetFacingLeft(_speed.X < 0.0f);
 				break;
 			}
-
 			case Type::Generator: {
-				SetAnimation("Generator"_s);
-
 				// Apply random orientation
 				_renderer.setRotation(Random().NextFloat(0.0f, 4.0f * fPiOver2));
 				SetFacingLeft(Random().NextFloat() < 0.5f);
 				break;
 			}
 		}
+
+		_renderer.setScale(_scale);
 
 		async_return true;
 	}
@@ -113,7 +94,7 @@ namespace Jazz2::Actors
 	{
 		switch (_type) {
 			case Type::Large: {
-				_lightRadiusFar -= timeMult * 5.0f;
+				_lightRadiusFar -= timeMult * _scale * 5.0f;
 				break;
 			}
 			case Type::Pepper: {
@@ -121,7 +102,7 @@ namespace Jazz2::Actors
 				break;
 			}
 			case Type::RF: {
-				_lightRadiusFar -= timeMult * 0.8f;
+				_lightRadiusFar -= timeMult * _scale * 0.8f;
 				_lightIntensity -= timeMult * 0.02f;
 				break;
 			}
@@ -131,7 +112,7 @@ namespace Jazz2::Actors
 				float newAlpha = _renderer.alpha() - (0.014f * timeMult);
 				if (newAlpha > 0.0f) {
 					_renderer.setAlphaF(newAlpha);
-					_renderer.setScale(std::min(newAlpha * 2.0f, 1.0f));
+					_renderer.setScale(std::min(_scale * newAlpha * 2.0f, _scale));
 				} else {
 					DecreaseHealth(INT32_MAX);
 				}
@@ -161,7 +142,7 @@ namespace Jazz2::Actors
 			light2.Pos = _pos;
 			light2.Intensity = 0.1f;
 			light2.RadiusNear = 0.0f;
-			light2.RadiusFar = 160.0f;
+			light2.RadiusFar = 160.0f * _scale;
 		}
 	}
 

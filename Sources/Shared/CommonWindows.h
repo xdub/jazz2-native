@@ -17,19 +17,6 @@
 #define WINRT_LEAN_AND_MEAN
 #include <windows.h>
 
-// Add missing interlocked functions
-#if defined(InterlockedAnd) && defined(InterlockedOr)
-static_assert(sizeof(long) == sizeof(unsigned), "\"long\" and \"unsigned\" size mismatch");
-DEATH_ALWAYS_INLINE unsigned InterlockedAnd(_Inout_ unsigned volatile* Destination, _In_ unsigned Value)
-{
-	return (unsigned)_InterlockedAnd((volatile long*)Destination, (long)Value);
-}
-DEATH_ALWAYS_INLINE unsigned InterlockedOr(_Inout_ unsigned volatile* Destination, _In_ unsigned Value)
-{
-	return (unsigned)_InterlockedOr((volatile long*)Destination, (long)Value);
-}
-#endif
-
 #define GetProcAddressByFunctionDeclaration(hinst, fn) reinterpret_cast<decltype(::fn)*>(::GetProcAddress(hinst, #fn))
 
 // Undefine `far` and `near` keywords, not used anymore
@@ -174,6 +161,13 @@ DEATH_ALWAYS_INLINE int GetMessage(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, U
 #	undef GetObject
 DEATH_ALWAYS_INLINE int GetObject(HGDIOBJ h, int c, LPVOID pv) {
 	return ::GetObjectW(h, c, pv);
+}
+#endif
+
+#if defined(GetWindowsDirectory)
+#	undef GetWindowsDirectory
+DEATH_ALWAYS_INLINE UINT GetWindowsDirectory(LPWSTR lpBuffer, UINT uSize) {
+	return ::GetWindowsDirectoryW(lpBuffer, uSize);
 }
 #endif
 

@@ -1,12 +1,17 @@
 ﻿#pragma once
 
-#include "../ContentResolver.h"
 #include "../EventType.h"
 #include "../LightEmitter.h"
+#include "../Resources.h"
+#include "../Tiles/TileCollisionParams.h"
 
 #include "../../nCine/Base/Task.h"
 #include "../../nCine/Primitives/AABB.h"
 #include "../../nCine/Audio/AudioBufferPlayer.h"
+#include "../../nCine/Graphics/BaseSprite.h"
+#include "../../nCine/Graphics/SceneNode.h"
+
+#include <Containers/StringView.h>
 
 // If coroutines are not supported, load resources synchronously
 #if defined(WITH_COROUTINES)
@@ -16,6 +21,8 @@
 #	define async_return return
 #	define async_await
 #endif
+
+using namespace Death::Containers::Literals;
 
 namespace Jazz2
 {
@@ -156,10 +163,10 @@ namespace Jazz2::Actors
 		int GetMaxHealth();
 		void DecreaseHealth(int amount = 1, ActorBase* collider = nullptr);
 
-		bool MoveInstantly(const Vector2f& pos, MoveType type, TileCollisionParams& params);
+		bool MoveInstantly(const Vector2f& pos, MoveType type, Tiles::TileCollisionParams& params);
 		bool MoveInstantly(const Vector2f& pos, MoveType type)
 		{
-			TileCollisionParams params = { TileDestructType::None, _speed.Y >= 0.0f };
+			Tiles::TileCollisionParams params = { Tiles::TileDestructType::None, _speed.Y >= 0.0f };
 			return MoveInstantly(pos, type, params);
 		}
 
@@ -188,24 +195,12 @@ namespace Jazz2::Actors
 		}
 
 	protected:
-		struct AnimationCandidate {
-			const String* Identifier;
-			GraphicResource* Resource;
-		};
-
 		class ActorRenderer : public BaseSprite
 		{
 			friend class ActorBase;
 
 		public:
-			ActorRenderer(ActorBase* owner)
-				: BaseSprite(nullptr, nullptr, 0.0f, 0.0f), AnimPaused(false), FrameConfiguration(), FrameDimensions(),
-					LoopMode(AnimationLoopMode::Loop), FirstFrame(0), FrameCount(0), AnimDuration(0.0f), AnimTime(0.0f),
-					CurrentFrame(0), Hotspot(), _owner(owner), _rendererType((ActorRendererType)-1), _rendererTransition(0.0f)
-			{
-				type_ = ObjectType::Sprite;
-				Initialize(ActorRendererType::Default);
-			}
+			ActorRenderer(ActorBase* owner);
 
 			bool AnimPaused;
 			Vector2i FrameConfiguration;
@@ -216,7 +211,7 @@ namespace Jazz2::Actors
 			float AnimDuration;
 			float AnimTime;
 			std::int32_t CurrentFrame;
-			Vector2i Hotspot;
+			Vector2f Hotspot;
 
 			void Initialize(ActorRendererType type);
 
@@ -261,8 +256,6 @@ namespace Jazz2::Actors
 		ActorRenderer _renderer;
 		GraphicResource* _currentAnimation;
 		GraphicResource* _currentTransition;
-		AnimState _currentAnimationState;
-		AnimState _currentTransitionState;
 		bool _currentTransitionCancellable;
 
 		void SetFacingLeft(bool value);
@@ -283,19 +276,17 @@ namespace Jazz2::Actors
 
 		virtual void OnTriggeredEvent(EventType eventType, uint8_t* eventParams);
 
-		void TryStandardMovement(float timeMult, TileCollisionParams& params);
+		void TryStandardMovement(float timeMult, Tiles::TileCollisionParams& params);
 		void UpdateHitbox(int w, int h);
 		void UpdateFrozenState(float timeMult);
 		void HandleFrozenStateChange(ActorBase* shot);
 
 		void CreateParticleDebris();
-		void CreateSpriteDebris(const StringView& identifier, int count);
+		void CreateSpriteDebris(AnimState state, int count);
+		virtual float GetIceShrapnelScale() const;
 
 		std::shared_ptr<AudioBufferPlayer> PlaySfx(const StringView& identifier, float gain = 1.0f, float pitch = 1.0f);
-		void SetAnimation(const StringView& identifier);
-		bool SetAnimation(AnimState state);
-		bool SetTransition(const StringView& identifier, bool cancellable, const std::function<void()>& callback = nullptr);
-		bool SetTransition(const StringView& identifier, bool cancellable, std::function<void()>&& callback);
+		bool SetAnimation(AnimState state, bool skipAnimation = false);
 		bool SetTransition(AnimState state, bool cancellable, const std::function<void()>& callback = nullptr);
 		bool SetTransition(AnimState state, bool cancellable, std::function<void()>&& callback);
 		void CancelTransition();
@@ -303,17 +294,8 @@ namespace Jazz2::Actors
 		virtual void OnAnimationStarted();
 		virtual void OnAnimationFinished();
 
-		int FindAnimationCandidates(AnimState state, AnimationCandidate candidates[AnimationCandidatesCount]);
-
-		static void PreloadMetadataAsync(const StringView& path)
-		{
-			ContentResolver::Get().PreloadMetadataAsync(path);
-		}
-
-		void RequestMetadata(const StringView& path)
-		{
-			_metadata = ContentResolver::Get().RequestMetadata(path);
-		}
+		static void PreloadMetadataAsync(const StringView& path);
+		void RequestMetadata(const StringView& path);
 
 #if defined(WITH_COROUTINES)
 		auto RequestMetadataAsync(const StringView& path)
@@ -333,14 +315,10 @@ namespace Jazz2::Actors
 				}
 				void await_resume() { }
 			};
-			return awaitable { this, path };
+			return awaitable{this, path};
 		}
 #else
-		void RequestMetadataAsync(const StringView& path)
-		{
-			auto metadata = ContentResolver::Get().RequestMetadata(path);
-			_metadata = metadata;
-		}
+		void RequestMetadataAsync(const StringView& path);
 #endif
 
 		constexpr void SetState(ActorState flags) noexcept
@@ -358,9 +336,7 @@ namespace Jazz2::Actors
 		}
 
 	private:
-		/// Deleted copy constructor
 		ActorBase(const ActorBase&) = delete;
-		/// Deleted assignment operator
 		ActorBase& operator=(const ActorBase&) = delete;
 
 		ActorState _state;
@@ -369,6 +345,6 @@ namespace Jazz2::Actors
 		bool IsCollidingWithAngled(ActorBase* other);
 		bool IsCollidingWithAngled(const AABBf& aabb);
 
-		void RefreshAnimation();
+		void RefreshAnimation(bool skipAnimation = false);
 	};
 }

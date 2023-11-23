@@ -3,6 +3,7 @@
 #include "ILevelHandler.h"
 #include "IStateHandler.h"
 #include "IRootController.h"
+#include "LevelDescriptor.h"
 #include "WeatherType.h"
 #include "Events/EventMap.h"
 #include "Events/EventSpawner.h"
@@ -15,6 +16,10 @@
 #include "../nCine/Graphics/Shader.h"
 #include "../nCine/Audio/AudioBufferPlayer.h"
 #include "../nCine/Audio/AudioStreamPlayer.h"
+
+#if defined(WITH_IMGUI)
+#	include <imgui.h>
+#endif
 
 namespace Jazz2
 {
@@ -47,7 +52,6 @@ namespace Jazz2
 
 	class LevelHandler : public ILevelHandler, public IStateHandler, public Tiles::ITileMapOwner
 	{
-		friend class ContentResolver;
 #if defined(WITH_ANGELSCRIPT)
 		friend class Scripting::LevelScriptLoader;
 #endif
@@ -59,12 +63,10 @@ namespace Jazz2
 		static constexpr int32_t DefaultHeight = 405;
 		static constexpr int32_t ActivateTileRange = 26;
 
-		LevelHandler(IRootController* root, const LevelInitialization& levelInit);
+		LevelHandler(IRootController* root);
 		~LevelHandler() override;
 
-		bool IsLoaded() const {
-			return (_tileMap != nullptr && _eventMap != nullptr);
-		}
+		bool Initialize(const LevelInitialization& levelInit) override;
 
 		Events::EventSpawner* EventSpawner() override {
 			return &_eventSpawner;
@@ -78,6 +80,10 @@ namespace Jazz2
 
 		GameDifficulty Difficulty() const override {
 			return _difficulty;
+		}
+
+		bool IsPausable() const override {
+			return true;
 		}
 
 		bool IsReforged() const override {
@@ -95,6 +101,7 @@ namespace Jazz2
 		const SmallVectorImpl<std::shared_ptr<Actors::ActorBase>>& GetActors() const override;
 		const SmallVectorImpl<Actors::Player*>& GetPlayers() const override;
 
+		Vector2f GetCameraPos() const override { return _cameraPos; }
 		float GetAmbientLight() const override;
 		void SetAmbientLight(float value) override;
 
@@ -108,10 +115,10 @@ namespace Jazz2
 
 		void AddActor(std::shared_ptr<Actors::ActorBase> actor) override;
 
-		std::shared_ptr<AudioBufferPlayer> PlaySfx(AudioBuffer* buffer, const Vector3f& pos, bool sourceRelative, float gain = 1.0f, float pitch = 1.0f) override;
+		std::shared_ptr<AudioBufferPlayer> PlaySfx(Actors::ActorBase* self, const StringView& identifier, AudioBuffer* buffer, const Vector3f& pos, bool sourceRelative, float gain, float pitch) override;
 		std::shared_ptr<AudioBufferPlayer> PlayCommonSfx(const StringView& identifier, const Vector3f& pos, float gain = 1.0f, float pitch = 1.0f) override;
-		void WarpCameraToTarget(const std::shared_ptr<Actors::ActorBase>& actor, bool fast = false) override;
-		bool IsPositionEmpty(Actors::ActorBase* self, const AABBf& aabb, TileCollisionParams& params, Actors::ActorBase** collider) override;
+		void WarpCameraToTarget(Actors::ActorBase* actor, bool fast = false) override;
+		bool IsPositionEmpty(Actors::ActorBase* self, const AABBf& aabb, Tiles::TileCollisionParams& params, Actors::ActorBase** collider) override;
 		void FindCollisionActorsByAABB(Actors::ActorBase* self, const AABBf& aabb, const std::function<bool(Actors::ActorBase*)>& callback) override;
 		void FindCollisionActorsByRadius(float x, float y, float radius, const std::function<bool(Actors::ActorBase*)>& callback) override;
 		void GetCollidingPlayers(const AABBf& aabb, const std::function<bool(Actors::ActorBase*)> callback) override;
@@ -119,9 +126,11 @@ namespace Jazz2
 		void BroadcastTriggeredEvent(Actors::ActorBase* initiator, EventType eventType, uint8_t* eventParams) override;
 		void BeginLevelChange(ExitType exitType, const StringView& nextLevel) override;
 		void HandleGameOver() override;
-		bool HandlePlayerDied(const std::shared_ptr<Actors::ActorBase>& player) override;
-		void HandlePlayerWarped(const std::shared_ptr<Actors::ActorBase>& player, const Vector2f& prevPos, bool fast) override;
-		void SetCheckpoint(Vector2f pos) override;
+		bool HandlePlayerDied(Actors::Player* player) override;
+		bool HandlePlayerFireWeapon(Actors::Player* player, WeaponType& weaponType, std::uint16_t& ammoDecrease) override;
+		bool HandlePlayerSpring(Actors::Player* player, const Vector2f& pos, const Vector2f& force, bool keepSpeedX, bool keepSpeedY) override;
+		void HandlePlayerWarped(Actors::Player* player, const Vector2f& prevPos, bool fast) override;
+		void SetCheckpoint(const Vector2f& pos) override;
 		void RollbackToCheckpoint() override;
 		void ActivateSugarRush() override;
 		void ShowLevelText(const StringView& text) override;
@@ -131,6 +140,8 @@ namespace Jazz2
 		void OverrideLevelText(uint32_t textId, const StringView& value) override;
 		void LimitCameraView(int left, int width) override;
 		void ShakeCameraView(float duration) override;
+		bool GetTrigger(std::uint8_t triggerId) override;
+		void SetTrigger(std::uint8_t triggerId, bool newState) override;
 		void SetWeather(WeatherType type, uint8_t intensity) override;
 		bool BeginPlayMusic(const StringView& path, bool setDefault = false, bool forceReload = false) override;
 
@@ -144,8 +155,9 @@ namespace Jazz2
 		void OnAdvanceDestructibleTileAnimation(std::int32_t tx, std::int32_t ty, std::int32_t amount) override { }
 		void OnTileFrozen(std::int32_t x, std::int32_t y) override;
 
-		Vector2f GetCameraPos() const override { return _cameraPos; }
 		Vector2i GetViewSize() const override { return _view->size(); }
+
+		virtual void AttachComponents(LevelDescriptor&& descriptor);
 
 	protected:
 		IRootController* _root;
@@ -302,9 +314,10 @@ namespace Jazz2
 		bool _playerFrozenEnabled;
 		uint32_t _lastPressedNumericKey;
 
-		void OnLevelLoaded(const StringView& fullPath, const StringView& name, const StringView& nextLevel, const StringView& secretLevel,
-			std::unique_ptr<Tiles::TileMap>& tileMap, std::unique_ptr<Events::EventMap>& eventMap,
-			const StringView& musicPath, const Vector4f& ambientColor, WeatherType weatherType, uint8_t weatherIntensity, uint16_t waterLevel, SmallVectorImpl<String>& levelTexts);
+		virtual void BeforeActorDestroyed(Actors::ActorBase* actor);
+		virtual void ProcessEvents(float timeMult);
+		virtual void ProcessQueuedNextLevel();
+		virtual void PrepareNextLevelInitialization(LevelInitialization& levelInit);
 
 		void ResolveCollisions(float timeMult);
 		void InitializeCamera();
@@ -313,5 +326,9 @@ namespace Jazz2
 
 		void PauseGame();
 		void ResumeGame();
+		
+#if defined(WITH_IMGUI)
+		ImVec2 WorldPosToScreenSpace(const Vector2f pos);
+#endif
 	};
 }

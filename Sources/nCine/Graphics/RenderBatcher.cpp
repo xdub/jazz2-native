@@ -61,7 +61,7 @@ namespace nCine
 					// Split point for the maximum batch size
 					while (lastSplit < endSplit) {
 						unsigned int currentMaxBatchSize = maxBatchSize;
-						const int shaderBatchSize = batchedShader->batchSize();
+						const unsigned int shaderBatchSize = batchedShader->batchSize();
 						if (shaderBatchSize > 0 && currentMaxBatchSize > shaderBatchSize) {
 							currentMaxBatchSize = shaderBatchSize;
 						}
@@ -80,7 +80,7 @@ namespace nCine
 						// Handling early splits while collecting (not enough UBO free space)
 						RenderCommand* batchCommand = collectCommands(start, end, start);
 						destQueue.push_back(batchCommand);
-						lastSplit = start - srcQueue.begin();
+						lastSplit = (unsigned int)(start - srcQueue.begin());
 					}
 				}
 
@@ -138,11 +138,11 @@ namespace nCine
 		const int singleInstanceBlockSizePacked = singleInstanceBlock->size() - singleInstanceBlock->alignAmount(); // remove the uniform buffer offset alignment
 		const int singleInstanceBlockSize = singleInstanceBlockSizePacked + (16 - singleInstanceBlockSizePacked % 16) % 16; // but add the std140 vec4 layout alignment
 
-		if (commandAdded) {
-			batchCommand->setType(refCommand->type());
-		}
+#if defined(NCINE_PROFILING)
+		batchCommand->setType(refCommand->type());
+#endif
 		instancesBlock = batchCommand->material().uniformBlock(Material::InstancesBlockName);
-		FATAL_ASSERT_MSG(instancesBlock != nullptr, "Batched shader does not have an %s uniform block", Material::InstancesBlockName);
+		FATAL_ASSERT_MSG(instancesBlock != nullptr, "Batched shader does not have an \"%s\" uniform block", Material::InstancesBlockName);
 
 		const unsigned long nonBlockUniformsSize = batchCommand->material().shaderProgram()->uniformsSize();
 		// Determine how much memory is needed by uniform blocks that are not for instances
@@ -170,9 +170,9 @@ namespace nCine
 				batchingWithIndices = true;
 			}
 
-			// Don't request more bytes than a UBO can hold
+			// Don't request more bytes than an instances block or an UBO can hold (also protects against big `RenderingSettings::maxBatchSize` values)
 			const unsigned long currentSize = nonBlockUniformsSize + nonInstancesBlocksSize + instancesBlockSize;
-			if (currentSize + singleInstanceBlockSize > UboMaxSize) {
+			if (instancesBlockSize + singleInstanceBlockSize > instancesBlock->size() || currentSize + singleInstanceBlockSize > UboMaxSize) {
 				break;
 			}
 			
@@ -285,7 +285,7 @@ namespace nCine
 
 			if (batchedShaderHasAttributes) {
 				const unsigned int numVertices = command->geometry().numVertices();
-				const int meshIndex = it - start;
+				const int meshIndex = (int)(it - start);
 				const float* srcVtx = command->geometry().hostVertexPointer();
 				FATAL_ASSERT(srcVtx != nullptr);
 
@@ -342,6 +342,7 @@ namespace nCine
 
 			++it;
 		}
+		instancesBlock->setUsedSize(instancesBlockOffset);
 
 		if (batchedShaderHasAttributes) {
 			batchCommand->geometry().releaseVertexPointer();
@@ -355,8 +356,7 @@ namespace nCine
 		}
 		batchCommand->material().setBlendingEnabled(refCommand->material().isBlendingEnabled());
 		batchCommand->material().setBlendingFactors(refCommand->material().srcBlendingFactor(), refCommand->material().destBlendingFactor());
-		batchCommand->setBatchSize(nextStart - start);
-		batchCommand->material().uniformBlock(Material::InstancesBlockName)->setUsedSize(instancesBlockOffset);
+		batchCommand->setBatchSize((int)(nextStart - start));
 		batchCommand->setLayer(refCommand->layer());
 		batchCommand->setVisitOrder(refCommand->visitOrder());
 
