@@ -8,6 +8,10 @@ on:
     types: [ opened, synchronize ]
   workflow_dispatch:
 
+concurrency: 
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   Build:
     strategy:
@@ -92,6 +96,71 @@ jobs:
       with:
         name: ${{ env.artifactPath }}
         path: ./_package/
+        
+  Build-AppImage:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - BuildType: Release
+          Platform: x64
+          Backend: GLFW
+          CC: gcc
+          CXX: g++
+        - BuildType: Release
+          Platform: x64
+          Backend: SDL2
+          CC: gcc
+          CXX: g++
+
+    runs-on: 'ubuntu-latest'
+
+    steps:
+    - name: 'Checkout Repository'
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: 'Create Build Environment'
+      run: |
+        sudo apt-get update -y
+        sudo apt-get install -y cmake curl g++ libgl1-mesa-dev libglew2.2 libglfw3 libsdl2-2.0-0 libopenal1 libvorbisfile3 libopenmpt-dev fuse
+        
+    - name: 'Configure CMake'
+      run: |
+        export CC=${{ matrix.CC }}
+        export CXX=${{ matrix.CXX }}
+        
+        rm -f ./Content/Translations/*.po
+        
+        cmake -B ./_build/ -D CMAKE_BUILD_TYPE=${{ matrix.BuildType }} -D NCINE_STRIP_BINARIES=ON -D NCINE_PREFERRED_BACKEND=${{ matrix.Backend }} -D NCINE_WITH_GLEW=OFF -D NCINE_LINUX_PACKAGE=jazz2 -D NCINE_PACKAGED_CONTENT_PATH=ON -D CMAKE_INSTALL_PREFIX=/usr
+
+    - name: 'Build'
+      run: |
+        DESTDIR=../_appdir/ make install -j $(nproc) -C ./_build/
+
+    - name: 'Create AppImage'
+      run: |
+        if [ ! -f linuxdeploy-x86_64.AppImage ]; then
+          curl -s -S -O --location 'https://github.com/darealshinji/linuxdeploy-plugin-checkrt/releases/download/continuous/linuxdeploy-plugin-checkrt.sh'
+          curl -s -S -O --location 'https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage'
+          chmod a+x linuxdeploy-x86_64.AppImage linuxdeploy-plugin-checkrt.sh
+        fi
+        
+        mv -f ./_appdir/usr/share/jazz2/Content/ ./_appdir/usr/bin/Content/
+        rm -f -r ./_appdir/usr/share/jazz2/
+        rm -f -r ./_appdir/usr/share/doc/
+        
+        LDAI_OUTPUT="./_build/jazz2.AppImage" ARCH=x86_64 ./linuxdeploy-x86_64.AppImage --appdir=./_appdir/ --icon-filename=jazz2 --desktop-file=./_appdir/usr/share/applications/jazz2.desktop --executable=./_appdir/usr/bin/jazz2 --custom-apprun=./Sources/AppRun --output=appimage --plugin checkrt
+        
+        artifactPath="Jazz2_${{ matrix.Platform }}_${{ matrix.Backend }}.AppImage"
+        echo "artifactPath=$artifactPath" >> $GITHUB_ENV
+        
+    - name: 'Upload Package'
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ env.artifactPath }}
+        path: ./_build/jazz2.AppImage
         
   CodeQL:
     name: 'CodeQL Analyze'

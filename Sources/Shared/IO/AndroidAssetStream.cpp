@@ -11,32 +11,23 @@ namespace Death::IO
 	AAssetManager* AndroidAssetStream::_assetManager = nullptr;
 	const char* AndroidAssetStream::_internalDataPath = nullptr;
 
-	AndroidAssetStream::AndroidAssetStream(const Containers::String& path)
+	AndroidAssetStream::AndroidAssetStream(const Containers::String& path, FileAccessMode mode)
 		: _asset(nullptr), _fileDescriptor(-1), _startOffset(0L), _shouldCloseOnDestruction(true)
 	{
 		_type = Type::AndroidAsset;
 		_path = path;
+		
+		if ((mode & FileAccessMode::FileDescriptor) == FileAccessMode::FileDescriptor) {
+			OpenDescriptor(mode);
+		} else {
+			OpenAsset(mode);
+		}
 	}
 
 	AndroidAssetStream::~AndroidAssetStream()
 	{
 		if (_shouldCloseOnDestruction) {
 			Close();
-		}
-	}
-
-	void AndroidAssetStream::Open(FileAccessMode mode)
-	{
-		// Checking if the file is already opened
-		if (_fileDescriptor >= 0 || _asset != nullptr) {
-			LOGW("File \"%s\" is already opened", _path.data());
-		} else {
-			// Opening with a file descriptor
-			if ((mode & FileAccessMode::FileDescriptor) == FileAccessMode::FileDescriptor) {
-				OpenDescriptor(mode);
-			} else {
-				OpenAsset(mode);
-			}
 		}
 	}
 
@@ -58,7 +49,7 @@ namespace Death::IO
 		}
 	}
 
-	std::int32_t AndroidAssetStream::Seek(std::int32_t offset, SeekOrigin origin) const
+	std::int32_t AndroidAssetStream::Seek(std::int32_t offset, SeekOrigin origin)
 	{
 		std::int32_t seekValue = -1;
 
@@ -93,7 +84,7 @@ namespace Death::IO
 		return tellValue;
 	}
 
-	std::int32_t AndroidAssetStream::Read(void* buffer, std::int32_t bytes) const
+	std::int32_t AndroidAssetStream::Read(void* buffer, std::int32_t bytes)
 	{
 		DEATH_ASSERT(buffer != nullptr, 0, "buffer is nullptr");
 

@@ -72,7 +72,7 @@
 #if defined(WITH_ZLIB)
 #	define _i11 ", zlib"
 #else
-#	define _i11 ", libdeflate"
+#	define _i11 ""
 #endif
 
 #if defined(WITH_ANGELSCRIPT)
@@ -81,13 +81,25 @@
 #	define _i12 ""
 #endif
 
-#if defined(WITH_TRACY)
-#	define _i13 "\n\nTracy integration is enabled!"
+#if defined(WITH_IMGUI)
+#	define _i13 ", ImGui"
 #else
 #	define _i13 ""
 #endif
 
-#define ADDITIONAL_INFO _i1 _i2 _i3 _i4 _i5 _i6 _i7 _i8 _i9 _i10 _i11 _i12 _i13
+#if defined(DEATH_CPU_USE_RUNTIME_DISPATCH)
+#	define _i14 " (CPU Dispatch)"
+#else
+#	define _i14 ""
+#endif
+
+#if defined(WITH_TRACY)
+#	define _i15 "\n\nTracy integration is enabled!"
+#else
+#	define _i15 ""
+#endif
+
+#define ADDITIONAL_INFO _i1 _i2 _i3 _i4 _i5 _i6 _i7 _i8 _i9 _i10 _i11 _i12 _i13 _i14 _i15
 
 using namespace Jazz2::UI::Menu::Resources;
 
@@ -120,7 +132,7 @@ namespace Jazz2::UI::Menu
 		int32_t charOffset = 0;
 
 		// TRANSLATORS: Main information in About section
-		_root->DrawStringShadow(_f("Reimplementation of the game \f[c:0x9e7056]Jazz Jackrabbit 2\f[c] released in 1998. Supports various\nversions of the game (Shareware Demo, Holiday Hare '98, The Secret Files and\nChristmas Chronicles). Also, it partially supports some features of JJ2+ extension.\nFor more information, visit the official website: %s", "\f[c:0x707070]http://deat.tk/jazz2/\f[c]"),
+		_root->DrawStringShadow(_f("Reimplementation of the game \f[c:0x9e7056]Jazz Jackrabbit 2\f[c] released in 1998. Supports various\nversions of the game (Shareware Demo, Holiday Hare '98, The Secret Files and\nChristmas Chronicles). Also, it partially supports some features of JJ2+ extension.\nFor more information, visit the official website: %s", "\f[c:0x707070]https://deat.tk/jazz2/\f[c]"),
 			charOffset, viewSize.X * 0.5f, pos.Y - 22.0f, IMenuContainer::FontLayer,
 			Alignment::Center, Font::DefaultColor, 0.7f, 0.4f, 0.6f, 0.6f, 0.6f, 0.9f, 1.2f);
 

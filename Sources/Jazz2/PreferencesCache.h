@@ -103,6 +103,7 @@ namespace Jazz2
 		static bool UseNativeBackButton;
 		static bool EnableDiscordIntegration;
 		static bool TutorialCompleted;
+		static bool ResumeOnStart;
 		static bool AllowCheats;
 		static bool AllowCheatsLives;
 		static bool AllowCheatsUnlock;
@@ -118,6 +119,7 @@ namespace Jazz2
 
 		static void Initialize(const AppConfiguration& config);
 		static void Save();
+		static StringView GetDirectory();
 
 		static EpisodeContinuationState* GetEpisodeEnd(const StringView& episodeName, bool createIfNotFound = false);
 		static EpisodeContinuationStateWithLevel* GetEpisodeContinue(const StringView& episodeName, bool createIfNotFound = false);
@@ -144,12 +146,13 @@ namespace Jazz2
 			ShowWeaponWheelAmmoCount = 0x8000,
 
 			TutorialCompleted = 0x10000,
-			SetLanguage = 0x20000
+			SetLanguage = 0x20000,
+			ResumeOnStart = 0x40000
 		};
 
 		DEFINE_PRIVATE_ENUM_OPERATORS(BoolOptions);
 
-		static constexpr uint8_t FileVersion = 1;
+		static constexpr std::uint8_t FileVersion = 2;
 
 		static constexpr float TouchPaddingMultiplier = 0.003f;
 

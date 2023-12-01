@@ -7,6 +7,7 @@ set(SOURCES
 	${NCINE_SOURCE_DIR}/Shared/Containers/String.cpp
 	${NCINE_SOURCE_DIR}/Shared/Containers/StringView.cpp
 	${NCINE_SOURCE_DIR}/Shared/IO/AndroidAssetStream.cpp
+	${NCINE_SOURCE_DIR}/Shared/IO/DeflateStream.cpp
 	${NCINE_SOURCE_DIR}/Shared/IO/FileStream.cpp
 	${NCINE_SOURCE_DIR}/Shared/IO/FileSystem.cpp
 	${NCINE_SOURCE_DIR}/Shared/IO/MemoryStream.cpp
@@ -91,7 +92,6 @@ list(APPEND SOURCES
 	${NCINE_SOURCE_DIR}/nCine/Graphics/Viewport.cpp
 	${NCINE_SOURCE_DIR}/nCine/Input/IInputManager.cpp
 	${NCINE_SOURCE_DIR}/nCine/Input/JoyMapping.cpp
-	${NCINE_SOURCE_DIR}/nCine/IO/CompressionUtils.cpp
 	${NCINE_SOURCE_DIR}/nCine/Primitives/Color.cpp
 	${NCINE_SOURCE_DIR}/nCine/Primitives/Colorf.cpp
 )
@@ -247,6 +247,7 @@ list(APPEND SOURCES
 	${NCINE_SOURCE_DIR}/Jazz2/UI/DiscordRpcClient.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/UI/Font.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/UI/HUD.cpp
+	${NCINE_SOURCE_DIR}/Jazz2/UI/LoadingHandler.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/UI/RgbLights.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/UI/UpscaleRenderPass.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/AboutSection.cpp
