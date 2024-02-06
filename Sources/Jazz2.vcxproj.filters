@@ -214,6 +214,15 @@
     <Filter Include="Source Files\nCine\Backends">
       <UniqueIdentifier>{416ca28f-5529-413b-b6b9-1f5c7cdf2b0d}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\Jazz2\Actors\Multiplayer">
+      <UniqueIdentifier>{f0d88d86-bb58-4877-b356-365d04655da0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\Jazz2\Actors\Multiplayer">
+      <UniqueIdentifier>{5a410bc7-e012-4efc-a75b-41bf6b0e9771}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\nCine\Base\pdqsort">
+      <UniqueIdentifier>{a72d645b-36b7-485e-b3f6-5ec77cbd0ee2}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Resources.h">
@@ -657,9 +666,6 @@
     <ClInclude Include="nCine\Application.h">
       <Filter>Header Files\nCine</Filter>
     </ClInclude>
-    <ClInclude Include="nCine\ArrayIndexer.h">
-      <Filter>Header Files\nCine</Filter>
-    </ClInclude>
     <ClInclude Include="nCine\CommonConstants.h">
       <Filter>Header Files\nCine</Filter>
     </ClInclude>
@@ -667,9 +673,6 @@
       <Filter>Header Files\nCine</Filter>
     </ClInclude>
     <ClInclude Include="nCine\IAppEventHandler.h">
-      <Filter>Header Files\nCine</Filter>
-    </ClInclude>
-    <ClInclude Include="nCine\IIndexer.h">
       <Filter>Header Files\nCine</Filter>
     </ClInclude>
     <ClInclude Include="nCine\MainApplication.h">
@@ -957,9 +960,6 @@
     <ClInclude Include="Jazz2\UI\ControlScheme.h">
       <Filter>Header Files\Jazz2\UI</Filter>
     </ClInclude>
-    <ClInclude Include="Jazz2\UI\Menu\ControlsSection.h">
-      <Filter>Header Files\Jazz2\UI\Menu</Filter>
-    </ClInclude>
     <ClInclude Include="Jazz2\Actors\Enemies\TurtleTough.h">
       <Filter>Header Files\Jazz2\Actors\Enemies</Filter>
     </ClInclude>
@@ -1022,9 +1022,6 @@
     </ClInclude>
     <ClInclude Include="Jazz2\UI\Menu\GameplayEnhancementsSection.h">
       <Filter>Header Files\Jazz2\UI\Menu</Filter>
-    </ClInclude>
-    <ClInclude Include="nCine\IO\CompressionUtils.h">
-      <Filter>Header Files\nCine\IO</Filter>
     </ClInclude>
     <ClInclude Include="Jazz2\UI\Menu\ImportSection.h">
       <Filter>Header Files\Jazz2\UI\Menu</Filter>
@@ -1117,9 +1114,6 @@
       <Filter>Header Files\Jazz2\Scripting</Filter>
     </ClInclude>
     <ClInclude Include="Jazz2\Scripting\RegisterRef.h">
-      <Filter>Header Files\Jazz2\Scripting</Filter>
-    </ClInclude>
-    <ClInclude Include="Jazz2\Scripting\FindAngelScript.h">
       <Filter>Header Files\Jazz2\Scripting</Filter>
     </ClInclude>
     <ClInclude Include="Jazz2\Actors\Enemies\Sparks.h">
@@ -1344,9 +1338,6 @@
     <ClInclude Include="Jazz2\Multiplayer\Peer.h">
       <Filter>Header Files\Jazz2\Multiplayer</Filter>
     </ClInclude>
-    <ClInclude Include="Jazz2\Actors\RemoteActor.h">
-      <Filter>Header Files\Jazz2\Actors</Filter>
-    </ClInclude>
     <ClInclude Include="Jazz2\Tiles\ITileMapOwner.h">
       <Filter>Header Files\Jazz2\Tiles</Filter>
     </ClInclude>
@@ -1425,6 +1416,54 @@
     <ClInclude Include="$(ExtensionLibraryPath)\IO\DeflateStream.h">
       <Filter>Header Files\Shared\IO</Filter>
     </ClInclude>
+    <ClInclude Include="$(ExtensionLibraryPath)\Containers\SequenceHelpers.h">
+      <Filter>Header Files\Shared\Containers</Filter>
+    </ClInclude>
+    <ClInclude Include="$(ExtensionLibraryPath)\Containers\StringUtils.h">
+      <Filter>Header Files\Shared\Containers</Filter>
+    </ClInclude>
+    <ClInclude Include="Jazz2\Multiplayer\ServerDiscovery.h">
+      <Filter>Header Files\Jazz2\Multiplayer</Filter>
+    </ClInclude>
+    <ClInclude Include="Jazz2\UI\Menu\ServerSelectSection.h">
+      <Filter>Header Files\Jazz2\UI\Menu</Filter>
+    </ClInclude>
+    <ClInclude Include="Jazz2\UI\Menu\CreateServerOptionsSection.h">
+      <Filter>Header Files\Jazz2\UI\Menu</Filter>
+    </ClInclude>
+    <ClInclude Include="$(ExtensionLibraryPath)\Base\TypeInfo.h">
+      <Filter>Header Files\Shared\Base</Filter>
+    </ClInclude>
+    <ClInclude Include="Jazz2\Actors\Multiplayer\PlayerOnServer.h">
+      <Filter>Header Files\Jazz2\Actors\Multiplayer</Filter>
+    </ClInclude>
+    <ClInclude Include="Jazz2\Actors\Multiplayer\RemotablePlayer.h">
+      <Filter>Header Files\Jazz2\Actors\Multiplayer</Filter>
+    </ClInclude>
+    <ClInclude Include="Jazz2\Actors\Multiplayer\RemoteActor.h">
+      <Filter>Header Files\Jazz2\Actors\Multiplayer</Filter>
+    </ClInclude>
+    <ClInclude Include="Jazz2\Actors\Multiplayer\RemotePlayerOnServer.h">
+      <Filter>Header Files\Jazz2\Actors\Multiplayer</Filter>
+    </ClInclude>
+    <ClInclude Include="Jazz2\Actors\Multiplayer\LocalPlayerOnServer.h">
+      <Filter>Header Files\Jazz2\Actors\Multiplayer</Filter>
+    </ClInclude>
+    <ClInclude Include="Jazz2\UI\Menu\PlayCustomSection.h">
+      <Filter>Header Files\Jazz2\UI\Menu</Filter>
+    </ClInclude>
+    <ClInclude Include="Jazz2\UI\Menu\MultiplayerGameModeSelectSection.h">
+      <Filter>Header Files\Jazz2\UI\Menu</Filter>
+    </ClInclude>
+    <ClInclude Include="Jazz2\Multiplayer\MultiplayerGameMode.h">
+      <Filter>Header Files\Jazz2\Multiplayer</Filter>
+    </ClInclude>
+    <ClInclude Include="Jazz2\UI\Menu\FirstRunSection.h">
+      <Filter>Header Files\Jazz2\UI\Menu</Filter>
+    </ClInclude>
+    <ClInclude Include="nCine\Base\pdqsort\pdqsort.h">
+      <Filter>Header Files\nCine\Base\pdqsort</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Main.cpp">
@@ -1437,9 +1476,6 @@
       <Filter>Source Files\nCine</Filter>
     </ClCompile>
     <ClCompile Include="nCine\Application.cpp">
-      <Filter>Source Files\nCine</Filter>
-    </ClCompile>
-    <ClCompile Include="nCine\ArrayIndexer.cpp">
       <Filter>Source Files\nCine</Filter>
     </ClCompile>
     <ClCompile Include="nCine\MainApplication.cpp">
@@ -2054,9 +2090,6 @@
     <ClCompile Include="Jazz2\UI\Menu\GameplayEnhancementsSection.cpp">
       <Filter>Source Files\Jazz2\UI\Menu</Filter>
     </ClCompile>
-    <ClCompile Include="nCine\IO\CompressionUtils.cpp">
-      <Filter>Source Files\nCine\IO</Filter>
-    </ClCompile>
     <ClCompile Include="Jazz2\UI\Menu\ImportSection.cpp">
       <Filter>Source Files\Jazz2\UI\Menu</Filter>
     </ClCompile>
@@ -2321,9 +2354,6 @@
     <ClCompile Include="Jazz2\Multiplayer\NetworkManager.cpp">
       <Filter>Source Files\Jazz2\Multiplayer</Filter>
     </ClCompile>
-    <ClCompile Include="Jazz2\Actors\RemoteActor.cpp">
-      <Filter>Source Files\Jazz2\Actors</Filter>
-    </ClCompile>
     <ClCompile Include="Jazz2\UI\Menu\LoadingSection.cpp">
       <Filter>Source Files\Jazz2\UI\Menu</Filter>
     </ClCompile>
@@ -2362,6 +2392,42 @@
     </ClCompile>
     <ClCompile Include="$(ExtensionLibraryPath)\IO\DeflateStream.cpp">
       <Filter>Source Files\Shared\IO</Filter>
+    </ClCompile>
+    <ClCompile Include="$(ExtensionLibraryPath)\Containers\StringUtils.cpp">
+      <Filter>Source Files\Shared\Containers</Filter>
+    </ClCompile>
+    <ClCompile Include="Jazz2\Multiplayer\ServerDiscovery.cpp">
+      <Filter>Source Files\Jazz2\Multiplayer</Filter>
+    </ClCompile>
+    <ClCompile Include="Jazz2\UI\Menu\ServerSelectSection.cpp">
+      <Filter>Source Files\Jazz2\UI\Menu</Filter>
+    </ClCompile>
+    <ClCompile Include="Jazz2\UI\Menu\CreateServerOptionsSection.cpp">
+      <Filter>Source Files\Jazz2\UI\Menu</Filter>
+    </ClCompile>
+    <ClCompile Include="Jazz2\Actors\Multiplayer\PlayerOnServer.cpp">
+      <Filter>Source Files\Jazz2\Actors\Multiplayer</Filter>
+    </ClCompile>
+    <ClCompile Include="Jazz2\Actors\Multiplayer\RemotablePlayer.cpp">
+      <Filter>Source Files\Jazz2\Actors\Multiplayer</Filter>
+    </ClCompile>
+    <ClCompile Include="Jazz2\Actors\Multiplayer\RemoteActor.cpp">
+      <Filter>Source Files\Jazz2\Actors\Multiplayer</Filter>
+    </ClCompile>
+    <ClCompile Include="Jazz2\Actors\Multiplayer\RemotePlayerOnServer.cpp">
+      <Filter>Source Files\Jazz2\Actors\Multiplayer</Filter>
+    </ClCompile>
+    <ClCompile Include="Jazz2\Actors\Multiplayer\LocalPlayerOnServer.cpp">
+      <Filter>Source Files\Jazz2\Actors\Multiplayer</Filter>
+    </ClCompile>
+    <ClCompile Include="Jazz2\UI\Menu\PlayCustomSection.cpp">
+      <Filter>Source Files\Jazz2\UI\Menu</Filter>
+    </ClCompile>
+    <ClCompile Include="Jazz2\UI\Menu\MultiplayerGameModeSelectSection.cpp">
+      <Filter>Source Files\Jazz2\UI\Menu</Filter>
+    </ClCompile>
+    <ClCompile Include="Jazz2\UI\Menu\FirstRunSection.cpp">
+      <Filter>Source Files\Jazz2\UI\Menu</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

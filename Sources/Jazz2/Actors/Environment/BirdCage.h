@@ -6,6 +6,8 @@ namespace Jazz2::Actors::Environment
 {
 	class BirdCage : public SolidObjectBase
 	{
+		DEATH_RUNTIME_OBJECT(SolidObjectBase);
+
 	public:
 		BirdCage();
 

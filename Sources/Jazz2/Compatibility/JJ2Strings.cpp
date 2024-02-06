@@ -2,13 +2,14 @@
 
 #include "../../nCine/Base/Algorithms.h"
 
+#include <Containers/StringUtils.h>
 #include <IO/FileSystem.h>
 
 using namespace Death::Containers::Literals;
 using namespace Death::IO;
 using namespace nCine;
 
-static constexpr uint16_t Windows1250_Utf8[256] = {
+static const uint16_t Windows1250_Utf8[256] = {
 	0x0000, 0x0001, 0x0002, 0x0003, 0x0004, 0x0005, 0x0006, 0x0007, 0x0008, 0x0009, 0x000a, 0x000b, 0x000c, 0x000d, 0x000e, 0x000f,
 	0x0010, 0x0011, 0x0012, 0x0013, 0x0014, 0x0015, 0x0016, 0x0017, 0x0018, 0x0019, 0x001a, 0x001b, 0x001c, 0x001d, 0x001e, 0x001f,
 	0x0020, 0x0021, 0x0022, 0x0023, 0x0024, 0x0025, 0x0026, 0x0027, 0x0028, 0x0029, 0x002a, 0x002b, 0x002c, 0x002d, 0x002e, 0x002f,
@@ -27,7 +28,7 @@ static constexpr uint16_t Windows1250_Utf8[256] = {
 	0x0111, 0x0144, 0x0148, 0x00f3, 0x00f4, 0x0151, 0x00f6, 0x00f7, 0x0159, 0x016f, 0x00fa, 0x0171, 0x00fc, 0x00fd, 0x0163, 0x02d9
 };
 
-static constexpr uint32_t DefaultFontColors[] = {
+static const uint32_t DefaultFontColors[] = {
 	0x707485,
 	0x409062,
 	0x629040,
@@ -39,13 +40,13 @@ static constexpr uint32_t DefaultFontColors[] = {
 
 namespace Jazz2::Compatibility
 {
-	bool JJ2Strings::Open(const StringView& path)
+	bool JJ2Strings::Open(const StringView path)
 	{
 		auto s = fs::Open(path, FileAccessMode::Read);
 		RETURNF_ASSERT_MSG(s->IsValid(), "Cannot open file for reading");
 
 		Name = fs::GetFileNameWithoutExtension(path);
-		lowercaseInPlace(Name);
+		StringUtils::lowercaseInPlace(Name);
 
 		uint32_t offsetArraySize = s->ReadValue<uint32_t>();
 
@@ -72,7 +73,7 @@ namespace Jazz2::Compatibility
 			levelName[8] = '\0';
 
 			LevelEntry& levelEntry = LevelTexts.emplace_back(String(levelName));
-			lowercaseInPlace(levelEntry.Name);
+			StringUtils::lowercaseInPlace(levelEntry.Name);
 
 			/*uint8_t unknown =*/ s->ReadValue<uint8_t>();
 			counts.emplace_back(s->ReadValue<uint8_t>());
@@ -106,7 +107,7 @@ namespace Jazz2::Compatibility
 		return true;
 	}
 
-	void JJ2Strings::Convert(const String& targetPath, std::function<JJ2Level::LevelToken(const StringView&)> levelTokenConversion)
+	void JJ2Strings::Convert(const StringView targetPath, const std::function<JJ2Level::LevelToken(const StringView)>& levelTokenConversion)
 	{
 		auto so = fs::Open(targetPath, FileAccessMode::Write);
 		ASSERT_MSG(so->IsValid(), "Cannot open file for writing");
@@ -172,7 +173,7 @@ namespace Jazz2::Compatibility
 		}
 	}
 
-	String JJ2Strings::RecodeString(const StringView& text, bool stripFormatting, bool escaped)
+	String JJ2Strings::RecodeString(const StringView text, bool stripFormatting, bool escaped)
 	{
 		if (text.empty()) {
 			return { };
@@ -239,7 +240,7 @@ namespace Jazz2::Compatibility
 					colorFrozen = false;
 					colorIndex = 0;
 				}
-			} else if (current == '|' && colorRandom) {
+			} else if (current == '|') {
 				// Skip one color
 				if (!colorFrozen) {
 					colorIndex++;

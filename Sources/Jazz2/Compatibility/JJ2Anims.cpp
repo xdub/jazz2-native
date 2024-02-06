@@ -9,7 +9,7 @@ using namespace Death::IO;
 
 namespace Jazz2::Compatibility
 {
-	bool JJ2Anims::Convert(const StringView& path, const StringView& targetPath, bool isPlus)
+	JJ2Version JJ2Anims::Convert(const StringView path, const StringView targetPath, bool isPlus)
 	{
 		JJ2Version version;
 		SmallVector<AnimSection, 0> anims;
@@ -260,7 +260,7 @@ namespace Jazz2::Compatibility
 				version = JJ2Version::TSF | JJ2Version::SharewareDemo;
 				// TODO: This version is not supported (yet)
 				LOGE("Detected Jazz Jackrabbit 2: The Secret Files Demo - This version is not supported!");
-				return false;
+				return JJ2Version::Unknown;
 			} else if (seemsLikeCC) {
 				version = JJ2Version::CC;
 				LOGI("Detected Jazz Jackrabbit 2: Christmas Chronicles");
@@ -275,7 +275,7 @@ namespace Jazz2::Compatibility
 			version = JJ2Version::PlusExtension;
 			if (!isPlus) {
 				LOGE("Detected Jazz Jackrabbit 2 Plus extension - This version is not supported!");
-				return false;
+				return JJ2Version::Unknown;
 			}
 		} else {
 			version = JJ2Version::Unknown;
@@ -284,10 +284,11 @@ namespace Jazz2::Compatibility
 
 		ImportAnimations(targetPath, version, anims);
 		ImportAudioSamples(targetPath, version, samples);
-		return true;
+
+		return version;
 	}
 
-	void JJ2Anims::ImportAnimations(const StringView& targetPath, JJ2Version version, SmallVectorImpl<AnimSection>& anims)
+	void JJ2Anims::ImportAnimations(const StringView targetPath, JJ2Version version, SmallVectorImpl<AnimSection>& anims)
 	{
 		if (anims.empty()) {
 			return;
@@ -340,6 +341,18 @@ namespace Jazz2::Compatibility
 				LOGI("Applying \"Vine\" palette fix to %i:%u", anim.Set, anim.Anim);
 			}
 
+			bool applyFlyCarrotFix = (entry->Category == "Pickup"_s && entry->Name == "carrot_fly"_s);
+			if (applyFlyCarrotFix) {
+				// This image has 4 wrong pixels that should be transparent
+				LOGI("Applying \"Fly Carrot\" image fix to %i:%u", anim.Set, anim.Anim);
+			}
+
+			bool playerFlareFix = ((entry->Category == "Jazz"_s || entry->Category == "Spaz"_s) && (entry->Name == "shoot_ver"_s || entry->Name == "vine_shoot_up"_s));
+			if (playerFlareFix) {
+				// This image has already applied weapon flare, remove it
+				LOGI("Applying \"Player Flare\" image fix to %i:%u", anim.Set, anim.Anim);
+			}
+
 			String filename;
 			if (entry->Name.empty()) {
 				/*filename = "s" + sample.Set + "_s" + sample.IdInSet + ".jri";
@@ -375,6 +388,14 @@ namespace Jazz2::Compatibility
 							}
 						} else if (applyVineFix) {
 							if (colorIdx == 128) {
+								colorIdx = 0;
+							}
+						} else if (applyFlyCarrotFix) {
+							if (colorIdx >= 68 && colorIdx <= 70) {
+								colorIdx = 0;
+							}
+						} else if (playerFlareFix) {
+							if (j == 0 && y < 14 && (colorIdx == 15 || (colorIdx >= 40 && colorIdx <= 42))) {
 								colorIdx = 0;
 							}
 						}
@@ -434,7 +455,7 @@ namespace Jazz2::Compatibility
 		}
 	}
 
-	void JJ2Anims::ImportAudioSamples(const StringView& targetPath, JJ2Version version, SmallVectorImpl<SampleSection>& samples)
+	void JJ2Anims::ImportAudioSamples(const StringView targetPath, JJ2Version version, SmallVectorImpl<SampleSection>& samples)
 	{
 		if (samples.empty()) {
 			return;
@@ -505,7 +526,7 @@ namespace Jazz2::Compatibility
 		}
 	}
 
-	void JJ2Anims::WriteImageToFile(const StringView& targetPath, const uint8_t* data, int32_t width, int32_t height, int32_t channelCount, const AnimSection& anim, AnimSetMapping::Entry* entry)
+	void JJ2Anims::WriteImageToFile(const StringView targetPath, const uint8_t* data, int32_t width, int32_t height, int32_t channelCount, const AnimSection& anim, AnimSetMapping::Entry* entry)
 	{
 		auto so = fs::Open(targetPath, FileAccessMode::Write);
 		ASSERT_MSG(so->IsValid(), "Cannot open file for writing");

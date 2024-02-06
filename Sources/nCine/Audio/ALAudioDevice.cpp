@@ -212,8 +212,15 @@ namespace nCine
 		}
 	}
 
+	const Vector3f& ALAudioDevice::getListenerPosition() const
+	{
+		return _listenerPos;
+	}
+
 	void ALAudioDevice::updateListener(const Vector3f& position, const Vector3f& velocity)
 	{
+		_listenerPos = position;
+
 		alListener3f(AL_POSITION, position.X * LengthToPhysical, position.Y * -LengthToPhysical, position.Z * -LengthToPhysical);
 		alListener3f(AL_VELOCITY, velocity.X * VelocityToPhysical, velocity.Y * -VelocityToPhysical, velocity.Z * -VelocityToPhysical);
 	}
@@ -221,6 +228,24 @@ namespace nCine
 	int ALAudioDevice::nativeFrequency()
 	{
 		return nativeFreq_;
+	}
+
+	void ALAudioDevice::suspendDevice()
+	{
+#if defined(ALC_SOFT_pause_device)
+		if (device_ != nullptr) {
+			alcDevicePauseSOFT(device_);
+		}
+#endif
+	}
+
+	void ALAudioDevice::resumeDevice()
+	{
+#if defined(ALC_SOFT_pause_device)
+		if (device_ != nullptr) {
+			alcDeviceResumeSOFT(device_);
+		}
+#endif
 	}
 
 #if defined(DEATH_TARGET_WINDOWS) && !defined(DEATH_TARGET_WINDOWS_RT)
@@ -234,14 +259,12 @@ namespace nCine
 				LOGE("Cannot recreate audio device - alcReopenDeviceSOFT() failed!");
 			}
 
-#if !defined(DEATH_TARGET_EMSCRIPTEN)
 			// Try to get native sample rate of new audio device
 			ALCint nativeFreq = 0;
 			alcGetIntegerv(device_, ALC_FREQUENCY, 1, &nativeFreq);
 			if (nativeFreq >= 44100 && nativeFreq <= 192000) {
 				nativeFreq_ = nativeFreq;
 			}
-#endif
 		} else {
 			LOGE("Cannot recreate audio device - missing extension");
 		}
@@ -251,22 +274,22 @@ namespace nCine
 	{
 		HRESULT hr = ::CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&pEnumerator_));
 		if (hr == CO_E_NOTINITIALIZED) {
-			LOGW("CoCreateInstance() failed with CO_E_NOTINITIALIZED");
+			LOGW("CoCreateInstance() failed with error CO_E_NOTINITIALIZED");
 			hr = ::CoInitializeEx(nullptr, COINIT_MULTITHREADED | COINIT_DISABLE_OLE1DDE);
 			if (FAILED(hr)) {
 				hr = ::CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr,  CLSCTX_ALL, IID_PPV_ARGS(&pEnumerator_));
 				if (FAILED(hr)) {
-					LOGE("CoCreateInstance() failed: 0x%08x", hr);
+					LOGE("CoCreateInstance() failed with error 0x%08x", hr);
 				}
 			}
 		} else if (FAILED(hr)) {
-			LOGE("CoCreateInstance() failed: 0x%08x", hr);
+			LOGE("CoCreateInstance() failed with error 0x%08x", hr);
 		}
 
 		if (pEnumerator_ != nullptr) {
 			HRESULT hr = pEnumerator_->RegisterEndpointNotificationCallback(this);
 			if (FAILED(hr)) {
-				LOGE("RegisterEndpointNotificationCallback() failed: 0x%08x", hr);
+				LOGE("RegisterEndpointNotificationCallback() failed with error 0x%08x", hr);
 			}
 		}
 	}

@@ -360,13 +360,13 @@ namespace Jazz2
 		_isLoading = false;
 	}
 
-	void ContentResolver::PreloadMetadataAsync(const StringView& path)
+	void ContentResolver::PreloadMetadataAsync(const StringView path)
 	{
 		// TODO: reimplement async preloading
 		RequestMetadata(path);
 	}
 
-	Metadata* ContentResolver::RequestMetadata(const StringView& path)
+	Metadata* ContentResolver::RequestMetadata(const StringView path)
 	{
 		String pathNormalized = fs::ToNativeSeparators(path);
 		auto it = _cachedMetadata.find(pathNormalized);
@@ -509,7 +509,7 @@ namespace Jazz2
 				}
 
 				// Animation states must be sorted, so binary search can be used
-				std::sort(metadata->Animations.begin(), metadata->Animations.end());
+				sort(metadata->Animations.begin(), metadata->Animations.end());
 			}
 
 			if (!_isHeadless) {
@@ -566,7 +566,7 @@ namespace Jazz2
 		return _cachedMetadata.emplace(metadata->Path, std::move(metadata)).first->second.get();
 	}
 
-	GenericGraphicResource* ContentResolver::RequestGraphics(const StringView& path, uint16_t paletteOffset)
+	GenericGraphicResource* ContentResolver::RequestGraphics(const StringView path, uint16_t paletteOffset)
 	{
 		// First resources are requested, reset _isLoading flag, because palette should be already applied
 		_isLoading = false;
@@ -687,7 +687,7 @@ namespace Jazz2
 		return nullptr;
 	}
 
-	GenericGraphicResource* ContentResolver::RequestGraphicsAura(const StringView& path, uint16_t paletteOffset)
+	GenericGraphicResource* ContentResolver::RequestGraphicsAura(const StringView path, uint16_t paletteOffset)
 	{
 		// Try "Content" directory first, then "Cache" directory
 		String fullPath = fs::CombinePath({ GetContentPath(), "Animations"_s, path });
@@ -871,7 +871,7 @@ namespace Jazz2
 		}
 	}
 
-	std::unique_ptr<Tiles::TileSet> ContentResolver::RequestTileSet(const StringView& path, uint16_t captionTileId, bool applyPalette, const uint8_t* paletteRemapping)
+	std::unique_ptr<Tiles::TileSet> ContentResolver::RequestTileSet(const StringView path, uint16_t captionTileId, bool applyPalette, const uint8_t* paletteRemapping)
 	{
 		// Try "Content" directory first, then "Cache" directory
 		String fullPath = fs::CombinePath({ GetContentPath(), "Tilesets"_s, path + ".j2t"_s });
@@ -1063,14 +1063,14 @@ namespace Jazz2
 		return std::make_unique<Tiles::TileSet>(tileCount, std::move(textureDiffuse), std::move(mask), maskSize * 8, std::move(captionTile));
 	}
 
-	bool ContentResolver::LevelExists(const StringView& episodeName, const StringView& levelName)
+	bool ContentResolver::LevelExists(const StringView episodeName, const StringView levelName)
 	{
 		// Try "Content" directory first, then "Cache" directory
 		return (fs::IsReadableFile(fs::CombinePath({ GetContentPath(), "Episodes"_s, episodeName, levelName + ".j2l"_s })) || 
 				fs::IsReadableFile(fs::CombinePath({ GetCachePath(), "Episodes"_s, episodeName, levelName + ".j2l"_s })));
 	}
 
-	bool ContentResolver::TryLoadLevel(const StringView& path, GameDifficulty difficulty, LevelDescriptor& descriptor)
+	bool ContentResolver::TryLoadLevel(const StringView path, GameDifficulty difficulty, LevelDescriptor& descriptor)
 	{
 		// Try "Content" directory first, then "Cache" directory
 		auto pathNormalized = fs::ToNativeSeparators(path);
@@ -1182,6 +1182,11 @@ namespace Jazz2
 			descriptor.TileMap->AddTileSet(extraTileset, offset, count, hasPaletteRemapping ? paletteRemapping : nullptr);
 		}
 
+		if (!descriptor.TileMap->IsValid()) {
+			// Cannot load one of required tilesets (errors already logged by TileMap)
+			return false;
+		}
+
 		// Text Event Strings
 		std::uint8_t textEventStringsCount = uc.ReadValue<std::uint8_t>();
 		descriptor.LevelTexts.reserve(textEventStringsCount);
@@ -1229,16 +1234,16 @@ namespace Jazz2
 		}
 	}
 
-	std::optional<Episode> ContentResolver::GetEpisode(const StringView& name)
+	std::optional<Episode> ContentResolver::GetEpisode(const StringView name, bool withImages)
 	{
 		String fullPath = fs::CombinePath({ GetContentPath(), "Episodes"_s, name + ".j2e"_s });
 		if (!fs::IsReadableFile(fullPath)) {
 			fullPath = fs::CombinePath({ GetCachePath(), "Episodes"_s, name + ".j2e"_s });
 		}
-		return GetEpisodeByPath(fullPath);
+		return GetEpisodeByPath(fullPath, withImages);
 	}
 
-	std::optional<Episode> ContentResolver::GetEpisodeByPath(const StringView& path)
+	std::optional<Episode> ContentResolver::GetEpisodeByPath(const StringView path, bool withImages)
 	{
 		auto s = fs::Open(path, FileAccessMode::Read);
 		if (s->GetSize() < 16) {
@@ -1274,10 +1279,36 @@ namespace Jazz2
 		episode.NextEpisode = String(NoInit, nameLength);
 		s->Read(episode.NextEpisode.data(), nameLength);
 
+		if (withImages && !_isHeadless) {
+			std::uint16_t titleWidth = s->ReadValue<std::uint16_t>();
+			std::uint16_t titleHeight = s->ReadValue<std::uint16_t>();
+			if (titleWidth > 0 && titleHeight > 0) {
+				std::unique_ptr<std::uint32_t[]> pixels = std::make_unique<std::uint32_t[]>(titleWidth * titleHeight);
+				ReadImageFromFile(s, (std::uint8_t*)pixels.get(), titleWidth, titleHeight, 4);
+
+				episode.TitleImage = std::make_unique<Texture>(path.data(), Texture::Format::RGBA8, titleWidth, titleHeight);
+				episode.TitleImage->loadFromTexels((unsigned char*)pixels.get(), 0, 0, titleWidth, titleHeight);
+				episode.TitleImage->setMinFiltering(SamplerFilter::Nearest);
+				episode.TitleImage->setMagFiltering(SamplerFilter::Nearest);
+			}
+
+			std::uint16_t backgroundWidth = s->ReadValue<std::uint16_t>();
+			std::uint16_t backgroundHeight = s->ReadValue<std::uint16_t>();
+			if (backgroundWidth > 0 && backgroundHeight > 0) {
+				std::unique_ptr<std::uint32_t[]> pixels = std::make_unique<std::uint32_t[]>(backgroundWidth * backgroundHeight);
+				ReadImageFromFile(s, (std::uint8_t*)pixels.get(), backgroundWidth, backgroundHeight, 4);
+
+				episode.BackgroundImage = std::make_unique<Texture>(path.data(), Texture::Format::RGBA8, backgroundWidth, backgroundHeight);
+				episode.BackgroundImage->loadFromTexels((unsigned char*)pixels.get(), 0, 0, backgroundWidth, backgroundHeight);
+				episode.BackgroundImage->setMinFiltering(SamplerFilter::Linear);
+				episode.BackgroundImage->setMagFiltering(SamplerFilter::Linear);
+			}
+		}
+
 		return episode;
 	}
 
-	std::unique_ptr<AudioStreamPlayer> ContentResolver::GetMusic(const StringView& path)
+	std::unique_ptr<AudioStreamPlayer> ContentResolver::GetMusic(const StringView path)
 	{
 		// Don't load sounds in headless mode
 		if (_isHeadless) {
@@ -1556,7 +1587,7 @@ namespace Jazz2
 	}
 
 #if defined(DEATH_DEBUG)
-	void ContentResolver::MigrateGraphics(const StringView& path)
+	void ContentResolver::MigrateGraphics(const StringView path)
 	{
 		String auraPath = fs::CombinePath({ GetContentPath(), "Animations"_s, path.exceptSuffix(4) + ".aura"_s });
 		if (fs::FileExists(auraPath)) {
@@ -1589,7 +1620,6 @@ namespace Jazz2
 
 				std::int32_t w = texLoader->width();
 				std::int32_t h = texLoader->height();
-				auto pixels = (std::uint32_t*)texLoader->pixels();
 				const std::uint32_t* palette = _palettes;
 				bool needsMask = true;
 

@@ -6,8 +6,7 @@
 #	include "Containers/String.h"
 #endif
 
-namespace Death
-{
+namespace Death {
 #if defined(DEATH_TARGET_WINDOWS_RT)
 	enum class DeviceType {
 		Unknown,
@@ -19,8 +18,9 @@ namespace Death
 #endif
 }
 
-namespace Death::Environment
-{
+namespace Death { namespace Environment {
+//###==##====#=====--==~--~=~- --- -- -  -  -   -
+
 #if defined(DEATH_TARGET_APPLE)
 	Containers::String GetAppleVersion();
 #elif defined(DEATH_TARGET_SWITCH)
@@ -39,6 +39,10 @@ namespace Death::Environment
 		return WindowsVersion >= 0x06000100000000; // 6.1.0
 	}
 
+	DEATH_ALWAYS_INLINE bool IsWindows8() {
+		return WindowsVersion >= 0x06000300000000; // 6.3.0
+	}
+
 	DEATH_ALWAYS_INLINE bool IsWindows10() {
 		return WindowsVersion >= 0x0a0000000047ba; // 10.0.18362
 	}
@@ -51,16 +55,14 @@ namespace Death::Environment
 	extern const DeviceType CurrentDeviceType;
 #endif
 
-	DEATH_ALWAYS_INLINE std::uint64_t QueryUnbiasedInterruptTime()
-	{
+	DEATH_ALWAYS_INLINE std::uint64_t QueryUnbiasedInterruptTime() {
 		ULONGLONG now { };
 		::QueryUnbiasedInterruptTime(&now);
 		return now;
 	}
 
-	DEATH_ALWAYS_INLINE std::uint64_t QueryUnbiasedInterruptTimeAsMs()
-	{
+	DEATH_ALWAYS_INLINE std::uint64_t QueryUnbiasedInterruptTimeAsMs() {
 		return QueryUnbiasedInterruptTime() / 10000LL;
 	}
 #endif
-}
+}}

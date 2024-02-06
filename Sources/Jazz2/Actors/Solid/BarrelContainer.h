@@ -6,6 +6,8 @@ namespace Jazz2::Actors::Solid
 {
 	class BarrelContainer : public GenericContainer
 	{
+		DEATH_RUNTIME_OBJECT(GenericContainer);
+
 	public:
 		BarrelContainer();
 

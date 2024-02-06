@@ -7,6 +7,8 @@ namespace Jazz2::Actors::Bosses
 {
 	class Uterus : public BossBase
 	{
+		DEATH_RUNTIME_OBJECT(BossBase);
+
 	public:
 		Uterus();
 		~Uterus();
@@ -56,6 +58,6 @@ namespace Jazz2::Actors::Bosses
 		float _anglePhase;
 		bool _hasShield;
 
-		void FollowNearestPlayer();
+		void FollowNearestPlayer(float timeMult);
 	};
 }

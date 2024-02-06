@@ -6,6 +6,8 @@ namespace Jazz2::Actors::Weapons
 {
 	class RFShot : public ShotBase
 	{
+		DEATH_RUNTIME_OBJECT(ShotBase);
+
 	public:
 		RFShot();
 

@@ -37,7 +37,7 @@ namespace Jazz2::Actors::Solid
 
 		if (_cooldown <= 0.0f) {
 			_levelHandler->FindCollisionActorsByRadius(_pos.X, _pos.Y, 30.0f, [this](ActorBase* actor) {
-				if (auto player = dynamic_cast<Player*>(actor)) {
+				if (auto* player = runtime_cast<Player*>(actor)) {
 					Vector2f playerPos = player->GetPos();
 					if (playerPos.Y > _pos.Y - 26.0f && playerPos.Y < _pos.Y + 10.0f) {
 						_cooldown = 10.0f;
@@ -51,18 +51,24 @@ namespace Jazz2::Actors::Solid
 						}
 						mult = std::clamp(0.2f + mult * 1.6f, 0.4f, 1.0f);
 
-						float force = 1.9f * mult;
+						float forceY = 1.9f * mult;
+						if (!_levelHandler->IsReforged()) {
+							forceY *= 0.85f;
+						}
+
 						player->_speed.X = 0.0f;
 						player->_speed.Y = (_levelHandler->IsReforged() ? -1.0f : -0.7f);
-						player->_externalForce.Y -= force;
 
-						player->_externalForceCooldown = 10.0f;
-						player->_controllable = true;
-						player->SetState(ActorState::CanJump, false);
-						player->EndDamagingMove();
+						if (player->_activeModifier == Player::Modifier::None) {
+							if (player->_copterFramesLeft > 1.0f) {
+								player->_copterFramesLeft = 1.0f;
+							}
 
-						if (player->_copterFramesLeft > 1.0f) {
-							player->_copterFramesLeft = 1.0f;
+							player->_externalForce.Y -= forceY;
+							player->_externalForceCooldown = 10.0f;
+							player->_controllable = true;
+							player->SetState(ActorState::CanJump, false);
+							player->EndDamagingMove();
 						}
 
 						// TODO: Check this

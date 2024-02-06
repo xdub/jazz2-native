@@ -6,6 +6,8 @@ namespace Jazz2::Actors::Enemies
 {
 	class Bat : public EnemyBase
 	{
+		DEATH_RUNTIME_OBJECT(EnemyBase);
+
 	public:
 		Bat();
 

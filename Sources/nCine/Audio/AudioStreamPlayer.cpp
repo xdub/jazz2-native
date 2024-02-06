@@ -66,8 +66,12 @@ namespace nCine
 
 				updateFilters();
 
-				alSourcei(sourceId_, AL_SOURCE_RELATIVE, isSourceRelative_ ? AL_TRUE : AL_FALSE);
-				alSource3f(sourceId_, AL_POSITION, position_.X * IAudioDevice::LengthToPhysical, position_.Y * -IAudioDevice::LengthToPhysical, position_.Z * -IAudioDevice::LengthToPhysical);
+				bool isSourceRelative = GetFlags(PlayerFlags::SourceRelative);
+				bool isAs2D = GetFlags(PlayerFlags::As2D);
+				Vector3f adjustedPos = getAdjustedPosition(device, position_, isSourceRelative, isAs2D);
+
+				alSourcei(sourceId_, AL_SOURCE_RELATIVE, isSourceRelative || isAs2D ? AL_TRUE : AL_FALSE);
+				alSource3f(sourceId_, AL_POSITION, adjustedPos.X, adjustedPos.Y, adjustedPos.Z);
 				alSourcef(sourceId_, AL_REFERENCE_DISTANCE, IAudioDevice::ReferenceDistance);
 				alSourcef(sourceId_, AL_MAX_DISTANCE, IAudioDevice::MaxDistance);
 
@@ -119,17 +123,17 @@ namespace nCine
 		device.unregisterPlayer(this);
 	}
 
-	void AudioStreamPlayer::setLooping(bool isLooping)
+	void AudioStreamPlayer::setLooping(bool value)
 	{
-		IAudioPlayer::setLooping(isLooping);
+		IAudioPlayer::setLooping(value);
 
-		audioStream_.setLooping(isLooping);
+		audioStream_.setLooping(value);
 	}
 
 	void AudioStreamPlayer::updateState()
 	{
 		if (state_ == PlayerState::Playing) {
-			const bool shouldStillPlay = audioStream_.enqueue(sourceId_, isLooping_);
+			const bool shouldStillPlay = audioStream_.enqueue(sourceId_, GetFlags(PlayerFlags::Looping));
 			if (!shouldStillPlay) {
 				// Detach the buffer from source
 				alSourcei(sourceId_, AL_BUFFER, 0);

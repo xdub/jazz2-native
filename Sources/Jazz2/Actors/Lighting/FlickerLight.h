@@ -6,6 +6,8 @@ namespace Jazz2::Actors::Lighting
 {
 	class FlickerLight : public ActorBase
 	{
+		DEATH_RUNTIME_OBJECT(ActorBase);
+
 	public:
 		FlickerLight();
 

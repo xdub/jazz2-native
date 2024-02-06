@@ -59,7 +59,8 @@ namespace Jazz2::UI
 		static constexpr AnimState PickupGem = (AnimState)71;
 		static constexpr AnimState PickupCoin = (AnimState)72;
 		static constexpr AnimState PickupFood = (AnimState)73;
-		static constexpr AnimState BossHealthBar = (AnimState)74;
+		static constexpr AnimState PickupCarrot = (AnimState)74;
+		static constexpr AnimState BossHealthBar = (AnimState)75;
 		static constexpr AnimState WeaponWheel = (AnimState)80;
 		static constexpr AnimState WeaponWheelInner = (AnimState)81;
 		static constexpr AnimState WeaponWheelDim = (AnimState)82;
@@ -204,11 +205,7 @@ namespace Jazz2::UI
 			adjustedView.W = adjustedView.W - adjustedView.X - (195.0f + PreferencesCache::TouchRightPadding.X);
 		}
 
-		float right = adjustedView.X + adjustedView.W;
-		float bottom = adjustedView.Y + adjustedView.H;
-
 		int32_t charOffset = 0;
-		int32_t charOffsetShadow = 0;
 		char stringBuffer[32];
 
 		auto& players = _levelHandler->GetPlayers();
@@ -228,10 +225,14 @@ namespace Jazz2::UI
 			// Touch Controls
 			if (_touchButtonsTimer > 0.0f) {
 				for (auto& button : _touchButtons) {
-					if (button.Graphics == nullptr || (PreferencesCache::UseNativeBackButton && button.Action == PlayerActions::Menu)) {
+					if (button.Graphics == nullptr) {
 						continue;
 					}
-
+#if defined(DEATH_TARGET_ANDROID)
+					if (button.Action == PlayerActions::Menu && PreferencesCache::UseNativeBackButton) {
+						continue;
+					}
+#endif
 					float x = button.Left;
 					float y = button.Top;
 					if ((button.Align & Alignment::Right) == Alignment::Right) {
@@ -253,10 +254,9 @@ namespace Jazz2::UI
 							y += PreferencesCache::TouchLeftPadding.Y;
 						}
 					}
-					x = x - ViewSize.X * 0.5f;
-					y = ViewSize.Y * 0.5f - y;
 
-					DrawTexture(*button.Graphics->Base->TextureDiffuse, Vector2f(x, y), TouchButtonsLayer, Vector2f(button.Width, button.Height), Vector4f(1.0f, 0.0f, -1.0f, 1.0f), Colorf::White);
+					DrawTexture(*button.Graphics->Base->TextureDiffuse, Vector2f(std::round(x - button.Width * 0.5f), std::round(y - button.Height * 0.5f)),
+						TouchButtonsLayer, Vector2f(button.Width, button.Height), Vector4f(1.0f, 0.0f, 1.0f, 0.0f), Colorf::White);
 				}
 			}
 		}
@@ -264,7 +264,7 @@ namespace Jazz2::UI
 		// FPS
 		if (PreferencesCache::ShowPerformanceMetrics) {
 			i32tos((int32_t)std::round(theApplication().frameTimer().averageFps()), stringBuffer);
-			_smallFont->DrawString(this, stringBuffer, charOffset, view.W - 4.0f, view.Y + 2.0f, FontLayer,
+			_smallFont->DrawString(this, stringBuffer, charOffset, view.W - 4.0f, view.Y + 1.0f, FontLayer,
 				Alignment::TopRight, Font::DefaultColor, 0.8f, 0.0f, 0.0f, 0.0f, 0.0f, 0.96f);
 		}
 
@@ -365,7 +365,7 @@ namespace Jazz2::UI
 		}
 	}
 
-	void HUD::ShowLevelText(const StringView& text)
+	void HUD::ShowLevelText(const StringView text)
 	{
 		if (_levelText == text || text.empty()) {
 			return;
@@ -436,6 +436,11 @@ namespace Jazz2::UI
 		}
 	}
 
+	bool HUD::IsWeaponWheelVisible() const
+	{
+		return (_weaponWheelAnim > 0.0f);
+	}
+
 	void HUD::DrawHealth(const Rectf& view, const Rectf& adjustedView, Actors::Player* player)
 	{
 		PlayerType playerType = player->_playerType;
@@ -467,20 +472,10 @@ namespace Jazz2::UI
 		std::int32_t charOffset = 0;
 		std::int32_t charOffsetShadow = 0;
 
-		if (_levelHandler->IsReforged()) {
-			for (std::int32_t i = 0; i < player->_health; i++) {
-				stringBuffer[i] = '|';
-			}
-			stringBuffer[player->_health] = '\0';
-
+		if (PreferencesCache::EnableReforgedHUD) {
 			if (player->_lives > 0) {
 				if (shouldDrawHealth) {
-					_smallFont->DrawString(this, stringBuffer, charOffsetShadow, adjustedView.X + 36.0f - 3.0f - 0.5f, bottom - 17.0f + 0.5f, FontShadowLayer,
-						Alignment::BottomLeft, Colorf(0.0f, 0.0f, 0.0f, 0.42f), 0.7f, 0.0f, 0.0f, 0.0f, 0.0f, 1.1f);
-					_smallFont->DrawString(this, stringBuffer, charOffsetShadow, adjustedView.X + 36.0f - 3.0f + 0.5f, bottom - 17.0f - 0.5f, FontShadowLayer,
-						Alignment::BottomLeft, Colorf(0.0f, 0.0f, 0.0f, 0.42f), 0.7f, 0.0f, 0.0f, 0.0f, 0.0f, 1.1f);
-					_smallFont->DrawString(this, stringBuffer, charOffset, adjustedView.X + 36.0f - 3.0f, bottom - 17.0f, FontLayer,
-						Alignment::BottomLeft, Font::RandomColor, 0.7f, 0.0f, 0.0f, 0.0f, 0.0f, 1.1f);
+					DrawHealthCarrots(adjustedView.X + 24.0f, bottom - 30.0f, player->_health);
 				}
 
 				if (shouldDrawLives) {
@@ -501,12 +496,7 @@ namespace Jazz2::UI
 				}
 			} else {
 				if (shouldDrawHealth) {
-					_smallFont->DrawString(this, stringBuffer, charOffsetShadow, adjustedView.X + 36.0f - 3.0f - 0.5f, bottom - 4.0f + 0.5f, FontShadowLayer,
-						Alignment::BottomLeft, Colorf(0.0f, 0.0f, 0.0f, 0.42f), 0.7f, 0.0f, 0.0f, 0.0f, 0.0f, 1.1f);
-					_smallFont->DrawString(this, stringBuffer, charOffsetShadow, adjustedView.X + 36.0f - 3.0f + 0.5f, bottom - 4.0f - 0.5f, FontShadowLayer,
-						Alignment::BottomLeft, Colorf(0.0f, 0.0f, 0.0f, 0.42f), 0.7f, 0.0f, 0.0f, 0.0f, 0.0f, 1.1f);
-					_smallFont->DrawString(this, stringBuffer, charOffset, adjustedView.X + 36.0f - 3.0f, bottom - 4.0f, FontLayer,
-						Alignment::BottomLeft, Font::RandomColor, 0.7f, 0.0f, 0.0f, 0.0f, 0.0f, 1.1f);
+					DrawHealthCarrots(adjustedView.X + 24.0f, bottom - 20.0f, player->_health);
 				}
 			}
 		} else {
@@ -536,6 +526,80 @@ namespace Jazz2::UI
 		}
 	}
 
+	void HUD::DrawHealthCarrots(float x, float y, std::int32_t health)
+	{
+		constexpr Colorf CarrotShadowColor = Colorf(0.0f, 0.0f, 0.0f, 0.5f);
+
+		std::int32_t lastCarrotIdx = 0;
+		float lastCarrotOffset = 0.0f;
+		float scale = 0.5f;
+		float angleBase1 = sinf(AnimTime * 10.0f) * fDegToRad;
+		float angleBase2 = sinf(AnimTime * 12.0f + 3.0f) * fDegToRad;
+		float angleBase3 = sinf(AnimTime * 11.0f + 7.0f) * fDegToRad;
+
+		// Limit frame rate of carrot movement
+		angleBase1 = std::round(angleBase1 * 3.0f * fRadToDeg) / (3.0f * RadToDeg);
+		angleBase2 = std::round(angleBase2 * 3.0f * fRadToDeg) / (3.0f * RadToDeg);
+		angleBase3 = std::round(angleBase3 * 3.0f * fRadToDeg) / (3.0f * RadToDeg);
+
+		if (health >= 1) {
+			float angle = angleBase1 * (health > 1 ? -6.0f : -14.0f) + 0.2f;
+			DrawElement(PickupCarrot, 1, x + 1.0f - 1.0f, y + 2.0f + 1.0f, FontLayer + lastCarrotIdx * 2, Alignment::Left, CarrotShadowColor, scale, scale, false, angle);
+			DrawElement(PickupCarrot, 1, x + 1.0f + 1.0f, y + 2.0f + 1.0f, FontLayer + lastCarrotIdx * 2, Alignment::Left, CarrotShadowColor, scale, scale, false, angle);
+			DrawElement(PickupCarrot, 1, x + 1.0f, y + 2.0f, FontLayer + lastCarrotIdx * 2 + 1, Alignment::Left, Colorf::White, scale, scale, false, angle);
+			lastCarrotIdx++;
+			lastCarrotOffset = 7.0f;
+		}
+		if (health >= 3) {
+			float angle = angleBase3 * 10.0f;
+			lastCarrotOffset -= 1.0f;
+			DrawElement(PickupCarrot, 2, x + lastCarrotOffset - 1.0f, y + 1.0f, FontLayer + lastCarrotIdx * 2, Alignment::Left, CarrotShadowColor, scale, scale, false, angle);
+			DrawElement(PickupCarrot, 2, x + lastCarrotOffset + 1.0f, y + 1.0f, FontLayer + lastCarrotIdx * 2, Alignment::Left, CarrotShadowColor, scale, scale, false, angle);
+			DrawElement(PickupCarrot, 2, x + lastCarrotOffset, y, FontLayer + lastCarrotIdx * 2 + 1, Alignment::Left, Colorf::White, scale, scale, false, angle);
+			lastCarrotIdx++;
+			lastCarrotOffset += 6.0f;
+		}
+		if (health >= 2) {
+			float angle = angleBase2 * -6.0f + 0.2f;
+			DrawElement(PickupCarrot, 2, x + lastCarrotOffset - 1.0f, y + 1.0f, FontLayer + lastCarrotIdx * 2, Alignment::Left, CarrotShadowColor, scale, scale, false, angle);
+			DrawElement(PickupCarrot, 2, x + lastCarrotOffset + 1.0f, y + 1.0f, FontLayer + lastCarrotIdx * 2, Alignment::Left, CarrotShadowColor, scale, scale, false, angle);
+			DrawElement(PickupCarrot, 2, x + lastCarrotOffset, y, FontLayer + lastCarrotIdx * 2 + 1, Alignment::Left, Colorf::White, scale, scale, false, angle);
+			lastCarrotIdx++;
+			lastCarrotOffset = 17.0f;
+		}
+		if (health >= 6) {
+			for (std::int32_t i = 0; i < health - 5; i++) {
+				float angle = ((i % 3) == 1 ? angleBase2 : angleBase3) * (4.0f + ((i * 7) % 6));
+				if ((i % 2) == 1) {
+					angle = -angle;
+				}
+
+				DrawElement(PickupCarrot, 2, x + lastCarrotOffset - 1.0f, y + 1.0f, FontLayer + lastCarrotIdx * 2, Alignment::Left, CarrotShadowColor, scale, scale, false, angle);
+				DrawElement(PickupCarrot, 2, x + lastCarrotOffset + 1.0f, y + 1.0f, FontLayer + lastCarrotIdx * 2, Alignment::Left, CarrotShadowColor, scale, scale, false, angle);
+				DrawElement(PickupCarrot, 2, x + lastCarrotOffset, y, FontLayer + lastCarrotIdx * 2 + 1, Alignment::Left, Colorf::White, scale, scale, false, angle);
+				lastCarrotIdx++;
+				lastCarrotOffset += 5.0f;
+			}
+		}
+		if (health >= 5) {
+			float angle = angleBase1 * 10.0f;
+			lastCarrotOffset -= 1.0f;
+			DrawElement(PickupCarrot, 3, x + lastCarrotOffset - 1.0f, y + 1.0f, FontLayer + lastCarrotIdx * 2, Alignment::Left, CarrotShadowColor, scale, scale, false, angle);
+			DrawElement(PickupCarrot, 3, x + lastCarrotOffset + 1.0f, y + 1.0f, FontLayer + lastCarrotIdx * 2, Alignment::Left, CarrotShadowColor, scale, scale, false, angle);
+			DrawElement(PickupCarrot, 3, x + lastCarrotOffset, y, FontLayer + lastCarrotIdx * 2 + 1, Alignment::Left, Colorf::White, scale, scale, false, angle);
+			lastCarrotIdx++;
+			lastCarrotOffset += 5.0f;
+		}
+		if (health >= 4) {
+			float angle = angleBase2 * -6.0f - 0.4f;
+			lastCarrotOffset -= 2.0f;
+			DrawElement(PickupCarrot, 5, x + lastCarrotOffset - 1.0f, y + 2.0f + 1.0f, FontLayer + lastCarrotIdx * 2, Alignment::Left, CarrotShadowColor, scale, scale, false, angle);
+			DrawElement(PickupCarrot, 5, x + lastCarrotOffset + 1.0f, y + 2.0f + 1.0f, FontLayer + lastCarrotIdx * 2, Alignment::Left, CarrotShadowColor, scale, scale, false, angle);
+			DrawElement(PickupCarrot, 5, x + lastCarrotOffset, y + 2.0f, FontLayer + lastCarrotIdx * 2 + 1, Alignment::Left, Colorf::White, scale, scale, false, angle);
+			lastCarrotIdx++;
+		}
+	}
+
 	void HUD::DrawScore(const Rectf& view, Actors::Player* player)
 	{
 #if defined(WITH_ANGELSCRIPT)
@@ -548,7 +612,7 @@ namespace Jazz2::UI
 		std::int32_t charOffset = 0;
 		std::int32_t charOffsetShadow = 0;
 
-		if (_levelHandler->IsReforged()) {
+		if (PreferencesCache::EnableReforgedHUD) {
 			DrawElement(PickupFood, -1, view.X + 3.0f, view.Y + 3.0f + 1.6f, ShadowLayer, Alignment::TopLeft, Colorf(0.0f, 0.0f, 0.0f, 0.4f));
 			DrawElement(PickupFood, -1, view.X + 3.0f, view.Y + 3.0f, MainLayer, Alignment::TopLeft, Colorf::White);
 
@@ -697,10 +761,11 @@ namespace Jazz2::UI
 			alpha = 1.0f;
 		}
 
+		float alpha2 = alpha * alpha;
 		DrawElement(PickupCoin, -1, ViewSize.X * 0.5f, ViewSize.Y * 0.92f + 2.5f + offset, ShadowLayer,
 			Alignment::Right, Colorf(0.0f, 0.0f, 0.0f, 0.2f * alpha), 0.8f, 0.8f);
 		DrawElement(PickupCoin, -1, ViewSize.X * 0.5f, ViewSize.Y * 0.92f + offset, MainLayer,
-			Alignment::Right, Colorf(1.0f, 1.0f, 1.0f, alpha * alpha), 0.8f, 0.8f);
+			Alignment::Right, Colorf(1.0f, 1.0f, 1.0f, alpha2), 0.8f, 0.8f);
 
 		char stringBuffer[32];
 		snprintf(stringBuffer, countof(stringBuffer), "x%i", _coins);
@@ -710,7 +775,7 @@ namespace Jazz2::UI
 			Alignment::Left, Colorf(0.0f, 0.0f, 0.0f, 0.3f * alpha), 1.0f, 0.0f, 0.0f, 0.0f);
 
 		Colorf fontColor = Font::DefaultColor;
-		fontColor.SetAlpha(alpha);
+		fontColor.SetAlpha(alpha2);
 		_smallFont->DrawString(this, stringBuffer, charOffset, ViewSize.X * 0.5f, ViewSize.Y * 0.92f + offset, FontLayer,
 			Alignment::Left, fontColor, 1.0f, 0.0f, 0.0f, 0.0f);
 
@@ -743,11 +808,11 @@ namespace Jazz2::UI
 			alpha = 1.0f;
 		}
 
-		float animAlpha = alpha * alpha;
+		float alpha2 = alpha * alpha;
 		DrawElement(PickupGem, -1, ViewSize.X * 0.5f, ViewSize.Y * 0.92f + 2.5f + offset, ShadowLayer, Alignment::Right,
-			Colorf(0.0f, 0.0f, 0.0f, 0.4f * animAlpha), 0.8f, 0.8f);
+			Colorf(0.0f, 0.0f, 0.0f, 0.4f * alpha2), 0.8f, 0.8f);
 		DrawElement(PickupGem, -1, ViewSize.X * 0.5f, ViewSize.Y * 0.92f + offset, MainLayer, Alignment::Right,
-			Colorf(1.0f, 1.0f, 1.0f, 0.8f * animAlpha), 0.8f, 0.8f);
+			Colorf(1.0f, 1.0f, 1.0f, 0.8f * alpha2), 0.8f, 0.8f);
 
 		char stringBuffer[32];
 		snprintf(stringBuffer, countof(stringBuffer), "x%i", _gems);
@@ -757,7 +822,7 @@ namespace Jazz2::UI
 			Alignment::Left, Colorf(0.0f, 0.0f, 0.0f, 0.3f * alpha), 1.0f, 0.0f, 0.0f, 0.0f);
 
 		Colorf fontColor = Font::DefaultColor;
-		fontColor.SetAlpha(alpha);
+		fontColor.SetAlpha(alpha2);
 		_smallFont->DrawString(this, stringBuffer, charOffset, ViewSize.X * 0.5f, ViewSize.Y * 0.92f + offset, FontLayer,
 			Alignment::Left, fontColor, 1.0f, 0.0f, 0.0f, 0.0f);
 
@@ -779,7 +844,7 @@ namespace Jazz2::UI
 
 		GenericGraphicResource* base = res->Base;
 		Vector2f size = Vector2f(base->FrameDimensions.X * scaleX, base->FrameDimensions.Y * scaleY);
-		Vector2f adjustedPos = ApplyAlignment(align, Vector2f(x - ViewSize.X * 0.5f, ViewSize.Y * 0.5f - y), size);
+		Vector2f adjustedPos = ApplyAlignment(align, Vector2f(x, y), size);
 
 		Vector2i texSize = base->TextureDiffuse->size();
 		int32_t col = frame % base->FrameConfiguration.X;
@@ -790,9 +855,6 @@ namespace Jazz2::UI
 			float(base->FrameDimensions.Y) / float(texSize.Y),
 			float(base->FrameDimensions.Y * row) / float(texSize.Y)
 		);
-
-		texCoords.W += texCoords.Z;
-		texCoords.Z *= -1;
 
 		DrawTexture(*base->TextureDiffuse.get(), adjustedPos, z, size, texCoords, color, additiveBlending, angle);
 	}
@@ -810,8 +872,8 @@ namespace Jazz2::UI
 
 		GenericGraphicResource* base = res->Base;
 		Vector2f size = Vector2f(base->FrameDimensions.X * clipX, base->FrameDimensions.Y * clipY);
-		Vector2f adjustedPos = ApplyAlignment(align, Vector2f(x - ViewSize.X * 0.5f - (1.0f - clipX) * 0.5f * base->FrameDimensions.X,
-			ViewSize.Y * 0.5f - y - (1.0f - clipY) * 0.5f * base->FrameDimensions.Y), size);
+		Vector2f adjustedPos = ApplyAlignment(align, Vector2f(x - (1.0f - clipX) * 0.5f * base->FrameDimensions.X,
+			y - (1.0f - clipY) * 0.5f * base->FrameDimensions.Y), size);
 
 		Vector2i texSize = base->TextureDiffuse->size();
 		int32_t col = frame % base->FrameConfiguration.X;
@@ -825,9 +887,6 @@ namespace Jazz2::UI
 
 		texCoords.X *= clipX;
 		texCoords.Z *= clipY;
-
-		texCoords.W += texCoords.Z;
-		texCoords.Z *= -1;
 
 		DrawTexture(*base->TextureDiffuse.get(), adjustedPos, z, size, texCoords, color);
 	}
@@ -958,7 +1017,7 @@ namespace Jazz2::UI
 
 		float alphaInner = std::min(Vector2f(h, v).Length() * easing * 1.5f - 0.6f, 1.0f);
 		if (alphaInner > 0.0f) {
-			DrawElement(WeaponWheelInner, -1, center.X, center.Y, MainLayer + 5, Alignment::Center, Colorf(1.0f, 1.0f, 1.0f, alphaInner), easing, easing, true, -requestedAngle);
+			DrawElement(WeaponWheelInner, -1, center.X, center.Y, MainLayer + 5, Alignment::Center, Colorf(1.0f, 1.0f, 1.0f, alphaInner), easing, easing, true, requestedAngle);
 		}
 
 		float angle = -fPiOver2;
@@ -1000,9 +1059,8 @@ namespace Jazz2::UI
 						Alignment::Center, isSelected ? Colorf(0.62f, 0.44f, 0.34f, 0.5f * alpha) : Colorf(0.45f, 0.45f, 0.45f, 0.48f * alpha), 0.9f, 0.0f, 0.0f, 0.0f, 0.0f, 0.9f);
 				}
 
-				float angle2 = fTwoPi - angle;
-				float angleFrom = angle2 - angleStep * 0.4f;
-				float angleTo = angle2 + angleStep * 0.4f;
+				float angleFrom = angle - angleStep * 0.4f;
+				float angleTo = angle + angleStep * 0.4f;
 
 				Colorf color1 = Colorf(0.0f, 0.0f, 0.0f, alpha * 0.3f);
 				DrawWeaponWheelSegment(center.X - distance2 - 1, center.Y - distance2 - 1, distance3, distance3, ShadowLayer, angleFrom, angleTo, lineTexture, color1);
@@ -1078,10 +1136,6 @@ namespace Jazz2::UI
 	{
 		width *= 0.5f; x += width;
 		height *= 0.5f; y += height;
-
-		x -= ViewSize.X * 0.5f;
-		y -= ViewSize.Y * 0.5f;
-		y = -y;
 
 		float angleRange = std::min(maxAngle - minAngle, fRadAngle360);
 		int32_t segmentNum = std::clamp((int32_t)std::round(powf(std::max(width, height), 0.65f) * 3.5f * angleRange / fRadAngle360), 4, 128);
@@ -1260,25 +1314,6 @@ namespace Jazz2::UI
 				colors[(int32_t)AuraLight::Tab + i] = Color(percentR * intensity / (255 * 12), percentG * intensity / (255 * 12), 0);
 			}
 		}
-
-		auto mapings = ControlScheme::GetMappings();
-		AuraLight l = KeyToAuraLight(mapings[(int32_t)PlayerActions::Up].Key1);
-		if (l != AuraLight::Unknown) colors[(int32_t)l] = Color(100, 100, 100);
-		l = KeyToAuraLight(mapings[(int32_t)PlayerActions::Down].Key1);
-		if (l != AuraLight::Unknown) colors[(int32_t)l] = Color(100, 100, 100);
-		l = KeyToAuraLight(mapings[(int32_t)PlayerActions::Left].Key1);
-		if (l != AuraLight::Unknown) colors[(int32_t)l] = Color(100, 100, 100);
-		l = KeyToAuraLight(mapings[(int32_t)PlayerActions::Right].Key1);
-		if (l != AuraLight::Unknown) colors[(int32_t)l] = Color(100, 100, 100);
-
-		l = KeyToAuraLight(mapings[(int32_t)PlayerActions::Fire].Key1);
-		if (l != AuraLight::Unknown) colors[(int32_t)l] = Color(160, 10, 10);
-		l = KeyToAuraLight(mapings[(int32_t)PlayerActions::Jump].Key1);
-		if (l != AuraLight::Unknown) colors[(int32_t)l] = Color(10, 80, 160);
-		l = KeyToAuraLight(mapings[(int32_t)PlayerActions::Run].Key1);
-		if (l != AuraLight::Unknown) colors[(int32_t)l] = Color(10, 170, 10);
-		l = KeyToAuraLight(mapings[(int32_t)PlayerActions::ChangeWeapon].Key1);
-		if (l != AuraLight::Unknown) colors[(int32_t)l] = Color(150, 140, 10);
 
 		rgbLights.Update(colors);
 #endif

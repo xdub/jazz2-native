@@ -23,6 +23,7 @@
 #pragma once 
 
 #include "../CommonBase.h"
+#include "../Asserts.h"
 #include "ArrayView.h"
 #include "Tags.h"
 
@@ -31,10 +32,11 @@
 #include <type_traits>
 #include <utility>
 
-namespace Death::Containers
-{
+namespace Death { namespace Containers {
+//###==##====#=====--==~--~=~- --- -- -  -  -   -
+
+	// Forward declarations for the Death::Containers namespace
 	template<class T, class = void(*)(T*, std::size_t)> class Array;
-	template<std::size_t, class> class StaticArray;
 
 	namespace Implementation
 	{
@@ -611,16 +613,17 @@ namespace Death::Containers
 	}
 
 	template<class T, class D> template<class U, class> const T& Array<T, D>::operator[](const U i) const {
+		DEATH_DEBUG_ASSERT(std::size_t(i) < _size, _data[0], "Containers::Array::operator[](): Index %zu out of range for %zu elements", std::size_t(i), _size);
 		return _data[i];
 	}
 
 	template<class T, class D> const T& Array<T, D>::front() const {
-		DEATH_ASSERT(_size != 0, _data[0], "Containers::Array::front(): Array is empty");
+		DEATH_DEBUG_ASSERT(_size != 0, _data[0], "Containers::Array::front(): Array is empty");
 		return _data[0];
 	}
 
 	template<class T, class D> const T& Array<T, D>::back() const {
-		DEATH_ASSERT(_size != 0, _data[_size - 1], "Containers::Array::back(): Array is empty");
+		DEATH_DEBUG_ASSERT(_size != 0, _data[_size - 1], "Containers::Array::back(): Array is empty");
 		return _data[_size - 1];
 	}
 
@@ -671,4 +674,4 @@ namespace Death::Containers
 		template<class T, class D> struct ErasedArrayViewConverter<Array<T, D>> : ArrayViewConverter<T, Array<T, D>> {};
 		template<class T, class D> struct ErasedArrayViewConverter<const Array<T, D>> : ArrayViewConverter<const T, Array<T, D>> {};
 	}
-}
+}}

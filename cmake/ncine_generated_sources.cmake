@@ -40,7 +40,9 @@ if(NCINE_EMBED_SHADERS)
 
 	list(APPEND GENERATED_SOURCES ${SHADERS_H_FILE})
 	list(APPEND GENERATED_SOURCES ${SHADERS_CPP_FILE})
-	target_compile_definitions(${NCINE_APP} PRIVATE "WITH_EMBEDDED_SHADERS")
+	if(TARGET ${NCINE_APP}) # Disabled if NCINE_BUILD_ANDROID
+		target_compile_definitions(${NCINE_APP} PRIVATE "WITH_EMBEDDED_SHADERS")
+	endif()
 	list(APPEND ANDROID_GENERATED_FLAGS WITH_EMBEDDED_SHADERS)
 
 	# Don't need to add shader files to the library target if they are embedded
@@ -52,7 +54,7 @@ if(WIN32)
 		message(STATUS "Writing a resource file for executable icons")
 
 		set(RESOURCE_RC_FILE "${GENERATED_SOURCE_DIR}/resource.rc")
-		if(NOT DEATH_LOG OR WINDOWS_PHONE OR WINDOWS_STORE OR NOT EXISTS "${NCINE_SOURCE_DIR}/Icons/Log.ico")
+		if(NOT DEATH_TRACE OR WINDOWS_PHONE OR WINDOWS_STORE OR NOT EXISTS "${NCINE_SOURCE_DIR}/Icons/Log.ico")
 			file(WRITE ${RESOURCE_RC_FILE} "GLFW_ICON ICON \"Main.ico\"")
 			file(COPY "${NCINE_SOURCE_DIR}/Icons/Main.ico" DESTINATION ${GENERATED_INCLUDE_DIR})
 		else()
@@ -66,7 +68,11 @@ if(WIN32)
 	message(STATUS "Writing a version info resource file")
 	set(PACKAGE_VERSION_PATCH ${NCINE_VERSION_PATCH})
 	if(NCINE_VERSION_FROM_GIT AND GIT_NO_TAG)
-		set(PACKAGE_VERSION_PATCH "0")
+		if(DEFINED NCINE_VERSION_PATCH_LAST)
+			set(PACKAGE_VERSION_PATCH ${NCINE_VERSION_PATCH_LAST})
+		else()
+			set(PACKAGE_VERSION_PATCH "0")
+		endif()
 	endif()
 	set(PACKAGE_VERSION_REV "0")
 	if(DEFINED GIT_REV_COUNT)
@@ -74,7 +80,9 @@ if(WIN32)
 	endif()
 
 	set(PACKAGE_EXECUTABLE_NAME "Jazz2")
-	get_target_property(DEATH_DEBUG_POSTFIX ${NCINE_APP} DEBUG_POSTFIX)
+	if(TARGET ${NCINE_APP}) # Disabled if NCINE_BUILD_ANDROID
+		get_target_property(DEATH_DEBUG_POSTFIX ${NCINE_APP} DEBUG_POSTFIX)
+	endif()
 	if(NOT DEATH_DEBUG_POSTFIX)
 		set(DEATH_DEBUG_POSTFIX "d")
 	endif()
@@ -89,13 +97,3 @@ if(WIN32)
 
 	list(APPEND GENERATED_SOURCES "${NCINE_SOURCE_DIR}/App.manifest")
 endif()
-
-# Generate Nuklear implementation file
-#if(NCINE_WITH_NUKLEAR)
-#	set(NUKLEAR_CPP_FILE "${GENERATED_SOURCE_DIR}/nuklear.cpp")
-#	file(WRITE ${NUKLEAR_CPP_FILE} "#define NK_IMPLEMENTATION\n")
-#	file(APPEND ${NUKLEAR_CPP_FILE} "#include \"NuklearContext.h\"\n")
-#	file(APPEND ${NUKLEAR_CPP_FILE} "#include \"nuklear.h\"\n")
-
-#	list(APPEND GENERATED_SOURCES ${NUKLEAR_CPP_FILE})
-#endif()

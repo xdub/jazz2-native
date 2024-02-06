@@ -12,6 +12,10 @@ target_compile_definitions(${NCINE_APP} PUBLIC "NCINE_BUILD_YEAR=\"${NCINE_BUILD
 if(NCINE_OVERRIDE_CONTENT_PATH)
 	message(STATUS "Using overriden `Content` path: ${NCINE_OVERRIDE_CONTENT_PATH}")
 	target_compile_definitions(${NCINE_APP} PUBLIC "NCINE_OVERRIDE_CONTENT_PATH=\"${NCINE_OVERRIDE_CONTENT_PATH}\"")
+elseif(NCINE_BUILD_FLATPAK)
+	set(FLATPAK_CONTENT_PATH "/app/share/${NCINE_APP_NAME}/Content/") # Must be the same as in `ncine_installation.cmake`
+	message(STATUS "Using custom `Content` path for Flatpak: ${FLATPAK_CONTENT_PATH}")
+	target_compile_definitions(${NCINE_APP} PUBLIC "NCINE_OVERRIDE_CONTENT_PATH=\"${FLATPAK_CONTENT_PATH}\"")
 elseif(NCINE_LINUX_PACKAGE)
 	message(STATUS "Using custom Linux package name: ${NCINE_LINUX_PACKAGE}")
 	target_compile_definitions(${NCINE_APP} PUBLIC "NCINE_LINUX_PACKAGE=\"${NCINE_LINUX_PACKAGE}\"")
@@ -46,6 +50,10 @@ endif()
 if(DEATH_TRACE)
 	target_compile_definitions(${NCINE_APP} PUBLIC "DEATH_TRACE")
 	message(STATUS "Runtime event tracing is enabled")
+endif()
+if(NOT DEATH_RUNTIME_CAST)
+	target_compile_definitions(${NCINE_APP} PUBLIC "DEATH_NO_RUNTIME_CAST")
+	message(STATUS "runtime_cast<T>() optimization is disabled")
 endif()
 if(NCINE_PROFILING)
 	target_compile_definitions(${NCINE_APP} PUBLIC "NCINE_PROFILING")
@@ -267,9 +275,14 @@ else() # GCC and LLVM
 	if(NCINE_DYNAMIC_LIBRARY)
 		target_compile_options(${NCINE_APP} PRIVATE -fvisibility=hidden -fvisibility-inlines-hidden)
 	endif()
-	
+
 	if(MINGW OR MSYS)
 		target_link_options(${NCINE_APP} PUBLIC -municode)
+	endif()
+
+	if(NCINE_ARCH_EXTENSIONS AND UNIX AND NOT APPLE AND NOT ANDROID)
+		message(STATUS "Specified architecture extensions for code generation: ${NCINE_ARCH_EXTENSIONS}")
+		target_compile_options(${NCINE_APP} PRIVATE -march=${NCINE_ARCH_EXTENSIONS})
 	endif()
 	
 	# Only in Debug - preserve debug information
@@ -320,7 +333,7 @@ else() # GCC and LLVM
 
 	if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
 		target_compile_options(${NCINE_APP} PRIVATE -fdiagnostics-color=auto)
-		target_compile_options(${NCINE_APP} PRIVATE -Wall -Wno-old-style-cast -Wno-long-long -Wno-unused-parameter -Wno-ignored-qualifiers -Wno-variadic-macros -Wcast-align -Wno-multichar -Wno-switch -Wno-unknown-pragmas -Wno-reorder -Wpessimizing-move -Wredundant-move)
+		target_compile_options(${NCINE_APP} PRIVATE -Wall -Wno-old-style-cast -Wno-long-long -Wno-unused-parameter -Wno-ignored-qualifiers -Wno-variadic-macros -Wcast-align -Wno-multichar -Wno-switch -Wno-unknown-pragmas -Wno-reorder)
 
 		target_link_options(${NCINE_APP} PRIVATE -Wno-free-nonheap-object)
 		if(NCINE_DYNAMIC_LIBRARY)

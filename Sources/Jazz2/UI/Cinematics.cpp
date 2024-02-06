@@ -7,6 +7,7 @@
 #include "../../nCine/Graphics/RenderQueue.h"
 #include "../../nCine/Graphics/Viewport.h"
 #include "../../nCine/Input/IInputManager.h"
+#include "../../nCine/Audio/AudioBufferPlayer.h"
 #include "../../nCine/Audio/AudioReaderMpt.h"
 #include "../../nCine/Base/FrameTimer.h"
 
@@ -14,15 +15,15 @@
 
 namespace Jazz2::UI
 {
-	Cinematics::Cinematics(IRootController* root, const String& path, const std::function<bool(IRootController*, bool)>& callback)
-		: _root(root), _callback(callback), _frameDelay(0.0f), _frameProgress(0.0f), _framesLeft(0),
+	Cinematics::Cinematics(IRootController* root, const StringView path, const std::function<bool(IRootController*, bool)>& callback)
+		: _root(root), _callback(callback), _frameDelay(0.0f), _frameProgress(0.0f), _framesLeft(0), _frameIndex(0),
 			_pressedKeys((uint32_t)KeySym::COUNT), _pressedActions(0)
 	{
 		Initialize(path);
 	}
 
-	Cinematics::Cinematics(IRootController* root, const String& path, std::function<bool(IRootController*, bool)>&& callback)
-		: _root(root), _callback(std::move(callback)), _frameDelay(0.0f), _frameProgress(0.0f), _framesLeft(0),
+	Cinematics::Cinematics(IRootController* root, const StringView path, std::function<bool(IRootController*, bool)>&& callback)
+		: _root(root), _callback(std::move(callback)), _frameDelay(0.0f), _frameProgress(0.0f), _framesLeft(0), _frameIndex(0),
 			_pressedKeys((uint32_t)KeySym::COUNT), _pressedActions(0)
 	{
 		Initialize(path);
@@ -107,7 +108,7 @@ namespace Jazz2::UI
 		}
 	}
 
-	void Cinematics::Initialize(const String& path)
+	void Cinematics::Initialize(const StringView path)
 	{
 		theApplication().gfxDevice().setWindowTitle("Jazz² Resurrection"_s);
 
@@ -133,7 +134,7 @@ namespace Jazz2::UI
 		_pressedActions = (1 << (int32_t)PlayerActions::Fire) | (1 << ((int32_t)PlayerActions::Fire + 16));
 	}
 
-	bool Cinematics::LoadCinematicsFromFile(const String& path)
+	bool Cinematics::LoadCinematicsFromFile(const StringView path)
 	{
 		// Try "Content" directory first, then "Source" directory
 		auto& resolver = ContentResolver::Get();
@@ -184,6 +185,59 @@ namespace Jazz2::UI
 			// Skip first two bytes (0x78 0xDA)
 			_compressedStreams[i].Seek(2, SeekOrigin::Begin);
 			_decompressedStreams[i].Open(_compressedStreams[i]);
+		}
+
+		LoadSfxList(path);
+
+		return true;
+	}
+
+	bool Cinematics::LoadSfxList(const StringView path)
+	{
+		auto& resolver = ContentResolver::Get();
+		String fullPath = fs::CombinePath({ resolver.GetContentPath(), "Cinematics"_s, path + ".j2sfx"_s });
+		if (!fs::IsReadableFile(fullPath)) {
+			fullPath = fs::CombinePath({ resolver.GetCachePath(), "Cinematics"_s, path + ".j2sfx"_s });
+		}
+
+		auto s = fs::Open(fullPath, FileAccessMode::Read);
+		RETURNF_ASSERT_MSG(s->GetSize() > 16, "Cannot load SFX list for \"%s.j2v\"", path);
+
+		std::uint64_t signature = s->ReadValue<std::uint64_t>();
+		std::uint8_t fileType = s->ReadValue<std::uint8_t>();
+		std::uint16_t version = s->ReadValue<std::uint16_t>();
+		if (signature != 0x2095A59FF0BFBBEF || fileType != ContentResolver::SfxListFile || version > SfxListVersion) {
+			return false;
+		}
+
+		DeflateStream uc(*s);
+
+		std::uint32_t sampleCount = uc.ReadValue<std::uint16_t>();
+		for (std::uint32_t i = 0; i < sampleCount; i++) {
+			std::uint8_t stringSize = uc.ReadValue<std::uint8_t>();
+			String samplePath = String(NoInit, stringSize);
+			uc.Read(samplePath.data(), stringSize);
+
+			String samplePathNormalized = fs::ToNativeSeparators(samplePath);
+			String fullPath = fs::CombinePath({ resolver.GetContentPath(), "Animations"_s, samplePathNormalized });
+			if (!fs::IsReadableFile(fullPath)) {
+				fullPath = fs::CombinePath({ resolver.GetCachePath(), "Animations"_s, samplePathNormalized });
+				if (!fs::IsReadableFile(fullPath)) {
+					_sfxSamples.emplace_back(); // Sample not found
+					continue;
+				}
+			}
+
+			_sfxSamples.emplace_back(fullPath);
+		}
+
+		std::uint32_t itemCount = uc.ReadValue<std::uint16_t>();
+		for (std::uint32_t i = 0; i < itemCount; i++) {
+			auto& item = _sfxPlaylist.emplace_back();
+			item.Frame = uc.ReadVariableUint32();
+			item.Sample = uc.ReadValue<std::uint16_t>();
+			item.Gain = uc.ReadValue<std::uint8_t>() / 255.0f;
+			item.Panning = uc.ReadValue<std::int8_t>() / 127.0f;
 		}
 
 		return true;
@@ -243,6 +297,24 @@ namespace Jazz2::UI
 
 		// Create copy of the buffer
 		std::memcpy(_lastBuffer.get(), _buffer.get(), _width * _height);
+
+		for (std::size_t i = 0; i < _sfxPlaylist.size(); i++) {
+			if (_sfxPlaylist[i].Frame == _frameIndex) {
+				auto& item = _sfxPlaylist[i];
+				auto& sample = _sfxSamples[item.Sample];
+				if (sample.Buffer == nullptr) {
+					continue;
+				}
+
+				item.CurrentPlayer = std::make_unique<nCine::AudioBufferPlayer>(sample.Buffer.get());
+				item.CurrentPlayer->setPosition(Vector3f(item.Panning, 0.0f, 0.0f));
+				item.CurrentPlayer->setAs2D(true);
+				item.CurrentPlayer->setGain(_sfxPlaylist[i].Gain * PreferencesCache::MasterVolume * PreferencesCache::SfxVolume);
+				item.CurrentPlayer->play();
+			}
+		}
+
+		_frameIndex++;
 	}
 
 	void Cinematics::Read(int streamIndex, void* buffer, std::uint32_t bytes)
@@ -253,31 +325,21 @@ namespace Jazz2::UI
 	void Cinematics::UpdatePressedActions()
 	{
 		auto& input = theApplication().inputManager();
-		_pressedActions = ((_pressedActions & 0xffff) << 16);
+		_pressedActions = ((_pressedActions & 0xFFFF) << 16);
 
-		if (_pressedKeys[(std::uint32_t)KeySym::RETURN] || _pressedKeys[(std::uint32_t)ControlScheme::Key1(0, PlayerActions::Fire)] || _pressedKeys[(std::uint32_t)ControlScheme::Key2(0, PlayerActions::Fire)] ||
-			_pressedKeys[(std::uint32_t)ControlScheme::Key1(0, PlayerActions::Jump)] || _pressedKeys[(std::uint32_t)ControlScheme::Key2(0, PlayerActions::Jump)] ||
-			_pressedKeys[(std::uint32_t)ControlScheme::Key1(0, PlayerActions::Menu)] || _pressedKeys[(std::uint32_t)ControlScheme::Key2(0, PlayerActions::Menu)] || _pressedKeys[(std::uint32_t)KeySym::BACK]) {
-			_pressedActions |= (1 << (std::int32_t)PlayerActions::Fire);
-		}
-
-		// Try to get 8 connected joysticks
-		const JoyMappedState* joyStates[ControlScheme::MaxConnectedGamepads];
-		std::int32_t jc = 0;
-		for (std::int32_t i = 0; i < IInputManager::MaxNumJoysticks && jc < countof(joyStates); i++) {
+		const JoyMappedState* joyStates[UI::ControlScheme::MaxConnectedGamepads];
+		std::int32_t joyStatesCount = 0;
+		for (std::int32_t i = 0; i < IInputManager::MaxNumJoysticks && joyStatesCount < countof(joyStates); i++) {
 			if (input.isJoyMapped(i)) {
-				joyStates[jc++] = &input.joyMappedState(i);
+				joyStates[joyStatesCount++] = &input.joyMappedState(i);
 			}
 		}
 
-		/*ButtonName jb;*/ std::int32_t ji1, ji2;
-		/*jb =*/ ControlScheme::Gamepad(0, PlayerActions::Jump, ji1);
-		/*jb =*/ ControlScheme::Gamepad(0, PlayerActions::Fire, ji2);
-		if (ji1 == ji2) ji2 = -1;
+		_pressedActions |= ControlScheme::FetchNativation(0, _pressedKeys, ArrayView(joyStates, joyStatesCount));
 
-		if ((ji1 >= 0 && ji1 < jc && (joyStates[ji1]->isButtonPressed(ButtonName::A) || joyStates[ji1]->isButtonPressed(ButtonName::B) || joyStates[ji1]->isButtonPressed(ButtonName::X) || joyStates[ji1]->isButtonPressed(ButtonName::START))) ||
-			(ji2 >= 0 && ji2 < jc && (joyStates[ji2]->isButtonPressed(ButtonName::A) || joyStates[ji2]->isButtonPressed(ButtonName::B) || joyStates[ji2]->isButtonPressed(ButtonName::X) || joyStates[ji2]->isButtonPressed(ButtonName::START)))) {
-			_pressedActions |= (1 << (std::int32_t)PlayerActions::Fire);
+		// Also allow Menu action as skip key
+		if (_pressedActions & (1 << (std::uint32_t)PlayerActions::Menu)) {
+			_pressedActions |= (1 << (std::uint32_t)PlayerActions::Fire);
 		}
 	}
 
@@ -317,16 +379,29 @@ namespace Jazz2::UI
 			frameSize = Vector2f(viewSize.X, viewSize.X * ratio);
 		}
 
+		Vector2f frameOffset = (viewSize.As<float>() - frameSize) * 0.5f;
+		frameOffset.X = std::round(frameOffset.X);
+		frameOffset.Y = std::round(frameOffset.Y);
+
 		auto* instanceBlock = _renderCommand.material().uniformBlock(Material::InstanceBlockName);
-		instanceBlock->uniform(Material::TexRectUniformName)->setFloatValue(1.0f, 0.0f, -1.0f, 1.0f);
+		instanceBlock->uniform(Material::TexRectUniformName)->setFloatValue(1.0f, 0.0f, 1.0f, 0.0f);
 		instanceBlock->uniform(Material::SpriteSizeUniformName)->setFloatVector(frameSize.Data());
 		instanceBlock->uniform(Material::ColorUniformName)->setFloatVector(Colorf::White.Data());
 
-		_renderCommand.setTransformation(Matrix4x4f::Translation(0.0f, 0.0f, 0.0f));
+		_renderCommand.setTransformation(Matrix4x4f::Translation(frameOffset.X, frameOffset.Y, 0.0f));
 		_renderCommand.material().setTexture(*_owner->_texture);
 
 		renderQueue.addCommand(&_renderCommand);
 
 		return true;
+	}
+
+	Cinematics::SfxItem::SfxItem()
+	{
+	}
+
+	Cinematics::SfxItem::SfxItem(const StringView path)
+	{
+		Buffer = std::make_unique<AudioBuffer>(path);
 	}
 }

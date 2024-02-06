@@ -9,7 +9,7 @@ using namespace Jazz2::UI::Menu::Resources;
 
 namespace Jazz2::UI::Menu
 {
-	StartGameOptionsSection::StartGameOptionsSection(const StringView& episodeName, const StringView& levelName, const StringView& previousEpisodeName)
+	StartGameOptionsSection::StartGameOptionsSection(const StringView episodeName, const StringView levelName, const StringView previousEpisodeName)
 		: _episodeName(episodeName), _levelName(levelName), _previousEpisodeName(previousEpisodeName), _selectedIndex(2),
 			_availableCharacters(3), _selectedPlayerType(0), _selectedDifficulty(1), _lastPlayerType(0), _lastDifficulty(0),
 			_imageTransition(1.0f), _animation(0.0f), _transitionTime(0.0f), _shouldStart(false)
@@ -28,8 +28,8 @@ namespace Jazz2::UI::Menu
 
 		_animation = 0.0f;
 
-		if (auto mainMenu = dynamic_cast<MainMenu*>(_root)) {
-			auto* res = mainMenu->_metadata->FindAnimation((AnimState)13); // MenuDifficultyLori
+		if (auto* mainMenu = dynamic_cast<MainMenu*>(_root)) {
+			auto* res = mainMenu->_metadata->FindAnimation(LoriExistsCheck);
 			_availableCharacters = (res != nullptr ? 3 : 2);
 		}
 	}
@@ -183,7 +183,7 @@ namespace Jazz2::UI::Menu
 		                _root->DrawElement(MenuGlow, 0, x, center.Y + 28.0f, IMenuContainer::MainLayer, Alignment::Center, Colorf(1.0f, 1.0f, 1.0f, 0.2f), (Utf8::GetLength(playerTypes[j]) + 3) * 0.4f, 2.2f, true);
 
 		                _root->DrawStringShadow(playerTypes[j], charOffset, x, center.Y + 28.0f, IMenuContainer::FontLayer,
-							Alignment::Center, playerColors[j], 1.0f, 0.4f, 0.55f, 0.55f, 0.8f, 0.9f);
+							Alignment::Center, playerColors[j], 1.0f, 0.4f, 0.9f, 0.9f, 0.8f, 0.9f);
 		            } else {
 		                _root->DrawStringShadow(playerTypes[j], charOffset, x, center.Y + 28.0f, IMenuContainer::FontLayer,
 							Alignment::Center, Font::DefaultColor, 0.8f, 0.0f, 4.0f, 4.0f, 0.4f, 0.9f);
@@ -204,7 +204,7 @@ namespace Jazz2::UI::Menu
 		                _root->DrawElement(MenuGlow, 0, center.X + (j - 1) * 100.0f, center.Y + 28.0f, IMenuContainer::MainLayer, Alignment::Center, Colorf(1.0f, 1.0f, 1.0f, 0.2f), (Utf8::GetLength(difficultyTypes[j]) + 3) * 0.4f, 2.2f, true);
 
 		                _root->DrawStringShadow(difficultyTypes[j], charOffset, center.X + (j - 1) * 100.0f, center.Y + 28.0f, IMenuContainer::FontLayer,
-							Alignment::Center, Colorf(0.45f, 0.45f, 0.45f, 0.5f), 1.0f, 0.4f, 0.55f, 0.55f, 0.8f, 0.9f);
+							Alignment::Center, Colorf(0.45f, 0.45f, 0.45f, 0.5f), 1.0f, 0.4f, 0.9f, 0.9f, 0.8f, 0.9f);
 		            } else {
 		                _root->DrawStringShadow(difficultyTypes[j], charOffset, center.X + (j - 1) * 100.0f, center.Y + 28.0f, IMenuContainer::FontLayer,
 							Alignment::Center, Font::DefaultColor, 0.8f, 0.0f, 4.0f, 4.0f, 0.9f);
@@ -318,7 +318,7 @@ namespace Jazz2::UI::Menu
 
 		PlayerType players[] = { (PlayerType)((int32_t)PlayerType::Jazz + _selectedPlayerType) };
 		LevelInitialization levelInit(_episodeName, (playTutorial ? "trainer"_s : StringView(_levelName)), (GameDifficulty)((int32_t)GameDifficulty::Easy + _selectedDifficulty),
-			PreferencesCache::EnableReforged, false, players, countof(players));
+			PreferencesCache::EnableReforgedGameplay, false, players, countof(players));
 
 		if (!_previousEpisodeName.empty()) {
 			auto previousEpisodeEnd = PreferencesCache::GetEpisodeEnd(_previousEpisodeName);
@@ -334,15 +334,15 @@ namespace Jazz2::UI::Menu
 					firstPlayer.Lives = previousEpisodeEnd->Lives;
 				}
 				firstPlayer.Score = previousEpisodeEnd->Score;
-				memcpy(firstPlayer.Ammo, previousEpisodeEnd->Ammo, sizeof(levelInit.PlayerCarryOvers[0].Ammo));
-				memcpy(firstPlayer.WeaponUpgrades, previousEpisodeEnd->WeaponUpgrades, sizeof(levelInit.PlayerCarryOvers[0].WeaponUpgrades));
+				std::memcpy(firstPlayer.Ammo, previousEpisodeEnd->Ammo, sizeof(levelInit.PlayerCarryOvers[0].Ammo));
+				std::memcpy(firstPlayer.WeaponUpgrades, previousEpisodeEnd->WeaponUpgrades, sizeof(levelInit.PlayerCarryOvers[0].WeaponUpgrades));
 			} else {
 				// Set CheatsUsed to true if the previous episode is not completed
 				levelInit.CheatsUsed = true;
 			}
 		}
 
-		if (PreferencesCache::EnableReforged && _levelName == "01_xmas1"_s) {
+		if (PreferencesCache::EnableReforgedGameplay && _levelName == "01_xmas1"_s) {
 			levelInit.LastExitType = ExitType::Warp | ExitType::Frozen;
 		}
 

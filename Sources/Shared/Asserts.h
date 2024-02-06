@@ -39,14 +39,14 @@ void DEATH_TRACE(TraceLevel level, const char* fmt, ...);
 #	endif
 
 #	if defined(DEATH_DEBUG)
-#		define LOGD(fmt, ...) DEATH_TRACE(TraceLevel::Debug, "%s -> " fmt, __DEATH_LOG_FUNCTION, ##__VA_ARGS__)
+#		define LOGD(fmt, ...) DEATH_TRACE(TraceLevel::Debug, "%s #> " fmt, __DEATH_LOG_FUNCTION, ##__VA_ARGS__)
 #	else
 #		define LOGD(fmt, ...) do {} while (false)
 #	endif
-#	define LOGI(fmt, ...) DEATH_TRACE(TraceLevel::Info, "%s -> " fmt, __DEATH_LOG_FUNCTION, ##__VA_ARGS__)
-#	define LOGW(fmt, ...) DEATH_TRACE(TraceLevel::Warning, "%s -> " fmt, __DEATH_LOG_FUNCTION, ##__VA_ARGS__)
-#	define LOGE(fmt, ...) DEATH_TRACE(TraceLevel::Error, "%s -> " fmt, __DEATH_LOG_FUNCTION, ##__VA_ARGS__)
-#	define LOGF(fmt, ...) DEATH_TRACE(TraceLevel::Fatal, "%s -> " fmt, __DEATH_LOG_FUNCTION, ##__VA_ARGS__)
+#	define LOGI(fmt, ...) DEATH_TRACE(TraceLevel::Info, "%s #> " fmt, __DEATH_LOG_FUNCTION, ##__VA_ARGS__)
+#	define LOGW(fmt, ...) DEATH_TRACE(TraceLevel::Warning, "%s #> " fmt, __DEATH_LOG_FUNCTION, ##__VA_ARGS__)
+#	define LOGE(fmt, ...) DEATH_TRACE(TraceLevel::Error, "%s #> " fmt, __DEATH_LOG_FUNCTION, ##__VA_ARGS__)
+#	define LOGF(fmt, ...) DEATH_TRACE(TraceLevel::Fatal, "%s #> " fmt, __DEATH_LOG_FUNCTION, ##__VA_ARGS__)
 #else
 #	define LOGD(fmt, ...) do {} while (false)
 #	define LOGI(fmt, ...) do {} while (false)
@@ -74,6 +74,15 @@ void DEATH_TRACE(TraceLevel level, const char* fmt, ...);
 #	endif
 #endif
 
+/** @brief Debug-only assertion macro */
+#if !defined(DEATH_DEBUG_ASSERT)
+#	if defined(DEATH_DEBUG)
+#		define DEATH_DEBUG_ASSERT(condition, returnValue, message, ...) DEATH_ASSERT(condition, returnValue, message, __VA_ARGS__)
+#	else
+#		define DEATH_DEBUG_ASSERT(condition, returnValue, message, ...) do {} while (false)
+#	endif
+#endif
+
 /** @brief Constexpr assertion macro */
 #if !defined(DEATH_CONSTEXPR_ASSERT)
 #	if defined(DEATH_NO_ASSERT) || (!defined(DEATH_DEBUG) && !defined(DEATH_TRACE))
@@ -89,6 +98,15 @@ void DEATH_TRACE(TraceLevel level, const char* fmt, ...);
 			static_cast<void>((condition) ? 0 : ([&]() {			\
 				assert(!#condition);								\
 			}(), 0))
+#	endif
+#endif
+
+/** @brief Debug-only constexpr assertion macro */
+#if !defined(DEATH_DEBUG_CONSTEXPR_ASSERT)
+#	if defined(DEATH_DEBUG)
+#		define DEATH_DEBUG_CONSTEXPR_ASSERT(condition, message, ...) DEATH_CONSTEXPR_ASSERT(condition, message, __VA_ARGS__)
+#	else
+#		define DEATH_DEBUG_CONSTEXPR_ASSERT(condition, message, ...) static_cast<void>(0)
 #	endif
 #endif
 

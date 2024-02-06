@@ -7,6 +7,8 @@ namespace Jazz2::Actors::Solid
 {
 	class PowerUpMorphMonitor : public SolidObjectBase
 	{
+		DEATH_RUNTIME_OBJECT(SolidObjectBase);
+
 	public:
 		PowerUpMorphMonitor();
 

@@ -148,8 +148,10 @@ namespace Jazz2::Tiles
 			DebrisFlags Flags;
 		};
 
-		TileMap(const StringView& tileSetPath, std::uint16_t captionTileId, bool applyPalette);
+		TileMap(const StringView tileSetPath, std::uint16_t captionTileId, bool applyPalette);
 		~TileMap();
+
+		bool IsValid() const;
 
 		void SetOwner(ITileMapOwner* owner);
 		Vector2i GetSize() const;
@@ -167,7 +169,7 @@ namespace Jazz2::Tiles
 		SuspendType GetTileSuspendState(float x, float y);
 		bool AdvanceDestructibleTileAnimation(std::int32_t tx, std::int32_t ty, std::int32_t amount);
 
-		void AddTileSet(const StringView& tileSetPath, std::uint16_t offset, std::uint16_t count, const std::uint8_t* paletteRemapping = nullptr);
+		void AddTileSet(const StringView tileSetPath, std::uint16_t offset, std::uint16_t count, const std::uint8_t* paletteRemapping = nullptr);
 		void ReadLayerConfiguration(Stream& s);
 		void ReadAnimatedTiles(Stream& s);
 		void SetTileEventFlags(std::int32_t x, std::int32_t y, EventType tileEvent, std::uint8_t* tileParams);
@@ -249,7 +251,7 @@ namespace Jazz2::Tiles
 		static float TranslateCoordinate(float coordinate, float speed, float offset, std::int32_t viewSize, bool isY);
 		RenderCommand* RentRenderCommand(LayerRendererType type);
 
-		bool AdvanceDestructibleTileAnimation(LayerTile& tile, std::int32_t tx, std::int32_t ty, std::int32_t& amount, const StringView& soundName);
+		bool AdvanceDestructibleTileAnimation(LayerTile& tile, std::int32_t tx, std::int32_t ty, std::int32_t& amount, const StringView soundName);
 		void AdvanceCollapsingTileTimers(float timeMult);
 		void SetTileDestructibleEventParams(LayerTile& tile, TileDestructType type, std::uint16_t tileParams);
 

@@ -6,6 +6,8 @@ namespace Jazz2::Actors::Bosses
 {
 	class Bubba : public BossBase
 	{
+		DEATH_RUNTIME_OBJECT(BossBase);
+
 	public:
 		Bubba();
 

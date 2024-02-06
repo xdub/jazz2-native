@@ -6,28 +6,28 @@
 #include <cstdio>		// For FILE
 #include <memory>
 
-namespace Death::IO
-{
+namespace Death { namespace IO {
+//###==##====#=====--==~--~=~- --- -- -  -  -   -
+
+	/** @brief Defines constants for read, write, or read/write access to a file */
 	enum struct FileAccessMode {
 		None = 0,
-
 		Read = 0x01,
-		Write = 0x02,
-
-#if !defined(DEATH_TARGET_WINDOWS) || defined(DEATH_TARGET_MINGW)
-		FileDescriptor = 0x80,
-#endif
+		Write = 0x02
 	};
 
 	DEFINE_ENUM_OPERATORS(FileAccessMode);
 
+	/** @brief Specifies the position in a stream to use for seeking */
 	enum class SeekOrigin {
 		Begin = SEEK_SET,
 		Current = SEEK_CUR,
 		End = SEEK_END
 	};
 
-	/** @brief Provides a generic view of a sequence of bytes */
+	/**
+		@brief Provides a generic view of a sequence of bytes
+	*/
 	class Stream
 	{
 	public:
@@ -38,7 +38,8 @@ namespace Death::IO
 			AndroidAsset
 		};
 
-		static constexpr std::int32_t Unseekable = -1;
+		/** @brief Returned if seek operation is not supported by @ref Stream */
+		static constexpr std::int32_t NotSeekable = -1;
 
 		explicit Stream() : _type(Type::None), _size(0) { }
 		virtual ~Stream() { }
@@ -155,4 +156,4 @@ namespace Death::IO
 		Containers::String _path;
 		std::int32_t _size;
 	};
-}
+}}

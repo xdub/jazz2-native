@@ -45,7 +45,6 @@ extern "C"
 #include "Base/Algorithms.h"
 #include "Base/Random.h"
 #include "IAppEventHandler.h"
-#include "ArrayIndexer.h"
 #include "Graphics/GfxCapabilities.h"
 #include "Graphics/RenderResources.h"
 #include "Graphics/RenderQueue.h"
@@ -217,7 +216,10 @@ void DEATH_TRACE(TraceLevel level, const char* fmt, ...)
 	logEntry[length++] = '\n';
 	logEntry[length] = '\0';
 
-	::OutputDebugString(Death::Utf8::ToUtf16(logEntry));
+	wchar_t logEntryW[MaxEntryLength];
+	if (Death::Utf8::ToUtf16(logEntryW, logEntry, length) > 0) {
+		::OutputDebugString(logEntryW);
+	}
 #else
 	static const char Reset[] = "\033[0m";
 	static const char Bold[] = "\033[1m";
@@ -246,33 +248,38 @@ void DEATH_TRACE(TraceLevel level, const char* fmt, ...)
 	constexpr bool hasVirtualTerminal = false;
 #	endif
 
-	std::int32_t logMsgFuncLength = 0;
+	std::int32_t logMsgFuncLength = 1;
 	while (true) {
 		if (logEntry[logMsgFuncLength] == '\0') {
 			logMsgFuncLength = -1;
 			break;
 		}
-		if (logMsgFuncLength > 0 && logEntry[logMsgFuncLength - 1] == '-' && logEntry[logMsgFuncLength] == '>') {
+		if (logEntry[logMsgFuncLength] == '#' && logEntry[logMsgFuncLength + 1] == '>') {
+			logMsgFuncLength += 2;
 			break;
 		}
 		logMsgFuncLength++;
 	}
-	logMsgFuncLength++; // Skip '>' character
 
 	std::int32_t length2 = 0;
 	if (logMsgFuncLength > 0) {
 		if (hasVirtualTerminal) {
 			length2 += nCine::copyStringFirst(logEntryWithColors, MaxEntryLength - 1, Faint, countof(Faint) - 1);
-			if (level == TraceLevel::Error || level == TraceLevel::Fatal) {
-				length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, BrightRed, countof(BrightRed) - 1);
-			} else if (level == TraceLevel::Warning) {
-				length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, BrightYellow, countof(BrightYellow) - 1);
-			}
+
+			switch (level) {
+				case TraceLevel::Error:
+				case TraceLevel::Fatal:
+					length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, BrightRed, countof(BrightRed) - 1);
+					break;
+				case TraceLevel::Warning:
+					length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, BrightYellow, countof(BrightYellow) - 1);
+					break;
 #	if defined(DEATH_TARGET_EMSCRIPTEN)
-			else if (level == TraceLevel::Debug) {
-				length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, DarkGray, countof(DarkGray) - 1);
-			}
+				case TraceLevel::Debug:
+					length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, DarkGray, countof(DarkGray) - 1);
+					break;
 #	endif
+			}
 		}
 
 		length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, logEntry, logMsgFuncLength);
@@ -280,27 +287,34 @@ void DEATH_TRACE(TraceLevel level, const char* fmt, ...)
 
 	if (hasVirtualTerminal) {
 #	if defined(DEATH_TARGET_EMSCRIPTEN)
-		if (level != TraceLevel::Warning && level != TraceLevel::Debug) {
-#	else
-		if (level != TraceLevel::Debug) {
+		if (level != TraceLevel::Warning && level != TraceLevel::Debug)
 #	endif
+		{
 			length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, Reset, countof(Reset) - 1);
 		}
-		if (level == TraceLevel::Error || level == TraceLevel::Fatal) {
-			length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, BrightRed, countof(BrightRed) - 1);
-			if (level == TraceLevel::Fatal) {
-				length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, Bold, countof(Bold) - 1);
-			}
-		}
+
+		switch (level) {
+			case TraceLevel::Error:
+			case TraceLevel::Fatal:
+				length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, BrightRed, countof(BrightRed) - 1);
+				if (level == TraceLevel::Fatal) {
+					length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, Bold, countof(Bold) - 1);
+				}
+				break;
 #	if defined(DEATH_TARGET_EMSCRIPTEN)
-		else if (level == TraceLevel::Info || level == TraceLevel::Warning) {
-			length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, Bold, countof(Bold) - 1);
-		}
+			case TraceLevel::Info:
+			case TraceLevel::Warning:
+				length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, Bold, countof(Bold) - 1);
+				break;
 #	else
-		else if (level == TraceLevel::Warning) {
-			length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, BrightYellow, countof(BrightYellow) - 1);
-		}
+			case TraceLevel::Warning:
+				length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, BrightYellow, countof(BrightYellow) - 1);
+				break;
+			case TraceLevel::Debug:
+				length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, DarkGray, countof(DarkGray) - 1);
+				break;
 #	endif
+		}
 	}
 
 	length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, logEntry + logMsgFuncLength, length - logMsgFuncLength);
@@ -351,8 +365,9 @@ void DEATH_TRACE(TraceLevel level, const char* fmt, ...)
 		logEntry[length] = '\0';
 
 		wchar_t logEntryW[MaxEntryLength];
-		Death::Utf8::ToUtf16(logEntryW, logEntry, length);
-		::OutputDebugString(logEntryW);
+		if (Death::Utf8::ToUtf16(logEntryW, logEntry, length) > 0) {
+			::OutputDebugString(logEntryW);
+		}
 #		endif
 	}
 #	endif
@@ -441,7 +456,6 @@ namespace nCine
 		LOGW("Tracy integration is enabled");
 #endif
 
-		theServiceLocator().registerIndexer(std::make_unique<ArrayIndexer>());
 #if defined(WITH_AUDIO)
 		if (appCfg_.withAudio) {
 			theServiceLocator().registerAudioDevice(std::make_unique<ALAudioDevice>());
@@ -676,7 +690,8 @@ namespace nCine
 
 		if (appCfg_.frameLimit > 0) {
 			FrameMarkStart("Frame limiting");
-#if defined(DEATH_TARGET_WINDOWS)
+#if 0 //defined(DEATH_TARGET_WINDOWS)
+			// TODO: This code sometimes doesn't work properly
 			const std::uint64_t clockFreq = static_cast<std::uint64_t>(clock().frequency());
 			const std::uint64_t frameTimeDuration = (clockFreq / static_cast<std::uint64_t>(appCfg_.frameLimit));
 			const std::int64_t remainingTime = (std::int64_t)frameTimeDuration - (std::int64_t)frameTimer_->frameDurationAsTicks();
@@ -723,11 +738,6 @@ namespace nCine
 		::CloseHandle(_waitableTimer);
 #endif
 
-		if (!theServiceLocator().indexer().empty()) {
-			LOGW("The object indexer is not empty, %u object(s) left", theServiceLocator().indexer().size());
-			//theServiceLocator().indexer().logReport();
-		}
-
 		LOGI("Application shut down");
 
 		theServiceLocator().unregisterAll();
@@ -748,6 +758,11 @@ namespace nCine
 		if (appEventHandler_ != nullptr) {
 			appEventHandler_->OnSuspend();
 		}
+#if defined(WITH_AUDIO)
+		IAudioDevice& audioDevice = theServiceLocator().audioDevice();
+		audioDevice.suspendDevice();
+#endif
+
 		LOGI("IAppEventHandler::OnSuspend() invoked");
 	}
 
@@ -756,6 +771,11 @@ namespace nCine
 		if (appEventHandler_ != nullptr) {
 			appEventHandler_->OnResume();
 		}
+#if defined(WITH_AUDIO)
+		IAudioDevice& audioDevice = theServiceLocator().audioDevice();
+		audioDevice.resumeDevice();
+#endif
+
 		const TimeStamp suspensionDuration = frameTimer_->resume();
 		LOGD("Suspended for %.3f seconds", suspensionDuration.seconds());
 #if defined(NCINE_PROFILING)

@@ -29,7 +29,7 @@
 #		include <sys/mman.h>
 #		include <sys/wait.h>
 #	endif
-#	if defined(DEATH_TARGET_APPLE) || defined(__FreeBSD__)
+#	if defined(DEATH_TARGET_APPLE)
 #		include <copyfile.h>
 #	elif defined(__linux__)
 #		include <sys/sendfile.h>
@@ -58,11 +58,12 @@
 using namespace Death::Containers;
 using namespace Death::Containers::Literals;
 
-namespace Death::IO
-{
+namespace Death { namespace IO {
+//###==##====#=====--==~--~=~- --- -- -  -  -   -
+
 	namespace
 	{
-		static std::size_t GetPathRootLength(const StringView& path)
+		static std::size_t GetPathRootLength(const StringView path)
 		{
 			if (path.empty()) return 0;
 
@@ -133,7 +134,7 @@ namespace Death::IO
 		}
 
 #if defined(DEATH_TARGET_WINDOWS)
-		static bool DeleteDirectoryInternal(const ArrayView<wchar_t>& path, bool recursive, std::int32_t depth)
+		static bool DeleteDirectoryInternal(const ArrayView<wchar_t> path, bool recursive, std::int32_t depth)
 		{
 			if (recursive) {
 				if (path.size() + 3 <= FileSystem::MaxPathLength) {
@@ -168,6 +169,7 @@ namespace Death::IO
 							std::memcpy(&bufferExtended[bufferOffset], data.cFileName, fileNameLength * sizeof(wchar_t));
 
 							if ((data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == FILE_ATTRIBUTE_DIRECTORY) {
+								// Don't follow symbolic links
 								bool shouldRecurse = ((data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != FILE_ATTRIBUTE_REPARSE_POINT);
 								if (shouldRecurse) {
 									bufferExtended[bufferOffset + fileNameLength] = L'\0';
@@ -222,11 +224,6 @@ namespace Death::IO
 #	endif
 		}
 #else
-		static bool CallStat(const char* path, struct stat& sb)
-		{
-			return (::lstat(path, &sb) != -1);
-		}
-
 		static FileSystem::Permission NativeModeToEnum(std::uint32_t nativeMode)
 		{
 			FileSystem::Permission mode = FileSystem::Permission::None;
@@ -272,7 +269,7 @@ namespace Death::IO
 		}
 #	endif
 
-		static bool DeleteDirectoryInternal(const StringView& path)
+		static bool DeleteDirectoryInternal(const StringView path)
 		{
 #	if defined(DEATH_TARGET_SWITCH)
 			// nftw() is missing in libnx
@@ -289,7 +286,7 @@ namespace Death::IO
 
 					String fileName = FileSystem::CombinePath(path, p->d_name);
 					struct stat sb;
-					if (CallStat(fileName.data(), sb)) {
+					if (::lstat(fileName.data(), &sb) == 0) { // Don't follow symbolic links
 						if (S_ISDIR(sb.st_mode)) {
 							DeleteDirectoryInternal(fileName);
 						} else {
@@ -305,6 +302,7 @@ namespace Death::IO
 			}
 			return (r == 0);
 #	else
+			// Don't follow symbolic links
 			return ::nftw(String::nullTerminatedView(path).data(), DeleteDirectoryInternalCallback, 64, FTW_DEPTH | FTW_PHYS) == 0;
 #	endif
 		}
@@ -388,7 +386,7 @@ namespace Death::IO
 
 	String FileSystem::_savePath;
 
-	FileSystem::Directory::Directory(const StringView& path, EnumerationOptions options)
+	FileSystem::Directory::Directory(const StringView path, EnumerationOptions options)
 		: _fileNamePart(nullptr)
 #if defined(DEATH_TARGET_WINDOWS)
 			, _firstFile(true), _hFindFile(NULL)
@@ -407,7 +405,7 @@ namespace Death::IO
 		Close();
 	}
 
-	bool FileSystem::Directory::Open(const StringView& path, EnumerationOptions options)
+	bool FileSystem::Directory::Open(const StringView path, EnumerationOptions options)
 	{
 		Close();
 
@@ -604,7 +602,7 @@ namespace Death::IO
 	}
 
 #if !defined(DEATH_TARGET_WINDOWS) && !defined(DEATH_TARGET_SWITCH)
-	String FileSystem::FindPathCaseInsensitive(const StringView& path)
+	String FileSystem::FindPathCaseInsensitive(const StringView path)
 	{
 		if (Exists(path)) {
 			return path;
@@ -676,7 +674,7 @@ namespace Death::IO
 	}
 #endif
 
-	String FileSystem::CombinePath(const StringView& first, const StringView& second)
+	String FileSystem::CombinePath(const StringView first, const StringView second)
 	{
 		std::size_t firstSize = first.size();
 		std::size_t secondSize = second.size();
@@ -760,7 +758,7 @@ namespace Death::IO
 		return CombinePath(Containers::arrayView(paths));
 	}
 
-	StringView FileSystem::GetDirectoryName(const StringView& path)
+	StringView FileSystem::GetDirectoryName(const StringView path)
 	{
 		if (path.empty()) return { };
 
@@ -777,7 +775,7 @@ namespace Death::IO
 		return path.slice(0, i);
 	}
 
-	StringView FileSystem::GetFileName(const StringView& path)
+	StringView FileSystem::GetFileName(const StringView path)
 	{
 		if (path.empty()) return { };
 
@@ -798,7 +796,7 @@ namespace Death::IO
 		return path.slice(i, pathLength);
 	}
 
-	StringView FileSystem::GetFileNameWithoutExtension(const StringView& path)
+	StringView FileSystem::GetFileNameWithoutExtension(const StringView path)
 	{
 		StringView fileName = GetFileName(path);
 		if (fileName.empty()) return { };
@@ -817,7 +815,7 @@ namespace Death::IO
 		return fileName.prefix(foundDot.begin());
 	}
 
-	String FileSystem::GetExtension(const StringView& path)
+	String FileSystem::GetExtension(const StringView path)
 	{
 		StringView fileName = GetFileName(path);
 		if (fileName.empty()) return { };
@@ -861,7 +859,7 @@ namespace Death::IO
 	}
 #endif
 
-	String FileSystem::GetAbsolutePath(const StringView& path)
+	String FileSystem::GetAbsolutePath(const StringView path)
 	{
 		if (path.empty()) return { };
 
@@ -887,7 +885,7 @@ namespace Death::IO
 			strncpy(result, path.data(), pathRootLength);
 			resultLength = pathRootLength;
 			if (path.size() == pathRootLength) {
-				return String { result, resultLength };
+				return String{result, resultLength};
 			}
 
 			strncpy(left, path.data() + pathRootLength, sizeof(left));
@@ -946,9 +944,9 @@ namespace Death::IO
 			result[resultLength] = '\0';
 
 			struct stat sb;
-			if (!CallStat(result, sb)) {
+			if (::lstat(result, &sb) != 0) {
 				if (errno == ENOENT && p == nullptr) {
-					return String { result, resultLength };
+					return String{result, resultLength};
 				}
 				return { };
 			}
@@ -992,7 +990,7 @@ namespace Death::IO
 		if (resultLength > 1 && result[resultLength - 1] == '/') {
 			resultLength--;
 		}
-		return String { result, resultLength };
+		return String{result, resultLength};
 #else
 #	if defined(DEATH_TARGET_ANDROID)
 		if (path.hasPrefix(AndroidAssetStream::Prefix)) {
@@ -1020,21 +1018,18 @@ namespace Death::IO
 		}
 
 		// Allocate proper size and get the path. The size includes a null terminator which the String handles on its own, so subtract it
-		String path { NoInit, size - 1 };
+		String path{NoInit, size - 1};
 		if (_NSGetExecutablePath(path.data(), &size) != 0) {
 			return { };
 		}
 		return path;
 #elif defined(__FreeBSD__)
-		Array<char> path;
 		std::size_t size;
-		const std::int32_t mib[4] = { CTL_KERN, KERN_PROC, KERN_PROC_PATHNAME, -1 };
-		sysctl(mib, 4, nullptr, &size, NULL, 0);
-		arrayResize(path, NoInit, size + 1);
-		sysctl(mib, 4, path, &size, NULL, 0);
-		path[size] = '\0';
-		const auto deleter = path.deleter();
-		return String { path.release(), size, deleter };
+		static const std::int32_t mib[4] = { CTL_KERN, KERN_PROC, KERN_PROC_PATHNAME, -1 };
+		sysctl(mib, 4, nullptr, &size, nullptr, 0);
+		String path{NoInit, size};
+		sysctl(mib, 4, path.data(), &size, nullptr, 0);
+		return path;
 #elif defined(DEATH_TARGET_UNIX)
 		// Reallocate like hell until we have enough place to store the path. Can't use lstat because
 		// the /proc/self/exe symlink is not a real symlink and so stat::st_size returns 0.
@@ -1050,7 +1045,7 @@ namespace Death::IO
 		// that path.size() is always larger than size - if it would be equal, we'd try once more with a larger buffer
 		path[size] = '\0';
 		const auto deleter = path.deleter();
-		return String { path.release(), std::size_t(size), deleter };
+		return String{path.release(), std::size_t(size), deleter};
 #elif defined(DEATH_TARGET_WINDOWS) && !defined(DEATH_TARGET_WINDOWS_RT)
 		wchar_t path[MaxPathLength + 1];
 		// Returns size *without* the null terminator
@@ -1071,15 +1066,14 @@ namespace Death::IO
 		return Utf8::FromUtf16(buffer);
 #else
 		char buffer[MaxPathLength];
-		if (::getcwd(buffer, MaxPathLength) != nullptr) {
-			return buffer;
-		} else {
+		if (::getcwd(buffer, MaxPathLength) == nullptr) {
 			return { };
 		}
+		return buffer;
 #endif
 	}
 
-	bool FileSystem::SetWorkingDirectory(const StringView& path)
+	bool FileSystem::SetWorkingDirectory(const StringView path)
 	{
 #if defined(DEATH_TARGET_EMSCRIPTEN)
 		return false;
@@ -1103,16 +1097,15 @@ namespace Death::IO
 		const char* home = ::getenv("HOME");
 		if (home != nullptr && home[0] != '\0') {
 			return home;
-		} else {
-#	if !defined(DEATH_TARGET_EMSCRIPTEN)
-			// `getpwuid()` is not yet implemented on Emscripten
-			const struct passwd* pw = ::getpwuid(getuid());
-			if (pw) {
-				return pw->pw_dir;
-			}
-#	endif
-			return { };
 		}
+#	if !defined(DEATH_TARGET_EMSCRIPTEN)
+		// `getpwuid()` is not yet implemented on Emscripten
+		const struct passwd* pw = ::getpwuid(getuid());
+		if (pw != nullptr) {
+			return pw->pw_dir;
+		}
+#	endif
+		return { };
 #endif
 	}
 
@@ -1151,7 +1144,7 @@ namespace Death::IO
 	}
 #endif
 
-	bool FileSystem::DirectoryExists(const StringView& path)
+	bool FileSystem::DirectoryExists(const StringView path)
 	{
 		if (path.empty()) return false;
 
@@ -1169,14 +1162,14 @@ namespace Death::IO
 		}
 #	endif
 		struct stat sb;
-		if (CallStat(nullTerminatedPath.data(), sb)) {
-			return (sb.st_mode & S_IFMT) == S_IFDIR;
+		if (::stat(nullTerminatedPath.data(), &sb) == 0) {
+			return ((sb.st_mode & S_IFMT) == S_IFDIR);
 		}
 		return false;
 #endif
 	}
 
-	bool FileSystem::FileExists(const StringView& path)
+	bool FileSystem::FileExists(const StringView path)
 	{
 		if (path.empty()) return false;
 
@@ -1194,14 +1187,14 @@ namespace Death::IO
 		}
 #	endif
 		struct stat sb;
-		if (CallStat(nullTerminatedPath.data(), sb)) {
-			return (sb.st_mode & S_IFMT) == S_IFREG;
+		if (::stat(nullTerminatedPath.data(), &sb) == 0) {
+			return ((sb.st_mode & S_IFMT) == S_IFREG);
 		}
 		return false;
 #endif
 	}
 
-	bool FileSystem::Exists(const StringView& path)
+	bool FileSystem::Exists(const StringView path)
 	{
 		if (path.empty()) return false;
 
@@ -1219,11 +1212,11 @@ namespace Death::IO
 		}
 #	endif
 		struct stat sb;
-		return CallStat(nullTerminatedPath.data(), sb);
+		return (::lstat(nullTerminatedPath.data(), &sb) == 0);
 #endif
 	}
 
-	bool FileSystem::IsReadable(const StringView& path)
+	bool FileSystem::IsReadable(const StringView path)
 	{
 		if (path.empty()) return false;
 
@@ -1241,14 +1234,14 @@ namespace Death::IO
 		}
 #	endif
 		struct stat sb;
-		if (CallStat(nullTerminatedPath.data(), sb)) {
-			return (sb.st_mode & S_IRUSR);
+		if (::stat(nullTerminatedPath.data(), &sb) == 0) {
+			return ((sb.st_mode & S_IRUSR) != 0);
 		}
 		return false;
 #endif
 	}
 
-	bool FileSystem::IsWritable(const StringView& path)
+	bool FileSystem::IsWritable(const StringView path)
 	{
 		if (path.empty()) return false;
 
@@ -1266,14 +1259,14 @@ namespace Death::IO
 		}
 #	endif
 		struct stat sb;
-		if (CallStat(nullTerminatedPath.data(), sb)) {
-			return (sb.st_mode & S_IWUSR);
+		if (::stat(nullTerminatedPath.data(), &sb) == 0) {
+			return ((sb.st_mode & S_IWUSR) != 0);
 		}
 		return false;
 #endif
 	}
 
-	bool FileSystem::IsExecutable(const StringView& path)
+	bool FileSystem::IsExecutable(const StringView path)
 	{
 		if (path.empty()) return false;
 
@@ -1303,7 +1296,7 @@ namespace Death::IO
 #endif
 	}
 
-	bool FileSystem::IsReadableFile(const StringView& path)
+	bool FileSystem::IsReadableFile(const StringView path)
 	{
 		if (path.empty()) return false;
 
@@ -1321,14 +1314,14 @@ namespace Death::IO
 		}
 #	endif
 		struct stat sb;
-		if (CallStat(nullTerminatedPath.data(), sb)) {
-			return (sb.st_mode & S_IFMT) == S_IFREG && (sb.st_mode & S_IRUSR);
+		if (::stat(nullTerminatedPath.data(), &sb) == 0) {
+			return ((sb.st_mode & S_IFMT) == S_IFREG && (sb.st_mode & S_IRUSR) != 0);
 		}
 #endif
 		return false;
 	}
 
-	bool FileSystem::IsWritableFile(const StringView& path)
+	bool FileSystem::IsWritableFile(const StringView path)
 	{
 		if (path.empty()) return false;
 
@@ -1346,14 +1339,39 @@ namespace Death::IO
 		}
 #	endif
 		struct stat sb;
-		if (CallStat(nullTerminatedPath.data(), sb)) {
-			return (sb.st_mode & S_IFMT) == S_IFREG && (sb.st_mode & S_IWUSR);
+		if (::stat(nullTerminatedPath.data(), &sb) == 0) {
+			return ((sb.st_mode & S_IFMT) == S_IFREG && (sb.st_mode & S_IWUSR) != 0);
 		}
 #endif
 		return false;
 	}
 
-	bool FileSystem::IsHidden(const StringView& path)
+	bool FileSystem::IsSymbolicLink(const StringView path)
+	{
+		if (path.empty()) return false;
+
+#if defined(DEATH_TARGET_WINDOWS_RT)
+		WIN32_FILE_ATTRIBUTE_DATA lpFileInfo;
+		return (::GetFileAttributesExFromAppW(Utf8::ToUtf16(path), GetFileExInfoStandard, &lpFileInfo) && (lpFileInfo.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) == FILE_ATTRIBUTE_REPARSE_POINT);
+#elif defined(DEATH_TARGET_WINDOWS)
+		const DWORD attrs = ::GetFileAttributesW(Utf8::ToUtf16(path));
+		return (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_REPARSE_POINT) == FILE_ATTRIBUTE_REPARSE_POINT);
+#else
+		auto nullTerminatedPath = String::nullTerminatedView(path);
+#	if defined(DEATH_TARGET_ANDROID)
+		if (AndroidAssetStream::TryGetAssetPath(nullTerminatedPath.data())) {
+			return false;
+		}
+#	endif
+		struct stat sb;
+		if (::lstat(nullTerminatedPath.data(), &sb) == 0) {
+			return ((sb.st_mode & S_IFMT) == S_IFLNK);
+		}
+#endif
+		return false;
+	}
+
+	bool FileSystem::IsHidden(const StringView path)
 	{
 		if (path.empty()) return false;
 
@@ -1375,11 +1393,11 @@ namespace Death::IO
 		strncpy(buffer, path.data(), pathLength);
 		buffer[pathLength] = '\0';
 		const char* baseName = ::basename(buffer);
-		return (baseName && baseName[0] == '.');
+		return (baseName != nullptr && baseName[0] == '.');
 #endif
 	}
 
-	bool FileSystem::SetHidden(const StringView& path, bool hidden)
+	bool FileSystem::SetHidden(const StringView path, bool hidden)
 	{
 		if (path.empty()) return false;
 
@@ -1442,7 +1460,7 @@ namespace Death::IO
 		return false;
 	}
 
-	bool FileSystem::CreateDirectories(const StringView& path)
+	bool FileSystem::CreateDirectories(const StringView path)
 	{
 		if (path.empty()) return false;
 
@@ -1547,7 +1565,7 @@ namespace Death::IO
 			if (fullPath[i] == '/' || fullPath[i] == '\\') {
 				if (i > 0) {
 					fullPath[i] = '\0';
-					if (!CallStat(fullPath.data(), sb)) {
+					if (::lstat(fullPath.data(), &sb) != 0) {
 						if (::mkdir(fullPath.data(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) != 0 && errno != EEXIST) {
 							LOGW("Cannot create directory \"%s\"", fullPath.data());
 							return false;
@@ -1571,7 +1589,7 @@ namespace Death::IO
 #endif
 	}
 
-	bool FileSystem::RemoveDirectoryRecursive(const StringView& path)
+	bool FileSystem::RemoveDirectoryRecursive(const StringView path)
 	{
 		if (path.empty()) return false;
 
@@ -1598,7 +1616,7 @@ namespace Death::IO
 #endif
 	}
 
-	bool FileSystem::RemoveFile(const StringView& path)
+	bool FileSystem::RemoveFile(const StringView path)
 	{
 		if (path.empty()) return false;
 
@@ -1617,7 +1635,7 @@ namespace Death::IO
 #endif
 	}
 
-	bool FileSystem::Move(const StringView& oldPath, const StringView& newPath)
+	bool FileSystem::Move(const StringView oldPath, const StringView newPath)
 	{
 		if (oldPath.empty() || newPath.empty()) return false;
 
@@ -1635,7 +1653,7 @@ namespace Death::IO
 #endif
 	}
 
-	bool FileSystem::Copy(const StringView& oldPath, const StringView& newPath, bool overwrite)
+	bool FileSystem::Copy(const StringView oldPath, const StringView newPath, bool overwrite)
 	{
 		if (oldPath.empty() || newPath.empty()) return false;
 
@@ -1671,22 +1689,22 @@ namespace Death::IO
 			return false;
 		}
 
-#	if defined(DEATH_TARGET_APPLE) || defined(__FreeBSD__)
+#	if defined(DEATH_TARGET_APPLE)
 		// fcopyfile works on FreeBSD and OS X 10.5+ 
 		bool success = (::fcopyfile(source, dest, 0, COPYFILE_ALL) == 0);
 #	elif defined(__linux__)
 		off_t offset = 0;
 		bool success = (::sendfile(dest, source, &offset, sb.st_size) == sb.st_size);
 #	else
-#	if !defined(DEATH_TARGET_SWITCH) && defined(_POSIX_C_SOURCE) && _POSIX_C_SOURCE >= 200112L
+#		if !defined(DEATH_TARGET_SWITCH) && defined(_POSIX_C_SOURCE) && _POSIX_C_SOURCE >= 200112L
 		// As noted in https://eklitzke.org/efficient-file-copying-on-linux, might make the file reading faster
 		::posix_fadvise(source, 0, 0, POSIX_FADV_SEQUENTIAL);
-#	endif
-#	if defined(DEATH_TARGET_EMSCRIPTEN)
+#		endif
+#		if defined(DEATH_TARGET_EMSCRIPTEN)
 		constexpr std::size_t BufferSize = 8 * 1024;
-#	else
+#		else
 		constexpr std::size_t BufferSize = 128 * 1024;
-#	endif
+#		endif
 		char buffer[BufferSize];
 		std::size_t size = 0;
 		bool success = true;
@@ -1696,7 +1714,7 @@ namespace Death::IO
 				break;
 			}
 		}
-#endif
+#	endif
 
 		::close(source);
 		::close(dest);
@@ -1705,7 +1723,7 @@ namespace Death::IO
 #endif
 	}
 
-	std::int64_t FileSystem::GetFileSize(const StringView& path)
+	std::int64_t FileSystem::GetFileSize(const StringView path)
 	{
 		if (path.empty()) return false;
 
@@ -1728,14 +1746,14 @@ namespace Death::IO
 		}
 #	endif
 		struct stat sb;
-		if (!CallStat(nullTerminatedPath.data(), sb)) {
+		if (::stat(nullTerminatedPath.data(), &sb) != 0) {
 			return -1;
 		}
 		return static_cast<std::int64_t>(sb.st_size);
 #endif
 	}
 
-	DateTime FileSystem::GetCreationTime(const StringView& path)
+	DateTime FileSystem::GetCreationTime(const StringView path)
 	{
 		if (path.empty()) return { };
 
@@ -1752,8 +1770,9 @@ namespace Death::IO
 		}
 		::CloseHandle(hFile);
 #elif defined(DEATH_TARGET_APPLE) && defined(_DARWIN_FEATURE_64_BIT_INODE)
+		auto nullTerminatedPath = String::nullTerminatedView(path);
 		struct stat sb;
-		if (CallStat(String::nullTerminatedView(path).data(), sb)) {
+		if (::stat(nullTerminatedPath.data(), &sb) == 0) {
 			date = DateTime(sb.st_birthtimespec.tv_sec);
 			date.SetMillisecond(sb.st_birthtimespec.tv_nsec / 1000000);
 		}
@@ -1765,7 +1784,7 @@ namespace Death::IO
 		}
 #	endif
 		struct stat sb;
-		if (CallStat(nullTerminatedPath.data(), sb)) {
+		if (::stat(nullTerminatedPath.data(), &sb) == 0) {
 			// Creation time is not available on Linux, return the last change of inode instead
 			date = DateTime(sb.st_ctime);
 		}
@@ -1773,7 +1792,7 @@ namespace Death::IO
 		return date;
 	}
 
-	DateTime FileSystem::GetLastModificationTime(const StringView& path)
+	DateTime FileSystem::GetLastModificationTime(const StringView path)
 	{
 		if (path.empty()) return { };
 
@@ -1790,8 +1809,9 @@ namespace Death::IO
 		}
 		::CloseHandle(hFile);
 #elif defined(DEATH_TARGET_APPLE) && defined(_DARWIN_FEATURE_64_BIT_INODE)
+		auto nullTerminatedPath = String::nullTerminatedView(path);
 		struct stat sb;
-		if (CallStat(String::nullTerminatedView(path).data(), sb)) {
+		if (::stat(nullTerminatedPath.data(), &sb) == 0) {
 			date = DateTime(sb.st_mtimespec.tv_sec);
 			date.SetMillisecond(sb.st_mtimespec.tv_nsec / 1000000);
 		}
@@ -1803,14 +1823,14 @@ namespace Death::IO
 		}
 #	endif
 		struct stat sb;
-		if (CallStat(nullTerminatedPath.data(), sb)) {
+		if (::stat(nullTerminatedPath.data(), &sb) == 0) {
 			date = DateTime(sb.st_mtime);
 		}
 #endif
 		return date;
 	}
 
-	DateTime FileSystem::GetLastAccessTime(const StringView& path)
+	DateTime FileSystem::GetLastAccessTime(const StringView path)
 	{
 		if (path.empty()) return { };
 
@@ -1827,8 +1847,9 @@ namespace Death::IO
 		}
 		::CloseHandle(hFile);
 #elif defined(DEATH_TARGET_APPLE) && defined(_DARWIN_FEATURE_64_BIT_INODE)
+		auto nullTerminatedPath = String::nullTerminatedView(path);
 		struct stat sb;
-		if (CallStat(String::nullTerminatedView(path).data(), sb)) {
+		if (::stat(nullTerminatedPath.data(), &sb) == 0) {
 			date = DateTime(sb.st_atimespec.tv_sec);
 			date.SetMillisecond(sb.st_atimespec.tv_nsec / 1000000);
 		}
@@ -1840,14 +1861,14 @@ namespace Death::IO
 		}
 #	endif
 		struct stat sb;
-		if (CallStat(nullTerminatedPath.data(), sb)) {
+		if (::stat(nullTerminatedPath.data(), &sb) == 0) {
 			date = DateTime(sb.st_atime);
 		}
 #endif
 		return date;
 	}
 
-	FileSystem::Permission FileSystem::GetPermissions(const StringView& path)
+	FileSystem::Permission FileSystem::GetPermissions(const StringView path)
 	{
 		if (path.empty()) return Permission::None;
 
@@ -1873,14 +1894,14 @@ namespace Death::IO
 		}
 #	endif
 		struct stat sb;
-		if (!CallStat(nullTerminatedPath.data(), sb)) {
+		if (::stat(nullTerminatedPath.data(), &sb) != 0) {
 			return Permission::None;
 		}
 		return NativeModeToEnum(sb.st_mode);
 #endif
 	}
 
-	bool FileSystem::ChangePermissions(const StringView& path, Permission mode)
+	bool FileSystem::ChangePermissions(const StringView path, Permission mode)
 	{
 		if (path.empty()) return false;
 
@@ -1907,7 +1928,7 @@ namespace Death::IO
 		}
 #	endif
 		struct stat sb;
-		if (!CallStat(nullTerminatedPath.data(), sb)) {
+		if (::stat(nullTerminatedPath.data(), &sb) != 0) {
 			return false;
 		}
 		const std::uint32_t currentMode = sb.st_mode;
@@ -1916,7 +1937,7 @@ namespace Death::IO
 #endif
 	}
 
-	bool FileSystem::AddPermissions(const StringView& path, Permission mode)
+	bool FileSystem::AddPermissions(const StringView path, Permission mode)
 	{
 		if (path.empty()) return false;
 
@@ -1939,7 +1960,7 @@ namespace Death::IO
 		}
 #	endif
 		struct stat sb;
-		if (!CallStat(nullTerminatedPath.data(), sb)) {
+		if (::stat(nullTerminatedPath.data(), &sb) != 0) {
 			return false;
 		}
 		const std::uint32_t currentMode = sb.st_mode;
@@ -1948,7 +1969,7 @@ namespace Death::IO
 #endif
 	}
 
-	bool FileSystem::RemovePermissions(const StringView& path, Permission mode)
+	bool FileSystem::RemovePermissions(const StringView path, Permission mode)
 	{
 		if (path.empty()) return false;
 
@@ -1971,7 +1992,7 @@ namespace Death::IO
 		}
 #	endif
 		struct stat sb;
-		if (!CallStat(nullTerminatedPath.data(), sb)) {
+		if (::stat(nullTerminatedPath.data(), &sb) != 0) {
 			return false;
 		}
 		const std::uint32_t currentMode = sb.st_mode;
@@ -1980,7 +2001,7 @@ namespace Death::IO
 #endif
 	}
 
-	bool FileSystem::LaunchDirectoryAsync(const StringView& path)
+	bool FileSystem::LaunchDirectoryAsync(const StringView path)
 	{
 #if defined(DEATH_TARGET_APPLE)
 		Class nsStringClass = objc_getClass("NSString");
@@ -2047,7 +2068,7 @@ namespace Death::IO
 	}
 
 #if defined(DEATH_TARGET_EMSCRIPTEN)
-	void FileSystem::MountAsPersistent(const StringView& path)
+	void FileSystem::MountAsPersistent(const StringView path)
 	{
 		// It's calling asynchronous API synchronously, so it can block main thread for a while
 		std::int32_t result = __asyncjs__MountAsPersistent(path.data(), path.size());
@@ -2091,7 +2112,7 @@ namespace Death::IO
 #	endif
 	}
 
-	std::optional<Array<char, FileSystem::MapDeleter>> FileSystem::OpenAsMemoryMapped(const StringView& path, FileAccessMode mode)
+	std::optional<Array<char, FileSystem::MapDeleter>> FileSystem::OpenAsMemoryMapped(const StringView path, FileAccessMode mode)
 	{
 #	if defined(DEATH_TARGET_UNIX)
 		int flags, prot;
@@ -2210,7 +2231,7 @@ namespace Death::IO
 		return std::make_unique<MemoryStream>(bufferPtr, bufferSize);
 	}
 
-	const String& FileSystem::GetSavePath(const StringView& applicationName)
+	const String& FileSystem::GetSavePath(const StringView applicationName)
 	{
 		if (_savePath.empty()) {
 			InitializeSavePath(applicationName);
@@ -2218,7 +2239,7 @@ namespace Death::IO
 		return _savePath;
 	}
 
-	void FileSystem::InitializeSavePath(const StringView& applicationName)
+	void FileSystem::InitializeSavePath(const StringView applicationName)
 	{
 #if defined(DEATH_TARGET_ANDROID)
 		_savePath = AndroidAssetStream::GetInternalDataPath();
@@ -2272,4 +2293,4 @@ namespace Death::IO
 		}
 #endif
 	}
-}
+}}

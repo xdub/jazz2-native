@@ -22,7 +22,8 @@ jobs:
 
     runs-on: 'ubuntu-latest'
     container: 
-      image: devkitpro/devkita64:latest
+      #image: devkitpro/devkita64:latest
+      image: devkitpro/devkita64:20240120
       options: --user root
 
     steps:
@@ -49,7 +50,7 @@ jobs:
         cp -f ./LICENSE ./_package/LICENSE
         
     - name: 'Upload Package'
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: Jazz2_Switch
         path: ./_package/

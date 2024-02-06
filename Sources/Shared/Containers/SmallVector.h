@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "../CommonBase.h"
+
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
@@ -18,8 +20,10 @@
 #include <type_traits>
 #include <utility>
 
-namespace Death::Containers
-{
+namespace Death { namespace Containers {
+//###==##====#=====--==~--~=~- --- -- -  -  -   -
+
+	// Forward declarations for the Death::Containers namespace
 	template<typename IteratorT> class iterator_range;
 
 	/// This is all the stuff common to all SmallVectors.
@@ -1353,7 +1357,7 @@ namespace Death::Containers
 #if SIZE_MAX > UINT32_MAX
 	extern template class SmallVectorBase<std::uint64_t>;
 #endif
-}
+}}
 
 namespace std
 {

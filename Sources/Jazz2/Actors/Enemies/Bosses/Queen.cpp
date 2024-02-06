@@ -94,7 +94,7 @@ namespace Jazz2::Actors::Bosses
 			case StateWaiting: {
 				// Waiting for player to enter the arena
 				_levelHandler->FindCollisionActorsByAABB(this, AABBf(_pos.X - 300, _pos.Y - 120, _pos.X + 60, _pos.Y + 120), [this](ActorBase* actor) {
-					if (auto player = dynamic_cast<Player*>(actor)) {
+					if (auto* player = runtime_cast<Player*>(actor)) {
 						_state = StateIdleToScream;
 						_stateTime = 260.0f;
 						return false;
@@ -222,7 +222,8 @@ namespace Jazz2::Actors::Bosses
 			case StateScreaming: {
 				auto& players = _levelHandler->GetPlayers();
 				for (auto player : players) {
-					player->AddExternalForce(-1.5f * timeMult, 0.0f);
+					//player->AddExternalForce(-1.5f * timeMult, 0.0f);
+					player->MoveInstantly(Vector2f(-1.5f * timeMult, 0.0f), MoveType::Relative);
 				}
 				break;
 			}
@@ -233,7 +234,7 @@ namespace Jazz2::Actors::Bosses
 
 	bool Queen::OnHandleCollision(std::shared_ptr<ActorBase> other)
 	{
-		if (auto spring = dynamic_cast<Environment::Spring*>(other.get())) {
+		if (auto* spring = runtime_cast<Environment::Spring*>(other)) {
 			// Collide only with hitbox
 			if (AABBInner.Overlaps(spring->AABBInner)) {
 				Vector2f force = spring->Activate();

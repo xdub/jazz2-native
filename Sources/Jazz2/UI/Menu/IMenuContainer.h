@@ -17,7 +17,9 @@ namespace Jazz2::UI::Menu
 		Audio = 0x01,
 		Graphics = 0x02,
 		Gameplay = 0x04,
-		Language = 0x08
+		Language = 0x08,
+		ControlScheme = 0x10,
+		MainMenu = 0x20
 	};
 
 	DEFINE_ENUM_OPERATORS(ChangedPreferencesType);
@@ -41,12 +43,13 @@ namespace Jazz2::UI::Menu
 
 		virtual MenuSection* SwitchToSectionDirect(std::unique_ptr<MenuSection> section) = 0;
 		virtual void LeaveSection() = 0;
-		virtual void ChangeLevel(Jazz2::LevelInitialization&& levelInit) = 0;
+		virtual MenuSection* GetUnderlyingSection() const = 0;
+		virtual void ChangeLevel(LevelInitialization&& levelInit) = 0;
 		virtual bool HasResumableState() const = 0;
 		virtual void ResumeSavedState() = 0;
 #if defined(WITH_MULTIPLAYER)
-		virtual bool ConnectToServer(const StringView& address, std::uint16_t port) = 0;
-		virtual bool CreateServer(std::uint16_t port) = 0;
+		virtual bool ConnectToServer(const StringView address, std::uint16_t port) = 0;
+		virtual bool CreateServer(LevelInitialization&& levelInit, std::uint16_t port) = 0;
 #endif
 		virtual void ApplyPreferencesChanges(ChangedPreferencesType type) = 0;
 		virtual bool ActionPressed(PlayerActions action) = 0;
@@ -58,11 +61,12 @@ namespace Jazz2::UI::Menu
 		virtual void DrawElement(AnimState state, float x, float y, uint16_t z, Alignment align,
 			const Colorf& color, const Vector2f& size, const Vector4f& texCoords) = 0;
 		virtual void DrawSolid(float x, float y, uint16_t z, Alignment align, const Vector2f& size, const Colorf& color, bool additiveBlending = false) = 0;
-		virtual Vector2f MeasureString(const StringView& text, float scale = 1.0f, float charSpacing = 1.0f, float lineSpacing = 1.0f) = 0;
-		virtual void DrawStringShadow(const StringView& text, int32_t& charOffset, float x, float y, uint16_t z, Alignment align,
+		virtual void DrawTexture(const Texture& texture, float x, float y, uint16_t z, Alignment align, const Vector2f& size, const Colorf& color) = 0;
+		virtual Vector2f MeasureString(const StringView text, float scale = 1.0f, float charSpacing = 1.0f, float lineSpacing = 1.0f) = 0;
+		virtual void DrawStringShadow(const StringView text, int32_t& charOffset, float x, float y, uint16_t z, Alignment align,
 			const Colorf& color, float scale = 1.0f, float angleOffset = 0.0f, float varianceX = 4.0f, float varianceY = 4.0f,
 			float speed = 0.4f, float charSpacing = 1.0f, float lineSpacing = 1.0f) = 0;
-		virtual void PlaySfx(const StringView& identifier, float gain = 1.0f) = 0;
+		virtual void PlaySfx(const StringView identifier, float gain = 1.0f) = 0;
 
 		static float EaseOutElastic(float t)
 		{

@@ -17,8 +17,7 @@ using namespace Jazz2::Tiles;
 namespace Jazz2::Actors::Enemies
 {
 	TurtleShell::TurtleShell()
-		:
-		_lastAngle(0.0f)
+		: _lastAngle(0.0f)
 	{
 	}
 
@@ -68,7 +67,7 @@ namespace Jazz2::Actors::Enemies
 		SetAnimation(AnimState::Default);
 
 		_canHurtPlayer = false;
-		_friction = _levelHandler->Gravity * 0.05f;
+		_friction = _levelHandler->Gravity * 0.04f;
 		_elasticity = 0.5f;
 		_health = 8;
 
@@ -82,7 +81,7 @@ namespace Jazz2::Actors::Enemies
 
 	void TurtleShell::OnUpdate(float timeMult)
 	{
-		_speed.X = std::max(std::abs(_speed.X) - _friction, 0.0f) * (_speed.X < 0.0f ? -1.0f : 1.0f);
+		_speed.X = lerpByTime(_speed.X, 0.0f, _friction, timeMult);
 
 		double posYBefore = _pos.Y;
 
@@ -97,8 +96,11 @@ namespace Jazz2::Actors::Enemies
 			_speed.X = std::max(std::abs(_speed.X) - 10.0f * _friction, 0.0f) * (_speed.X < 0.0f ? -1.0f : 1.0f);
 		}
 
-		_lastAngle = lerp(_lastAngle, _speed.X * 0.06f, timeMult * 0.2f);
-		_renderer.setRotation(_lastAngle);
+		if (_levelHandler->IsReforged()) {
+			// Enable tilting only if Reforged
+			_lastAngle = lerp(_lastAngle, _speed.X * 0.06f, timeMult * 0.2f);
+			_renderer.setRotation(_lastAngle);
+		}
 	}
 
 	void TurtleShell::OnUpdateHitbox()
@@ -120,33 +122,33 @@ namespace Jazz2::Actors::Enemies
 	{
 		EnemyBase::OnHandleCollision(other);
 
-		if (auto shotBase = dynamic_cast<Weapons::ShotBase*>(other.get())) {
+		if (auto* shotBase = runtime_cast<Weapons::ShotBase*>(other)) {
 			if (shotBase->GetStrength() > 0) {
-				if (auto freezerShot = dynamic_cast<Weapons::FreezerShot*>(shotBase)) {
+				if (runtime_cast<Weapons::FreezerShot*>(shotBase)) {
 					return false;
 				}
 
-				if (auto toasterShot = dynamic_cast<Weapons::ToasterShot*>(shotBase)) {
+				if (auto* toasterShot = runtime_cast<Weapons::ToasterShot*>(shotBase)) {
 					DecreaseHealth(INT32_MAX, toasterShot);
 					return true;
 				}
-				if (auto shieldFireShot = dynamic_cast<Weapons::ShieldFireShot*>(shotBase)) {
+				if (auto* shieldFireShot = runtime_cast<Weapons::ShieldFireShot*>(shotBase)) {
 					DecreaseHealth(INT32_MAX, shieldFireShot);
 					return true;
 				}
 
 				float shotSpeed;
-				if (auto thunderbolt = dynamic_cast<Weapons::Thunderbolt*>(shotBase)) {
+				if (runtime_cast<Weapons::Thunderbolt*>(shotBase)) {
 					shotSpeed = (_pos.X < shotBase->GetPos().X ? -8.0f : 8.0f);
 				} else {
 					shotSpeed = shotBase->GetSpeed().X;
 				}
 
-				_speed.X = std::max(4.0f, std::abs(shotSpeed)) * (shotSpeed < 0.0f ? -0.5f : 0.5f);
+				_speed.X = std::max(4.0f, std::abs(shotSpeed)) * (shotSpeed < 0.0f ? -0.6f : 0.6f);
 
 				PlaySfx("Fly"_s);
 			}
-		} else if (auto shell = dynamic_cast<TurtleShell*>(other.get())) {
+		} else if (auto* shell = runtime_cast<TurtleShell*>(other)) {
 			auto otherSpeed = shell->GetSpeed();
 			if (std::abs(otherSpeed.Y - _speed.Y) > 1.0f && otherSpeed.Y > 0.0f) {
 				DecreaseHealth(10, this);
@@ -162,7 +164,7 @@ namespace Jazz2::Actors::Enemies
 				PlaySfx("ImpactShell"_s, 0.8f);
 				return true;
 			}
-		} else if (auto enemyBase = dynamic_cast<EnemyBase*>(other.get())) {
+		} else if (auto* enemyBase = runtime_cast<EnemyBase*>(other)) {
 			if (enemyBase->CanCollideWithAmmo) {
 				float absSpeed = std::abs(_speed.X);
 				if (absSpeed > 2.0f) {
@@ -173,21 +175,21 @@ namespace Jazz2::Actors::Enemies
 					}
 				}
 			}
-		} else if (auto crateContainer = dynamic_cast<Solid::CrateContainer*>(other.get())) {
+		} else if (auto* crateContainer = runtime_cast<Solid::CrateContainer*>(other)) {
 			float absSpeed = std::abs(_speed.X);
 			if (absSpeed > 2.0f) {
 				_speed.X = std::max(absSpeed, 2.0f) * (_speed.X >= 0.0f ? -1.0f : 1.0f);
 				crateContainer->DecreaseHealth(1, this);
 				return true;
 			}
-		} else if (auto ammoCrate = dynamic_cast<Solid::AmmoCrate*>(other.get())) {
+		} else if (auto* ammoCrate = runtime_cast<Solid::AmmoCrate*>(other)) {
 			float absSpeed = std::abs(_speed.X);
 			if (absSpeed > 2.0f) {
 				_speed.X = std::max(absSpeed, 2.0f) * (_speed.X >= 0.0f ? -1.0f : 1.0f);
 				ammoCrate->DecreaseHealth(1, this);
 				return true;
 			}
-		} else if (auto gemCrate = dynamic_cast<Solid::GemCrate*>(other.get())) {
+		} else if (auto* gemCrate = runtime_cast<Solid::GemCrate*>(other)) {
 			float absSpeed = std::abs(_speed.X);
 			if (absSpeed > 2.0f) {
 				_speed.X = std::max(absSpeed, 2.0f) * (_speed.X >= 0.0f ? -1.0f : 1.0f);

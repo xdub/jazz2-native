@@ -31,7 +31,7 @@ namespace Jazz2
 	{
 		GenericGraphicResourceFlags Flags;
 		std::unique_ptr<Texture> TextureDiffuse;
-		std::unique_ptr<Texture> TextureNormal;
+		//std::unique_ptr<Texture> TextureNormal;
 		std::unique_ptr<uint8_t[]> Mask;
 		Vector2i FrameDimensions;
 		Vector2i FrameConfiguration;
@@ -112,6 +112,8 @@ namespace Jazz2
 		String PreviousEpisode;
 		String NextEpisode;
 		std::uint16_t Position;
+		std::unique_ptr<Texture> TitleImage;
+		std::unique_ptr<Texture> BackgroundImage;
 
 		Episode() noexcept;
 	};

@@ -3,8 +3,11 @@
 #include "MainMenu.h"
 #include "MenuResources.h"
 #include "../../PreferencesCache.h"
-#include "../../../nCine/Base/Algorithms.h"
 #include "../../../nCine/Base/FrameTimer.h"
+
+#if defined(WITH_MULTIPLAYER)
+#	include "CreateServerOptionsSection.h"
+#endif
 
 #include <Utf8.h>
 
@@ -12,8 +15,8 @@ using namespace Jazz2::UI::Menu::Resources;
 
 namespace Jazz2::UI::Menu
 {
-	EpisodeSelectSection::EpisodeSelectSection()
-		: _expandedAnimation(0.0f), _expanded(false), _shouldStart(false)
+	EpisodeSelectSection::EpisodeSelectSection(bool multiplayer)
+		: _multiplayer(multiplayer), _expandedAnimation(0.0f), _expanded(false), _shouldStart(false)
 	{
 		auto& resolver = ContentResolver::Get();
 
@@ -38,7 +41,7 @@ namespace Jazz2::UI::Menu
 			AddEpisode(item);
 		}
 
-		quicksort(_items.begin(), _items.end(), [](const ListViewItem& a, const ListViewItem& b) -> bool {
+		sort(_items.begin(), _items.end(), [](const ListViewItem& a, const ListViewItem& b) -> bool {
 			return (a.Item.Description.Position < b.Item.Description.Position);
 		});
 	}
@@ -62,14 +65,14 @@ namespace Jazz2::UI::Menu
 				if (_root->ActionHit(PlayerActions::Fire)) {
 					OnExecuteSelected();
 				} else if (_root->ActionHit(PlayerActions::Left)) {
-					if (_expanded) {
+					if (!_multiplayer && _expanded) {
 						_root->PlaySfx("MenuSelect"_s, 0.5f);
 						_expanded = false;
 						_expandedAnimation = 0.0f;
 						EnsureVisibleSelected();
 					}
 				} else if (_root->ActionHit(PlayerActions::Right)) {
-					if ((_items[_selectedIndex].Item.Flags & EpisodeDataFlags::CanContinue) == EpisodeDataFlags::CanContinue) {
+					if (!_multiplayer && !_expanded && (_items[_selectedIndex].Item.Flags & EpisodeDataFlags::CanContinue) == EpisodeDataFlags::CanContinue) {
 						_root->PlaySfx("MenuSelect"_s, 0.5f);
 						_expanded = true;
 						EnsureVisibleSelected();
@@ -125,7 +128,13 @@ namespace Jazz2::UI::Menu
 		_root->DrawElement(MenuLine, 1, centerX, bottomLine, IMenuContainer::MainLayer, Alignment::Center, Colorf::White, 1.6f);
 
 		int32_t charOffset = 0;
-		_root->DrawStringShadow(_("Play Story"), charOffset, centerX, TopLine - 21.0f, IMenuContainer::FontLayer,
+		_root->DrawStringShadow(
+#if defined(WITH_MULTIPLAYER)
+			_multiplayer ? _("Play Story in Cooperation") : _("Play Story"),
+#else
+			_("Play Story"),
+#endif
+			charOffset, centerX, TopLine - 21.0f, IMenuContainer::FontLayer,
 			Alignment::Center, Colorf(0.46f, 0.46f, 0.46f, 0.5f), 0.9f, 0.7f, 1.1f, 1.1f, 0.4f, 0.9f);
 	}
 
@@ -155,14 +164,21 @@ namespace Jazz2::UI::Menu
 				float expandedAnimation2 = std::min(_expandedAnimation * 6.0f, 1.0f);
 				float expandedAnimation3 = (expandedAnimation2 * expandedAnimation2 * (3.0f - 2.0f * expandedAnimation2));
 
-				_root->DrawElement(MenuGlow, 0, centerX, item.Y, IMenuContainer::MainLayer, Alignment::Center, Colorf(1.0f, 1.0f, 1.0f, 0.4f * size), (Utf8::GetLength(item.Item.Description.DisplayName) + 3) * 0.5f * size, 4.0f * size, true);
+				if (item.Item.Description.TitleImage != nullptr) {
+					Vector2i titleSize = item.Item.Description.TitleImage->size() / 2;
+					_root->DrawTexture(*item.Item.Description.TitleImage, centerX, item.Y + 2.2f, IMenuContainer::FontLayer + 8, Alignment::Center, Vector2f(titleSize.X, titleSize.Y) * size * (1.0f - expandedAnimation3 * 0.2f) * 1.02f, Colorf(0.0f, 0.0f, 0.0f, 0.26f - expandedAnimation3 * 0.1f));
+					float alpha = 1.0f - expandedAnimation3 * 0.4f;
+					_root->DrawTexture(*item.Item.Description.TitleImage, centerX, item.Y, IMenuContainer::FontLayer + 10, Alignment::Center, Vector2f(titleSize.X, titleSize.Y) * size * (1.0f - expandedAnimation3 * 0.2f), Colorf(alpha, alpha, alpha, 1.0f));
+				} else {
+					_root->DrawElement(MenuGlow, 0, centerX, item.Y, IMenuContainer::MainLayer, Alignment::Center, Colorf(1.0f, 1.0f, 1.0f, 0.4f * size), (Utf8::GetLength(item.Item.Description.DisplayName) + 3) * 0.5f * size, 4.0f * size, true);
 
-				Colorf nameColor = Font::RandomColor;
-				nameColor.SetAlpha(0.5f - expandedAnimation3 * 0.15f);
-				_root->DrawStringShadow(item.Item.Description.DisplayName, charOffset, centerX, item.Y, IMenuContainer::FontLayer + 10,
-					Alignment::Center, nameColor, size, 0.7f, 1.1f, 1.1f, 0.4f, 0.9f);
+					Colorf nameColor = Font::RandomColor;
+					nameColor.SetAlpha(0.5f - expandedAnimation3 * 0.15f);
+					_root->DrawStringShadow(item.Item.Description.DisplayName, charOffset, centerX, item.Y, IMenuContainer::FontLayer + 10,
+						Alignment::Center, nameColor, size, 0.7f, 1.1f, 1.1f, 0.4f, 0.9f);
+				}
 
-				if ((item.Item.Flags & EpisodeDataFlags::CanContinue) == EpisodeDataFlags::CanContinue) {
+				if (!_multiplayer && (item.Item.Flags & EpisodeDataFlags::CanContinue) == EpisodeDataFlags::CanContinue) {
 					float expandX = centerX + (item.Item.Description.DisplayName.size() + 3) * 2.8f * size + 40.0f;
 					float moveX = expandedAnimation3 * -12.0f;
 					_root->DrawStringShadow(">"_s, charOffset, expandX + moveX, item.Y, IMenuContainer::FontLayer + 20,
@@ -210,10 +226,44 @@ namespace Jazz2::UI::Menu
 
 		if ((item.Item.Flags & (EpisodeDataFlags::IsCompleted | EpisodeDataFlags::IsAvailable)) == (EpisodeDataFlags::IsCompleted | EpisodeDataFlags::IsAvailable)) {
 			float size = (isSelected ? 0.5f + IMenuContainer::EaseOutElastic(_animation) * 0.6f : 0.7f);
-			float expandX = centerX - (item.Item.Description.DisplayName.size() + 3) * 4.0f * (isSelected ? size : 1.1f) + 10.0f;
+			float textWidth = item.Item.Description.DisplayName.size() + 3;
+			if (isSelected) {
+				if (item.Item.Description.Name == "prince"_s || item.Item.Description.Name == "share"_s) {
+					// "Formerly a Prince" & "Shareware Demo" title image is too narrow, so try to adjust it a bit
+					textWidth *= 0.8f;
+				} else if (item.Item.Description.Name == "flash"_s) {
+					// "Flashback" title image is too wide, so try to adjust it a bit
+					textWidth *= 1.5f;
+				}
+			}
+			float expandedAnimation2 = std::min(_expandedAnimation * 6.0f, 1.0f);
+			float expandX = centerX - textWidth * 4.0f * (isSelected ? (size - (expandedAnimation2 * 0.12f)) : 1.1f) + 10.0f;
 			_root->DrawElement(EpisodeComplete, 0, expandX, item.Y - 2.0f, IMenuContainer::MainLayer + (isSelected ? 20 : 10), Alignment::Right,
 				((item.Item.Flags & EpisodeDataFlags::CheatsUsed) == EpisodeDataFlags::CheatsUsed ? Colorf::Black : Colorf::White), size, size);
 		}
+	}
+
+	void EpisodeSelectSection::OnDrawClipped(Canvas* canvas)
+	{
+		if (!_items.empty()) {
+			auto& item = _items[_selectedIndex];
+			if (item.Item.Description.BackgroundImage != nullptr) {
+				Vector2f center = Vector2f(canvas->ViewSize.X * 0.5f, canvas->ViewSize.Y * 0.7f);
+				Vector2i backgroundSize = item.Item.Description.BackgroundImage->size();
+
+				float expandedAnimation2 = std::min(_expandedAnimation * 6.0f, 1.0f);
+				float expandedAnimation3 = (expandedAnimation2 * expandedAnimation2 * (3.0f - 2.0f * expandedAnimation2));
+				if (expandedAnimation3 > 0.0f) {
+					backgroundSize += expandedAnimation3 * 100;
+				}
+
+				_root->DrawSolid(center.X, center.Y, IMenuContainer::BackgroundLayer - 10, Alignment::Center, Vector2f(backgroundSize.X + 2.0f, backgroundSize.Y + 2.0f), Colorf(1.0f, 1.0f, 1.0f, 0.26f));
+				float alpha = 0.4f - expandedAnimation3 * 0.1f;
+				_root->DrawTexture(*item.Item.Description.BackgroundImage, center.X, center.Y, IMenuContainer::BackgroundLayer, Alignment::Center, Vector2f(backgroundSize.X, backgroundSize.Y), Colorf(alpha, alpha, alpha, 1.0f));
+			}
+		}
+
+		ScrollableMenuSection::OnDrawClipped(canvas);
 	}
 
 	void EpisodeSelectSection::OnDrawOverlay(Canvas* canvas)
@@ -293,22 +343,30 @@ namespace Jazz2::UI::Menu
 		if ((selectedItem.Item.Flags & EpisodeDataFlags::IsAvailable) == EpisodeDataFlags::IsAvailable || PreferencesCache::AllowCheatsUnlock) {
 			_root->PlaySfx("MenuSelect"_s, 0.6f);
 
+#if defined(WITH_MULTIPLAYER)
+			if (_multiplayer) {
+				_root->SwitchToSection<CreateServerOptionsSection>(selectedItem.Item.Description.Name, selectedItem.Item.Description.FirstLevel, selectedItem.Item.Description.PreviousEpisode);
+				return;
+			}
+#endif
+
 			if ((selectedItem.Item.Flags & EpisodeDataFlags::CanContinue) == EpisodeDataFlags::CanContinue) {
 				if (_expanded) {
+					// Remove saved progress and restart the episode
 					PreferencesCache::RemoveEpisodeContinue(selectedItem.Item.Description.Name);
 
 					selectedItem.Item.Flags &= ~EpisodeDataFlags::CanContinue;
 					_expandedAnimation = 0.0f;
 					_expanded = false;
-
-					_root->SwitchToSection<StartGameOptionsSection>(selectedItem.Item.Description.Name, selectedItem.Item.Description.FirstLevel, selectedItem.Item.Description.PreviousEpisode);
 				} else {
+					// Continue from the last level
 					_shouldStart = true;
 					_transitionTime = 1.0f;
+					return;
 				}
-			} else {
-				_root->SwitchToSection<StartGameOptionsSection>(selectedItem.Item.Description.Name, selectedItem.Item.Description.FirstLevel, selectedItem.Item.Description.PreviousEpisode);
 			}
+
+			_root->SwitchToSection<StartGameOptionsSection>(selectedItem.Item.Description.Name, selectedItem.Item.Description.FirstLevel, selectedItem.Item.Description.PreviousEpisode);
 		}
 	}
 
@@ -319,7 +377,7 @@ namespace Jazz2::UI::Menu
 
 		PlayerType players[] = { (PlayerType)((episodeContinue->State.DifficultyAndPlayerType >> 4) & 0x0f) };
 		LevelInitialization levelInit(selectedItem.Item.Description.Name, episodeContinue->LevelName, (GameDifficulty)(episodeContinue->State.DifficultyAndPlayerType & 0x0f),
-			PreferencesCache::EnableReforged, false, players, countof(players));
+			PreferencesCache::EnableReforgedGameplay, false, players, countof(players));
 
 		if ((episodeContinue->State.Flags & EpisodeContinuationFlags::CheatsUsed) == EpisodeContinuationFlags::CheatsUsed) {
 			levelInit.CheatsUsed = true;
@@ -341,8 +399,8 @@ namespace Jazz2::UI::Menu
 		}
 
 		auto& resolver = ContentResolver::Get();
-		std::optional<Episode> description = resolver.GetEpisodeByPath(episodeFile);
-		if (description.has_value()) {
+		std::optional<Episode> description = resolver.GetEpisodeByPath(episodeFile, true);
+		if (description) {
 #if defined(SHAREWARE_DEMO_ONLY)
 			// Check if specified episode is unlocked, used only if compiled with SHAREWARE_DEMO_ONLY
 			if (description->Name == "prince"_s && (PreferencesCache::UnlockedEpisodes & UnlockableEpisodes::FormerlyAPrince) == UnlockableEpisodes::None) return;
@@ -354,7 +412,7 @@ namespace Jazz2::UI::Menu
 #endif
 
 			auto& episode = _items.emplace_back();
-			episode.Item.Description = std::move(description.value());
+			episode.Item.Description = std::move(*description);
 			episode.Item.Flags = EpisodeDataFlags::None;
 
 			if (!resolver.LevelExists(episode.Item.Description.Name, episode.Item.Description.FirstLevel)) {

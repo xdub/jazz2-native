@@ -27,12 +27,14 @@ namespace Jazz2::UI
 		bool OnDraw(RenderQueue& renderQueue) override;
 		void OnTouchEvent(const TouchEvent& event, uint32_t& overrideActions);
 
-		void ShowLevelText(const StringView& text);
+		void ShowLevelText(const StringView text);
 		void ShowCoins(int32_t count);
 		void ShowGems(int32_t count);
 
 		void BeginFadeIn();
 		void BeginFadeOut(float delay = 0.0f);
+
+		bool IsWeaponWheelVisible() const;
 
 	private:
 		enum class TransitionState {
@@ -55,8 +57,7 @@ namespace Jazz2::UI
 			Alignment Align;
 		};
 
-		struct Vertex
-		{
+		struct Vertex {
 			float X, Y;
 			float U, V;
 
@@ -114,6 +115,7 @@ namespace Jazz2::UI
 		float _touchButtonsTimer;
 
 		void DrawHealth(const Rectf& view, const Rectf& adjustedView, Actors::Player* player);
+		void DrawHealthCarrots(float x, float y, std::int32_t health);
 		void DrawScore(const Rectf& view, Actors::Player* player);
 		void DrawWeaponAmmo(const Rectf& adjustedView, Actors::Player* player);
 		void DrawActiveBoss(const Rectf& adjustedView);

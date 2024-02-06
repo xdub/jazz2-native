@@ -11,6 +11,7 @@
 #include "../../nCine/Graphics/BaseSprite.h"
 #include "../../nCine/Graphics/SceneNode.h"
 
+#include <Base/TypeInfo.h>
 #include <Containers/StringView.h>
 
 // If coroutines are not supported, load resources synchronously
@@ -138,6 +139,8 @@ namespace Jazz2::Actors
 
 	class ActorBase : public std::enable_shared_from_this<ActorBase>
 	{
+		DEATH_RUNTIME_OBJECT();
+
 		friend class Jazz2::LevelHandler;
 #if defined(WITH_MULTIPLAYER)
 		friend class Jazz2::Multiplayer::MultiLevelHandler;
@@ -219,6 +222,7 @@ namespace Jazz2::Actors
 			bool OnDraw(RenderQueue& renderQueue) override;
 
 			bool IsAnimationRunning();
+			ActorRendererType GetRendererType() const;
 
 		protected:
 			void textureHasChanged(Texture* newTexture) override;
@@ -285,7 +289,7 @@ namespace Jazz2::Actors
 		void CreateSpriteDebris(AnimState state, int count);
 		virtual float GetIceShrapnelScale() const;
 
-		std::shared_ptr<AudioBufferPlayer> PlaySfx(const StringView& identifier, float gain = 1.0f, float pitch = 1.0f);
+		std::shared_ptr<AudioBufferPlayer> PlaySfx(const StringView identifier, float gain = 1.0f, float pitch = 1.0f);
 		bool SetAnimation(AnimState state, bool skipAnimation = false);
 		bool SetTransition(AnimState state, bool cancellable, const std::function<void()>& callback = nullptr);
 		bool SetTransition(AnimState state, bool cancellable, std::function<void()>&& callback);
@@ -294,11 +298,11 @@ namespace Jazz2::Actors
 		virtual void OnAnimationStarted();
 		virtual void OnAnimationFinished();
 
-		static void PreloadMetadataAsync(const StringView& path);
-		void RequestMetadata(const StringView& path);
+		static void PreloadMetadataAsync(const StringView path);
+		void RequestMetadata(const StringView path);
 
 #if defined(WITH_COROUTINES)
-		auto RequestMetadataAsync(const StringView& path)
+		auto RequestMetadataAsync(const StringView path)
 		{
 			struct awaitable {
 				ActorBase* actor;
@@ -318,7 +322,7 @@ namespace Jazz2::Actors
 			return awaitable{this, path};
 		}
 #else
-		void RequestMetadataAsync(const StringView& path);
+		void RequestMetadataAsync(const StringView path);
 #endif
 
 		constexpr void SetState(ActorState flags) noexcept

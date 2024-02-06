@@ -6,6 +6,8 @@ namespace Jazz2::Actors
 {
 	class SolidObjectBase : public ActorBase
 	{
+		DEATH_RUNTIME_OBJECT(ActorBase);
+
 	public:
 		SolidObjectBase();
 		~SolidObjectBase();

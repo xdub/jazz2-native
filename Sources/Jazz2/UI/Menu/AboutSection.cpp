@@ -36,7 +36,7 @@
 #endif
 
 #if defined(WITH_SDL)
-#	define _i6 ", SDL"
+#	define _i6 ", SDL2"
 #else
 #	define _i6 ""
 #endif
@@ -87,19 +87,25 @@
 #	define _i13 ""
 #endif
 
-#if defined(DEATH_CPU_USE_RUNTIME_DISPATCH)
-#	define _i14 " (CPU Dispatch)"
+#if defined(WITH_MULTIPLAYER)
+#	define _i14 ", ENet"
 #else
 #	define _i14 ""
 #endif
 
-#if defined(WITH_TRACY)
-#	define _i15 "\n\nTracy integration is enabled!"
+#if defined(DEATH_CPU_USE_RUNTIME_DISPATCH)
+#	define _i15 ", GNU IFUNC"
 #else
 #	define _i15 ""
 #endif
 
-#define ADDITIONAL_INFO _i1 _i2 _i3 _i4 _i5 _i6 _i7 _i8 _i9 _i10 _i11 _i12 _i13 _i14 _i15
+#if defined(WITH_TRACY)
+#	define _i16 "\n\nTracy integration is enabled!"
+#else
+#	define _i16 ""
+#endif
+
+#define ADDITIONAL_INFO _i1 _i2 _i3 _i4 _i5 _i6 _i7 _i8 _i9 _i10 _i11 _i12 _i13 _i14 _i15 _i16
 
 using namespace Jazz2::UI::Menu::Resources;
 
@@ -125,7 +131,7 @@ namespace Jazz2::UI::Menu
 		pos.Y = std::round(std::max(150.0f, pos.Y * 0.86f));
 
 		_root->DrawElement(MenuDim, pos.X, pos.Y + 24.0f - 2.0f, IMenuContainer::BackgroundLayer,
-			Alignment::Top, Colorf::Black, Vector2f(680.0f, 200.0f), Vector4f(1.0f, 0.0f, 0.7f, 0.0f));
+			Alignment::Top, Colorf::Black, Vector2f(680.0f, 200.0f), Vector4f(1.0f, 0.0f, -0.7f, 0.7f));
 
 		pos.X = std::round(pos.X * 0.35f);
 
@@ -134,7 +140,7 @@ namespace Jazz2::UI::Menu
 		// TRANSLATORS: Main information in About section
 		_root->DrawStringShadow(_f("Reimplementation of the game \f[c:0x9e7056]Jazz Jackrabbit 2\f[c] released in 1998. Supports various\nversions of the game (Shareware Demo, Holiday Hare '98, The Secret Files and\nChristmas Chronicles). Also, it partially supports some features of JJ2+ extension.\nFor more information, visit the official website: %s", "\f[c:0x707070]https://deat.tk/jazz2/\f[c]"),
 			charOffset, viewSize.X * 0.5f, pos.Y - 22.0f, IMenuContainer::FontLayer,
-			Alignment::Center, Font::DefaultColor, 0.7f, 0.4f, 0.6f, 0.6f, 0.6f, 0.9f, 1.2f);
+			Alignment::Center, Font::DefaultColor, 0.7f, 0.4f, 0.0f, 0.0f, 0.0f, 0.9f, 1.2f);
 
 		// TRANSLATORS: Header in About section
 		_root->DrawStringShadow(_("Created By"), charOffset, pos.X, pos.Y + 42.0f, IMenuContainer::FontLayer,

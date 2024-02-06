@@ -6,6 +6,8 @@ namespace Jazz2::Actors::Enemies
 {
 	class Bee : public EnemyBase
 	{
+		DEATH_RUNTIME_OBJECT(EnemyBase);
+
 	public:
 		Bee();
 		~Bee();

@@ -11,6 +11,8 @@ namespace Jazz2::Actors::Collectibles
 {
 	class CollectibleBase : public ActorBase
 	{
+		DEATH_RUNTIME_OBJECT(ActorBase);
+
 	public:
 		CollectibleBase();
 

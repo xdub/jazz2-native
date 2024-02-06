@@ -7,6 +7,8 @@ namespace Jazz2::Actors::Bosses
 {
 	class DevanRemote : public BossBase
 	{
+		DEATH_RUNTIME_OBJECT(BossBase);
+
 	public:
 		DevanRemote();
 		~DevanRemote();

@@ -172,7 +172,7 @@ namespace Jazz2::Actors::Enemies
 
 	bool Witch::MagicBullet::OnHandleCollision(std::shared_ptr<ActorBase> other)
 	{
-		if (auto player = dynamic_cast<Player*>(other.get())) {
+		if (auto* player = runtime_cast<Player*>(other)) {
 			DecreaseHealth(INT32_MAX);
 			_owner->OnPlayerHit();
 
@@ -209,9 +209,8 @@ namespace Jazz2::Actors::Enemies
 
 		if (found) {
 			Vector2f diff = (targetPos - _pos).Normalized();
-			Vector2f speed = (Vector2f(_speed.X, _speed.Y) + diff * 0.8f).Normalized();
-			_speed.X = speed.X * 5.0f;
-			_speed.Y = speed.Y * 5.0f;
+			Vector2f speed = (_speed + diff * 0.8f).Normalized();
+			_speed = speed * 5.0f;
 			_renderer.setRotation(atan2f(_speed.Y, _speed.X));
 		}
 	}

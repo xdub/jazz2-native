@@ -54,8 +54,7 @@ namespace Jazz2::Actors
 		// Recalculate hotspot
 		GraphicResource* res = (_currentTransition != nullptr ? _currentTransition : _currentAnimation);
 		if (res != nullptr) {
-			_renderer.Hotspot.X = -((res->Base->FrameDimensions.X / 2) - (IsFacingLeft() ? (res->Base->FrameDimensions.X - res->Base->Hotspot.X) : res->Base->Hotspot.X));
-			_renderer.Hotspot.Y = -((res->Base->FrameDimensions.Y / 2) - res->Base->Hotspot.Y);
+			_renderer.Hotspot.X = (IsFacingLeft() ? (res->Base->FrameDimensions.X - res->Base->Hotspot.X) : res->Base->Hotspot.X);
 		}
 	}
 
@@ -275,6 +274,7 @@ namespace Jazz2::Actors
 						// If no angle worked in the previous step, the actor is facing a wall
 						if (xDiff > CollisionCheckStep || (xDiff > 0.0f && currentElasticity > 0.0f)) {
 							_speed.X = -(currentElasticity * _speed.X);
+							_externalForce.X = 0.0f;
 						}
 						OnHitWall(timeMult);
 					}
@@ -333,6 +333,7 @@ namespace Jazz2::Actors
 					if (xDiff < std::abs(effectiveSpeedX) * 0.3f) {
 						if (xDiff > 0.0f && currentElasticity > 0.0f) {
 							_speed.X = -(currentElasticity * _speed.X);
+							_externalForce.X = 0.0f;
 						}
 
 						// Don't call OnHitWall() if OnHitFloor() or OnHitCeiling() was called this step
@@ -420,7 +421,7 @@ namespace Jazz2::Actors
 		return 1.0f;
 	}
 
-	std::shared_ptr<AudioBufferPlayer> ActorBase::PlaySfx(const StringView& identifier, float gain, float pitch)
+	std::shared_ptr<AudioBufferPlayer> ActorBase::PlaySfx(const StringView identifier, float gain, float pitch)
 	{
 		auto it = _metadata->Sounds.find(String::nullTerminatedView(identifier));
 		if (it != _metadata->Sounds.end()) {
@@ -1036,13 +1037,8 @@ namespace Jazz2::Actors
 		_renderer.AnimDuration = res->AnimDuration;
 		_renderer.AnimTime = (skipAnimation && res->AnimDuration >= 0.0f && _renderer.LoopMode != AnimationLoopMode::FixedSingle ? _renderer.AnimDuration : 0.0f);
 
-		_renderer.Hotspot.X = -((res->Base->FrameDimensions.X * 0.5f) - (IsFacingLeft() ? (res->Base->FrameDimensions.X - res->Base->Hotspot.X) : res->Base->Hotspot.X));
-		_renderer.Hotspot.Y = -((res->Base->FrameDimensions.Y * 0.5f) - res->Base->Hotspot.Y);
-
-		if (!PreferencesCache::UnalignedViewport) {
-			_renderer.Hotspot.X = std::round(_renderer.Hotspot.X);
-			_renderer.Hotspot.Y = std::round(_renderer.Hotspot.Y);
-		}
+		_renderer.Hotspot.X = (IsFacingLeft() ? (res->Base->FrameDimensions.X - res->Base->Hotspot.X) : res->Base->Hotspot.X);
+		_renderer.Hotspot.Y = res->Base->Hotspot.Y;
 
 		_renderer.setTexture(res->Base->TextureDiffuse.get());
 		_renderer.UpdateVisibleFrames();
@@ -1054,18 +1050,18 @@ namespace Jazz2::Actors
 		}
 	}
 
-	void ActorBase::PreloadMetadataAsync(const StringView& path)
+	void ActorBase::PreloadMetadataAsync(const StringView path)
 	{
 		ContentResolver::Get().PreloadMetadataAsync(path);
 	}
 
-	void ActorBase::RequestMetadata(const StringView& path)
+	void ActorBase::RequestMetadata(const StringView path)
 	{
 		_metadata = ContentResolver::Get().RequestMetadata(path);
 	}
 	
 #if !defined(WITH_COROUTINES)
-	void ActorBase::RequestMetadataAsync(const StringView& path)
+	void ActorBase::RequestMetadataAsync(const StringView path)
 	{
 		_metadata = ContentResolver::Get().RequestMetadata(path);
 	}
@@ -1097,13 +1093,13 @@ namespace Jazz2::Actors
 
 	void ActorBase::HandleFrozenStateChange(ActorBase* shot)
 	{
-		if (auto* freezerShot = dynamic_cast<Weapons::FreezerShot*>(shot)) {
-			if (dynamic_cast<ActorBase*>(freezerShot->GetOwner()) != this) {
+		if (auto* freezerShot = runtime_cast<Weapons::FreezerShot*>(shot)) {
+			if (runtime_cast<ActorBase*>(freezerShot->GetOwner()) != this) {
 				_frozenTimeLeft = freezerShot->FrozenDuration();
 				_renderer.AnimPaused = true;
 				freezerShot->DecreaseHealth(INT32_MAX);
 			}
-		} else if(auto* toasterShot = dynamic_cast<Weapons::ToasterShot*>(shot)) {
+		} else if(auto* toasterShot = runtime_cast<Weapons::ToasterShot*>(shot)) {
 			_frozenTimeLeft = std::min(1.0f, _frozenTimeLeft);
 		}
 	}
@@ -1227,16 +1223,8 @@ namespace Jazz2::Actors
 
 		Vector2f pos = _owner->_pos;
 		if (!PreferencesCache::UnalignedViewport || (_owner->_state & ActorState::IsDirty) != ActorState::IsDirty) {
-			if (!PreferencesCache::UnalignedViewport || (FrameDimensions.X & 1) == 0) {
-				pos.X = std::round(pos.X);
-			} else {
-				pos.X = std::floor(pos.X);
-			}
-			if (!PreferencesCache::UnalignedViewport || (FrameDimensions.Y & 1) == 0) {
-				pos.Y = std::round(pos.Y);
-			} else {
-				pos.Y = std::floor(pos.Y);
-			}
+			pos.X = std::floor(pos.X);
+			pos.Y = std::floor(pos.Y);
 		}
 		setPosition(pos.X, pos.Y);
 
@@ -1321,6 +1309,11 @@ namespace Jazz2::Actors
 			default:
 				return false;
 		}
+	}
+
+	ActorRendererType ActorBase::ActorRenderer::GetRendererType() const
+	{
+		return _rendererType;
 	}
 
 	void ActorBase::ActorRenderer::UpdateVisibleFrames()

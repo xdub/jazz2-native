@@ -10,56 +10,54 @@ namespace Jazz2::Multiplayer
 	{
 		Null,
 		Ping,
+		Reserved,
 
 		Auth,
 		LevelReady,
 
 		PlayerUpdate,
-		PlayerKeyPress,
-		PlayerRefreshAnimation,
-		PlayerFireWeapon,
-		PlayerDied,
-
-		CreateRemotableActor,
-		UpdateRemotableActor,
-		DestroyRemotableActor
+		PlayerKeyPress
 	};
 
 	enum class ServerPacketType
 	{
 		Null,
 		Pong,
+		Reserved,
 
 		LoadLevel,
+		ChangeGameMode,
 		PlaySfx,
 		PlayCommonSfx,
-		ShowMessage,
-		OverrideLevelText,
+		ShowMessage,				// TODO
+		OverrideLevelText,			// TODO
+		SyncTileMap,
 		SetTrigger,
 		AdvanceTileAnimation,
-		RevertTileAnimation,
+		RevertTileAnimation,		// TODO
 
 		CreateControllablePlayer,
 		CreateRemoteActor,
-		RefreshActorAnimation,
+		CreateMirroredActor,
 		DestroyRemoteActor,
 		UpdateAllActors,
 
 		PlayerMoveInstantly,
-		PlayerAckWarped,
-		PlayerActivateForce,
-		PlayerAddHealth,
+		PlayerAckWarped,			// TODO
+		PlayerActivateForce,		// TODO
+		PlayerAddHealth,			// TODO
+		PlayerChangeWeapon,
 		PlayerRefreshAmmo,
 		PlayerRefreshWeaponUpgrades,
-		PlayerSetControllable,
-		PlayerSetDizzyTime,
-		PlayerSetInvulnerability,
-		PlayerSetLaps,
-		PlayerSetModifier,
-		PlayerSetStats,
+		PlayerSetControllable,		// TODO
+		PlayerSetDizzyTime,			// TODO
+		PlayerSetInvulnerability,	// TODO
+		PlayerSetLaps,				// TODO
+		PlayerSetModifier,			// TODO
+		PlayerSetStats,				// TODO
 		PlayerTakeDamage,
 		PlayerActivateSpring,
-		PlayerWarpToPosition
+		PlayerWarpIn
 	};
 }
 

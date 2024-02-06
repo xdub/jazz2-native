@@ -55,9 +55,9 @@ namespace Jazz2::Compatibility
 
 		JJ2Level() : _version(JJ2Version::Unknown), _animCount(0), _verticalMPSplitscreen(false), _isMpLevel(false), _hasPit(false), _hasPitInstantDeath(false), _hasCTF(false), _hasLaps(false), _useLevelPalette(false) { }
 
-		bool Open(const StringView& path, bool strictParser);
+		bool Open(const StringView path, bool strictParser);
 
-		void Convert(const String& targetPath, const EventConverter& eventConverter, const std::function<LevelToken(const StringView&)>& levelTokenConversion = nullptr);
+		void Convert(const StringView targetPath, const EventConverter& eventConverter, const std::function<LevelToken(const StringView)>& levelTokenConversion = nullptr);
 		void AddLevelTokenTextID(uint8_t textId);
 
 		JJ2Version GetVersion() const {
@@ -137,7 +137,7 @@ namespace Jazz2::Compatibility
 		JJ2Version _version;
 
 		uint16_t _animCount;
-		bool _verticalMPSplitscreen, _isMpLevel;
+		bool _isHidden, _verticalMPSplitscreen, _isMpLevel;
 		bool _hasPit, _hasPitInstantDeath, _hasCTF, _hasLaps;
 		uint32_t _darknessColor;
 		WeatherType _weatherType;
@@ -163,6 +163,6 @@ namespace Jazz2::Compatibility
 		void LoadMlleData(JJ2Block& block, uint32_t version, const StringView& path, bool strictParser);
 
 		static void WriteLevelName(Stream& so, MutableStringView value, const std::function<LevelToken(MutableStringView&)>& levelTokenConversion = nullptr);
-		static bool StringHasSuffixIgnoreCase(const StringView& value, const StringView& suffix);
+		static bool StringHasSuffixIgnoreCase(const StringView value, const StringView suffix);
 	};
 }

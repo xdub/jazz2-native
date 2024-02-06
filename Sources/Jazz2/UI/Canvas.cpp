@@ -40,7 +40,7 @@ namespace Jazz2::UI
 			command->material().reserveUniformsDataMemory();
 			command->geometry().setDrawParameters(GL_TRIANGLE_STRIP, 0, 4);
 			// Required to reset render command properly
-			command->setTransformation(command->transformation());
+			//command->setTransformation(command->transformation());
 
 			GLUniformCache* textureUniform = command->material().uniform(Material::TextureUniformName);
 			if (textureUniform && textureUniform->intValue(0) != 0) {
@@ -59,7 +59,13 @@ namespace Jazz2::UI
 		instanceBlock->uniform(Material::SpriteSizeUniformName)->setFloatVector(size.Data());
 		instanceBlock->uniform(Material::ColorUniformName)->setFloatVector(color.Data());
 
-		command->setTransformation(Matrix4x4f::Translation(pos.X, pos.Y, 0.0f).RotateZ(angle));
+		Matrix4x4f worldMatrix = Matrix4x4f::Translation(pos.X, pos.Y, 0.0f);
+		if (std::abs(angle) > 0.01f) {
+			worldMatrix.Translate(size.X * 0.5f, size.Y * 0.5f, 0.0f);
+			worldMatrix.RotateZ(angle);
+			worldMatrix.Translate(size.X * -0.5f, size.Y * -0.5f, 0.0f);
+		}
+		command->setTransformation(worldMatrix);
 		command->setLayer(z);
 		command->material().setTexture(texture);
 
@@ -73,7 +79,7 @@ namespace Jazz2::UI
 			command->material().reserveUniformsDataMemory();
 			command->geometry().setDrawParameters(GL_TRIANGLE_STRIP, 0, 4);
 			// Required to reset render command properly
-			command->setTransformation(command->transformation());
+			//command->setTransformation(command->transformation());
 		}
 
 		if (additiveBlending) {
@@ -98,12 +104,12 @@ namespace Jazz2::UI
 
 		// Sprites are aligned to center by default
 		switch (align & Alignment::HorizontalMask) {
-			case Alignment::Left: result.X += size.X * 0.5f; break;
-			case Alignment::Right: result.X -= size.X * 0.5f; break;
+			case Alignment::Center: result.X -= size.X * 0.5f; break;
+			case Alignment::Right: result.X -= size.X; break;
 		}
 		switch (align & Alignment::VerticalMask) {
-			case Alignment::Top: result.Y -= size.Y * 0.5f; break;
-			case Alignment::Bottom: result.Y += size.Y * 0.5f; break;
+			case Alignment::Center: result.Y -= size.Y * 0.5f; break;
+			case Alignment::Bottom: result.Y -= size.Y; break;
 		}
 
 		return result;

@@ -1,21 +1,34 @@
 ﻿#include "JJ2Episode.h"
+#include "JJ2Anims.h"
+#include "JJ2Anims.Palettes.h"
 #include "../ContentResolver.h"
 
 #include "../../nCine/Base/Algorithms.h"
 
+#include <Containers/StringUtils.h>
 #include <IO/FileSystem.h>
 
 using namespace Death::IO;
 
 namespace Jazz2::Compatibility
 {
-	bool JJ2Episode::Open(const StringView& path)
+	JJ2Episode::JJ2Episode()
+		: Position(0), ImageWidth(0), ImageHeight(0), TitleWidth(0), TitleHeight(0)
+	{
+	}
+
+	JJ2Episode::JJ2Episode(const StringView name, const StringView displayName, const StringView firstLevel, int32_t position)
+		: Name(name), DisplayName(displayName), FirstLevel(firstLevel), Position(position), ImageWidth(0), ImageHeight(0), TitleWidth(0), TitleHeight(0)
+	{
+	}
+
+	bool JJ2Episode::Open(const StringView path)
 	{
 		auto s = fs::Open(path, FileAccessMode::Read);
 		RETURNF_ASSERT_MSG(s->IsValid(), "Cannot open file for reading");
 
 		Name = fs::GetFileNameWithoutExtension(path);
-		lowercaseInPlace(Name);
+		StringUtils::lowercaseInPlace(Name);
 
 		// TODO: Implement JJ2+ extended data, but I haven't seen it anywhere yet
 		// the condition of unlocking (currently only defined for 0 meaning "always unlocked"
@@ -47,7 +60,7 @@ namespace Jazz2::Compatibility
 			length++;
 		}
 		PreviousEpisode = String(tmpBuffer, length);
-		lowercaseInPlace(PreviousEpisode);
+		StringUtils::lowercaseInPlace(PreviousEpisode);
 
 		// Next Episode
 		s->Read(tmpBuffer, 32);
@@ -56,7 +69,7 @@ namespace Jazz2::Compatibility
 			length++;
 		}
 		NextEpisode = String(tmpBuffer, length);
-		lowercaseInPlace(NextEpisode);
+		StringUtils::lowercaseInPlace(NextEpisode);
 
 		// First level
 		s->Read(tmpBuffer, 32);
@@ -65,32 +78,35 @@ namespace Jazz2::Compatibility
 			length++;
 		}
 		FirstLevel = String(tmpBuffer, length);
-		lowercaseInPlace(FirstLevel);
+		StringUtils::lowercaseInPlace(FirstLevel);
 
-		// TODO: Episode images are not supported yet
-		/*int32_t width =*/ s->ReadValue<int32_t>();
-		/*int32_t height =*/ s->ReadValue<int32_t>();
+		ImageWidth = s->ReadValue<int32_t>();
+		ImageHeight = s->ReadValue<int32_t>();
 		/*int32_t unknown2 =*/ s->ReadValue<int32_t>();
 		/*int32_t unknown3 =*/ s->ReadValue<int32_t>();
 
-		/*int32_t titleWidth =*/ s->ReadValue<int32_t>();
-		/*int32_t titleHeight =*/ s->ReadValue<int32_t>();
+		TitleWidth = s->ReadValue<int32_t>();
+		TitleHeight = s->ReadValue<int32_t>();
 		/*int32_t unknown4 =*/ s->ReadValue<int32_t>();
 		/*int32_t unknown5 =*/ s->ReadValue<int32_t>();
 
-		// TODO
-		/*{
-			int imagePackedSize = s->ReadValue<int32_t>();
-			int imageUnpackedSize = width * height;
-			JJ2Block imageBlock(s, imagePackedSize, imageUnpackedSize);
-			//episode.image = ConvertIndicesToRgbaBitmap(width, height, imageBlock, false);
-		}
+		// Background image
 		{
-			int titleLightPackedSize = s->ReadValue<int32_t>();
-			int titleLightUnpackedSize = titleWidth * titleHeight;
+			int32_t imagePackedSize = s->ReadValue<int32_t>();
+			int imageUnpackedSize = ImageWidth * ImageHeight;
+			JJ2Block imageBlock(s, imagePackedSize, imageUnpackedSize);
+			ImageData = std::make_unique<uint8_t[]>(imageUnpackedSize);
+			imageBlock.ReadRawBytes(ImageData.get(), imageUnpackedSize);
+		}
+
+		// Title image
+		{
+			int32_t titleLightPackedSize = s->ReadValue<int32_t>();
+			int32_t titleLightUnpackedSize = TitleWidth * TitleHeight;
 			JJ2Block titleLightBlock(s, titleLightPackedSize, titleLightUnpackedSize);
-			episode.titleLight = ConvertIndicesToRgbaBitmap(titleWidth, titleHeight, titleLightBlock, true);
-		}*/
+			TitleData = std::make_unique<uint8_t[]>(titleLightUnpackedSize);
+			titleLightBlock.ReadRawBytes(TitleData.get(), titleLightUnpackedSize);
+		}
 		//{
 		//    int titleDarkPackedSize = r.ReadInt32();
 		//    int titleDarkUnpackedSize = titleWidth * titleHeight;
@@ -101,7 +117,7 @@ namespace Jazz2::Compatibility
 		return true;
 	}
 
-	void JJ2Episode::Convert(const String& targetPath, std::function<JJ2Level::LevelToken(const StringView&)> levelTokenConversion, std::function<String(JJ2Episode*)> episodeNameConversion, std::function<Pair<String, String>(JJ2Episode*)> episodePrevNext)
+	void JJ2Episode::Convert(const StringView targetPath, const std::function<JJ2Level::LevelToken(const StringView)>& levelTokenConversion, const std::function<String(JJ2Episode*)>& episodeNameConversion, const std::function<Pair<String, String>(JJ2Episode*)>& episodePrevNext)
 	{
 		auto so = fs::Open(targetPath, FileAccessMode::Write);
 		ASSERT_MSG(so->IsValid(), "Cannot open file for writing");
@@ -161,5 +177,46 @@ namespace Jazz2::Compatibility
 			so->WriteValue<uint8_t>(0);
 			so->WriteValue<uint8_t>(0);
 		}
+
+		// Write episode title image
+		so->WriteValue<uint16_t>((uint16_t)TitleWidth);
+		so->WriteValue<uint16_t>((uint16_t)TitleHeight);
+
+		uint32_t titlePixelsCount = TitleWidth * TitleHeight;
+		std::unique_ptr<uint8_t[]> titlePixels = std::make_unique<uint8_t[]>(titlePixelsCount * 4);
+		for (uint32_t i = 0; i < titlePixelsCount; i++) {
+			uint8_t colorIdx = TitleData[i];
+
+			// Remove shadow
+			if (colorIdx == 63 || colorIdx == 143) {
+				colorIdx = 0;
+			}
+
+			const Color& src = MenuPalette[colorIdx];
+			titlePixels[i * 4] = src.R;
+			titlePixels[i * 4 + 1] = src.G;
+			titlePixels[i * 4 + 2] = src.B;
+			titlePixels[i * 4 + 3] = src.A;
+		}
+
+		JJ2Anims::WriteImageToFileInternal(so, titlePixels.get(), TitleWidth, TitleHeight, 4);
+
+		// Write episode background image
+		so->WriteValue<uint16_t>((uint16_t)ImageWidth);
+		so->WriteValue<uint16_t>((uint16_t)ImageHeight);
+
+		uint32_t imagePixelsCount = ImageWidth * ImageHeight;
+		std::unique_ptr<uint8_t[]> imagePixels = std::make_unique<uint8_t[]>(imagePixelsCount * 4);
+		for (uint32_t i = 0; i < imagePixelsCount; i++) {
+			uint8_t colorIdx = ImageData[i];
+
+			const Color& src = MenuPalette[colorIdx];
+			imagePixels[i * 4] = src.R;
+			imagePixels[i * 4 + 1] = src.G;
+			imagePixels[i * 4 + 2] = src.B;
+			imagePixels[i * 4 + 3] = src.A;
+		}
+
+		JJ2Anims::WriteImageToFileInternal(so, imagePixels.get(), ImageWidth, ImageHeight, 4);
 	}
 }

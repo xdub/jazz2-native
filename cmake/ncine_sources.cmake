@@ -5,6 +5,7 @@ set(SOURCES
 	${NCINE_SOURCE_DIR}/Shared/Containers/DateTime.cpp
 	${NCINE_SOURCE_DIR}/Shared/Containers/SmallVector.cpp
 	${NCINE_SOURCE_DIR}/Shared/Containers/String.cpp
+	${NCINE_SOURCE_DIR}/Shared/Containers/StringUtils.cpp
 	${NCINE_SOURCE_DIR}/Shared/Containers/StringView.cpp
 	${NCINE_SOURCE_DIR}/Shared/IO/AndroidAssetStream.cpp
 	${NCINE_SOURCE_DIR}/Shared/IO/DeflateStream.cpp
@@ -17,7 +18,6 @@ set(SOURCES
 list(APPEND SOURCES
 	${NCINE_SOURCE_DIR}/nCine/AppConfiguration.cpp
 	${NCINE_SOURCE_DIR}/nCine/Application.cpp
-	${NCINE_SOURCE_DIR}/nCine/ArrayIndexer.cpp
 	${NCINE_SOURCE_DIR}/nCine/I18n.cpp
 	${NCINE_SOURCE_DIR}/nCine/ServiceLocator.cpp
 	${NCINE_SOURCE_DIR}/nCine/Base/Algorithms.cpp
@@ -255,6 +255,7 @@ list(APPEND SOURCES
 	${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/ControlsOptionsSection.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/CustomLevelSelectSection.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/EpisodeSelectSection.cpp
+	${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/FirstRunSection.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/GameplayEnhancementsSection.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/GameplayOptionsSection.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/GraphicsOptionsSection.cpp

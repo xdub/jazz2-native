@@ -37,17 +37,17 @@ namespace Jazz2::Actors::Solid
 		}
 
 		if (_cooldown <= 0.0f) {
-			_levelHandler->FindCollisionActorsByRadius(_pos.X, _pos.Y, 26.0f, [this, timeMult](ActorBase* actor) {
-				if (auto player = dynamic_cast<Player*>(actor)) {
+			_levelHandler->FindCollisionActorsByRadius(_pos.X, _pos.Y, 16.0f, [this, timeMult](ActorBase* actor) {
+				if (auto* player = runtime_cast<Player*>(actor)) {
 					_cooldown = 16.0f;
 
 					SetTransition(_currentAnimation->State | (AnimState)0x200, true);
 					PlaySfx("Hit"_s, 0.8f);
 
-					constexpr float forceMult = 24.0f;
+					constexpr float forceMult = 12.0f;
 					Vector2f force = (player->GetPos() - _pos).Normalize() * forceMult;
 					if (!_levelHandler->IsReforged()) {
-						force.Y *= 0.7f;
+						force.Y *= 0.9f;
 					}
 
 					// Move the player back
@@ -71,17 +71,19 @@ namespace Jazz2::Actors::Solid
 
 					player->_speed.X += force.X * 0.4f;
 					player->_speed.Y += force.Y * 0.4f;
-					player->_externalForce.X += force.X * 0.04f;
-					player->_externalForce.Y += force.Y * 0.04f;
 
-					if (player->_activeModifier == Player::Modifier::None && player->_copterFramesLeft > 0.0f) {
-						player->_copterFramesLeft = 1.0f;
+					if (player->_activeModifier == Player::Modifier::None) {
+						if (player->_copterFramesLeft > 0.0f) {
+							player->_copterFramesLeft = 1.0f;
+						}
+
+						player->_externalForce.X += force.X * 0.04f;
+						player->_externalForce.Y += force.Y * 0.04f;
+						player->_externalForceCooldown = 10.0f;
+						player->_controllable = true;
+						player->SetState(ActorState::CanJump, false);
+						player->EndDamagingMove();
 					}
-
-					player->_externalForceCooldown = 10.0f;
-					player->_controllable = true;
-					player->SetState(ActorState::CanJump, false);
-					player->EndDamagingMove();
 
 					// TODO: Check this
 					player->AddScore(500);

@@ -6,6 +6,8 @@ namespace Jazz2::Actors::Collectibles
 {
 	class CoinCollectible : public CollectibleBase
 	{
+		DEATH_RUNTIME_OBJECT(CollectibleBase);
+
 	public:
 		CoinCollectible();
 

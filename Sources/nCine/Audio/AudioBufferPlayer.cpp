@@ -84,15 +84,19 @@ namespace nCine
 
 				alSourcei(sourceId_, AL_BUFFER, audioBuffer_->bufferId());
 				// Setting OpenAL source looping only if not streaming
-				alSourcei(sourceId_, AL_LOOPING, isLooping_);
+				alSourcei(sourceId_, AL_LOOPING, GetFlags(PlayerFlags::Looping));
 
 				alSourcef(sourceId_, AL_GAIN, gain_);
 				alSourcef(sourceId_, AL_PITCH, pitch_);
 
 				updateFilters();
 
-				alSourcei(sourceId_, AL_SOURCE_RELATIVE, isSourceRelative_ ? AL_TRUE : AL_FALSE);
-				alSource3f(sourceId_, AL_POSITION, position_.X * IAudioDevice::LengthToPhysical, position_.Y * -IAudioDevice::LengthToPhysical, position_.Z * -IAudioDevice::LengthToPhysical);
+				bool isSourceRelative = GetFlags(PlayerFlags::SourceRelative);
+				bool isAs2D = GetFlags(PlayerFlags::As2D);
+				Vector3f adjustedPos = getAdjustedPosition(device, position_, isSourceRelative, isAs2D);
+
+				alSourcei(sourceId_, AL_SOURCE_RELATIVE, isSourceRelative || isAs2D ? AL_TRUE : AL_FALSE);
+				alSource3f(sourceId_, AL_POSITION, adjustedPos.X, adjustedPos.Y, adjustedPos.Z);
 				alSourcef(sourceId_, AL_REFERENCE_DISTANCE, IAudioDevice::ReferenceDistance);
 				alSourcef(sourceId_, AL_MAX_DISTANCE, IAudioDevice::MaxDistance);
 
@@ -162,7 +166,7 @@ namespace nCine
 				IAudioDevice& device = theServiceLocator().audioDevice();
 				device.unregisterPlayer(this);
 			} else {
-				alSourcei(sourceId_, AL_LOOPING, isLooping_);
+				alSourcei(sourceId_, AL_LOOPING, GetFlags(PlayerFlags::Looping));
 			}
 		}
 	}

@@ -6,22 +6,23 @@
 #include <fcntl.h>			// For open()
 #include <unistd.h>			// For close()
 
-namespace Death::IO
-{
+namespace Death { namespace IO {
+//###==##====#=====--==~--~=~- --- -- -  -  -   -
+
 	AAssetManager* AndroidAssetStream::_assetManager = nullptr;
 	const char* AndroidAssetStream::_internalDataPath = nullptr;
 
 	AndroidAssetStream::AndroidAssetStream(const Containers::String& path, FileAccessMode mode)
-		: _asset(nullptr), _fileDescriptor(-1), _startOffset(0L), _shouldCloseOnDestruction(true)
+		: _shouldCloseOnDestruction(true),
+#if defined(DEATH_USE_FILE_DESCRIPTORS)
+			_fileDescriptor(-1), _startOffset(0L)
+#else
+			_asset(nullptr)
+#endif
 	{
 		_type = Type::AndroidAsset;
 		_path = path;
-		
-		if ((mode & FileAccessMode::FileDescriptor) == FileAccessMode::FileDescriptor) {
-			OpenDescriptor(mode);
-		} else {
-			OpenAsset(mode);
-		}
+		Open(mode);
 	}
 
 	AndroidAssetStream::~AndroidAssetStream()
@@ -34,6 +35,7 @@ namespace Death::IO
 	/*! This method will close a file both normally opened or fopened */
 	void AndroidAssetStream::Close()
 	{
+#if defined(DEATH_USE_FILE_DESCRIPTORS)
 		if (_fileDescriptor >= 0) {
 			const std::int32_t retValue = ::close(_fileDescriptor);
 			if (retValue < 0) {
@@ -42,45 +44,48 @@ namespace Death::IO
 				LOGI("File \"%s\" closed", _path.data());
 				_fileDescriptor = -1;
 			}
-		} else if (_asset != nullptr) {
+		}
+#else
+		if (_asset != nullptr) {
 			AAsset_close(_asset);
 			_asset = nullptr;
 			LOGI("File \"%s\" closed", _path.data());
 		}
+#endif
 	}
 
 	std::int32_t AndroidAssetStream::Seek(std::int32_t offset, SeekOrigin origin)
 	{
 		std::int32_t seekValue = -1;
-
+#if defined(DEATH_USE_FILE_DESCRIPTORS)
 		if (_fileDescriptor >= 0) {
 			switch (origin) {
-				case SeekOrigin::Begin:
-					seekValue = ::lseek(_fileDescriptor, _startOffset + offset, SEEK_SET);
-					break;
-				case SeekOrigin::Current:
-					seekValue = ::lseek(_fileDescriptor, offset, SEEK_CUR);
-					break;
-				case SeekOrigin::End:
-					seekValue = ::lseek(_fileDescriptor, _startOffset + _size + offset, SEEK_END);
-					break;
+				case SeekOrigin::Begin: seekValue = ::lseek(_fileDescriptor, _startOffset + offset, SEEK_SET); break;
+				case SeekOrigin::Current: seekValue = ::lseek(_fileDescriptor, offset, SEEK_CUR); break;
+				case SeekOrigin::End: seekValue = ::lseek(_fileDescriptor, _startOffset + _size + offset, SEEK_END); break;
 			}
 			seekValue -= _startOffset;
-		} else if (_asset) {
+		}
+#else
+		if (_asset != nullptr) {
 			seekValue = AAsset_seek(_asset, offset, (std::int32_t)origin);
 		}
+#endif
 		return seekValue;
 	}
 
 	std::int32_t AndroidAssetStream::GetPosition() const
 	{
 		std::int32_t tellValue = -1;
-
+#if defined(DEATH_USE_FILE_DESCRIPTORS)
 		if (_fileDescriptor >= 0) {
-			tellValue = lseek(_fileDescriptor, 0L, SEEK_CUR) - _startOffset;
-		} else if (_asset) {
+			tellValue = ::lseek(_fileDescriptor, 0L, SEEK_CUR) - _startOffset;
+		}
+#else
+		if (_asset != nullptr) {
 			tellValue = AAsset_seek(_asset, 0L, SEEK_CUR);
 		}
+#endif
 		return tellValue;
 	}
 
@@ -89,26 +94,37 @@ namespace Death::IO
 		DEATH_ASSERT(buffer != nullptr, 0, "buffer is nullptr");
 
 		std::int32_t bytesRead = 0;
-
+#if defined(DEATH_USE_FILE_DESCRIPTORS)
 		if (_fileDescriptor >= 0) {
 			std::int32_t bytesToRead = bytes;
-			const std::int32_t seekValue = lseek(_fileDescriptor, 0L, SEEK_CUR);
-
+			const std::int32_t seekValue = ::lseek(_fileDescriptor, 0L, SEEK_CUR);
 			if (seekValue >= _startOffset + _size) {
 				bytesToRead = 0; // Simulating EOF
 			} else if (seekValue + static_cast<std::int32_t>(bytes) > _startOffset + _size) {
 				bytesToRead = (_startOffset + _size) - seekValue;
 			}
 			bytesRead = ::read(_fileDescriptor, buffer, bytesToRead);
-		} else if (_asset != nullptr) {
+		}
+#else
+		if (_asset != nullptr) {
 			bytesRead = AAsset_read(_asset, buffer, bytes);
 		}
+#endif
 		return bytesRead;
+	}
+
+	std::int32_t AndroidAssetStream::Write(const void* buffer, std::int32_t bytes)
+	{
+		return 0;
 	}
 
 	bool AndroidAssetStream::IsValid() const
 	{
-		return (_fileDescriptor >= 0 || _asset != nullptr);
+#if defined(DEATH_USE_FILE_DESCRIPTORS)
+		return (_fileDescriptor >= 0);
+#else
+		return (_asset != nullptr);
+#endif
 	}
 
 	void AndroidAssetStream::InitializeAssetManager(struct android_app* state)
@@ -213,49 +229,47 @@ namespace Death::IO
 		return AAssetDir_getNextFileName(assetDir);
 	}
 
-	void AndroidAssetStream::OpenDescriptor(FileAccessMode mode)
+	void AndroidAssetStream::Open(FileAccessMode mode)
 	{
+#if defined(DEATH_USE_FILE_DESCRIPTORS)
 		// An asset file can only be read
-		if (mode != (FileAccessMode::FileDescriptor | FileAccessMode::Read)) {
-			LOGE("Cannot open the file \"%s\", wrong open mode", _path.data());
+		if (mode != FileAccessMode::Read) {
+			LOGE("Cannot open file \"%s\" - wrong open mode", _path.data());
 			return;
 		}
 
-		_asset = AAssetManager_open(_assetManager, _path.data(), AASSET_MODE_UNKNOWN);
-		if (_asset == nullptr) {
-			LOGE("Cannot open the file \"%s\"", _path.data());
+		AAsset* asset = AAssetManager_open(_assetManager, _path.data(), AASSET_MODE_UNKNOWN);
+		if (asset == nullptr) {
+			LOGE("Cannot open file \"%s\"", _path.data());
 			return;
 		}
 
 		off_t outStart = 0;
 		off_t outLength = 0;
-		_fileDescriptor = AAsset_openFileDescriptor(_asset, &outStart, &outLength);
+		_fileDescriptor = AAsset_openFileDescriptor(asset, &outStart, &outLength);
 		_startOffset = outStart;
 		_size = outLength;
 
 		::lseek(_fileDescriptor, _startOffset, SEEK_SET);
-		AAsset_close(_asset);
-		_asset = nullptr;
+		AAsset_close(asset);
+		asset = nullptr;
 
 		if (_fileDescriptor < 0) {
-			LOGE("Cannot open the file \"%s\"", _path.data());
+			LOGE("Cannot open file \"%s\"", _path.data());
 			return;
 		}
 
 		LOGI("File \"%s\" opened", _path.data());
-	}
-
-	void AndroidAssetStream::OpenAsset(FileAccessMode mode)
-	{
+#else
 		// An asset file can only be read
 		if (mode != FileAccessMode::Read) {
-			LOGE("Cannot open the file \"%s\", wrong open mode", _path.data());
+			LOGE("Cannot open file \"%s\" - wrong open mode", _path.data());
 			return;
 		}
 
 		_asset = AAssetManager_open(_assetManager, _path.data(), AASSET_MODE_UNKNOWN);
 		if (_asset == nullptr) {
-			LOGE("Cannot open the file \"%s\"", _path.data());
+			LOGE("Cannot open file \"%s\"", _path.data());
 			return;
 		}
 
@@ -263,7 +277,8 @@ namespace Death::IO
 
 		// Calculating file size
 		_size = AAsset_getLength(_asset);
+#endif
 	}
-}
+}}
 
 #endif

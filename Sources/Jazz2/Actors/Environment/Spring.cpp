@@ -56,7 +56,7 @@ namespace Jazz2::Actors::Environment
 		if (_orientation > Orientation::Left) {
 			// JJ2 horizontal springs held no data about which way they were facing.
 			// For compatibility, correct orientation is evaluated during runtime.
-			AABBf aabb = AABBf(_pos.X + 6.0f, _pos.Y - 2.0f, _pos.X + 22.0f, _pos.Y);
+			AABBf aabb = AABBf(_pos.X + 6.0f, _pos.Y - 2.0f, _pos.X + 26.0f, _pos.Y);
 			TileCollisionParams params = { TileDestructType::None, true };
 			_orientation = (_levelHandler->TileMap()->IsTileEmpty(aabb, params) != (_orientation == (Orientation)5) ? Orientation::Right : Orientation::Left);
 		}
@@ -166,8 +166,7 @@ namespace Jazz2::Actors::Environment
 	{
 		if (_state == State::Frozen) {
 			ActorBase* actorBase = other.get();
-			if (dynamic_cast<Weapons::ToasterShot*>(actorBase) != nullptr ||
-				dynamic_cast<Weapons::ShieldFireShot*>(actorBase) != nullptr) {
+			if (runtime_cast<Weapons::ToasterShot*>(actorBase) || runtime_cast<Weapons::ShieldFireShot*>(actorBase)) {
 				_state = State::Heated;
 				SetState(ActorState::CanBeFrozen, true);
 			}

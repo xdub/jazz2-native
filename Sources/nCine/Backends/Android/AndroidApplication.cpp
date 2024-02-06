@@ -18,13 +18,13 @@ std::unique_ptr<Death::IO::Stream> __logFile;
 #endif
 
 /// Processes the next application command
-void engine_handle_cmd(struct android_app* state, int32_t cmd)
+void androidHandleCommand(struct android_app* state, int32_t cmd)
 {
 	nCine::AndroidApplication::processCommand(state, cmd);
 }
 
 /// Parses the next input event
-int32_t engine_handle_input(struct android_app* state, AInputEvent* event)
+int32_t androidHandleInput(struct android_app* state, AInputEvent* event)
 {
 	return static_cast<int32_t>(nCine::AndroidInputManager::parseEvent(event));
 }
@@ -39,24 +39,20 @@ namespace nCine
 
 	void AndroidApplication::start(struct android_app* state, std::unique_ptr<IAppEventHandler>(*createAppEventHandler)())
 	{
-		ASSERT(state);
-		ASSERT(createAppEventHandler);
-		theAndroidApplication().state_ = state;
-		theAndroidApplication().createAppEventHandler_ = createAppEventHandler;
+		ASSERT(state != nullptr);
+		ASSERT(createAppEventHandler != nullptr);
+		AndroidApplication& app = theAndroidApplication();
+		app.state_ = state;
+		app.createAppEventHandler_ = createAppEventHandler;
 
-		state->onAppCmd = engine_handle_cmd;
-		state->onInputEvent = engine_handle_input;
+		state->onAppCmd = androidHandleCommand;
+		state->onInputEvent = androidHandleInput;
 
-		while (!theApplication().shouldQuit()) {
-			int ident;
-			int events;
+		while (!app.shouldQuit()) {
+			int ident, events;
 			struct android_poll_source* source;
 
-#if WITH_NUKLEAR
-			NuklearAndroidInput::inputBegin();
-#endif
-
-			while ((ident = ALooper_pollAll(!theApplication().isSuspended() ? 0 : -1, nullptr, &events, reinterpret_cast<void**>(&source))) >= 0) {
+			while ((ident = ALooper_pollAll(app.shouldSuspend() ? -1 : 0, nullptr, &events, reinterpret_cast<void**>(&source))) >= 0) {
 				if (source != nullptr) {
 					source->process(state, source);
 				}
@@ -65,22 +61,18 @@ namespace nCine
 				}
 				if (state->destroyRequested) {
 					LOGI("android_app->destroyRequested not equal to zero");
-					theApplication().quit();
+					app.quit();
 				}
 			}
 
-#if WITH_NUKLEAR
-			NuklearAndroidInput::inputEnd();
-#endif
-
-			if (theAndroidApplication().isInitialized() && !theApplication().shouldSuspend()) {
+			if (app.isInitialized() && !app.shouldSuspend()) {
 				AndroidInputManager::updateJoystickConnections();
-				theApplication().step();
+				app.step();
 			}
 		}
 
 		AndroidJniWrap_Activity::finishAndRemoveTask();
-		theAndroidApplication().shutdown();
+		app.shutdown();
 		exit(0);
 	}
 
@@ -88,90 +80,117 @@ namespace nCine
 	{
 		static EglGfxDevice* eglGfxDevice = nullptr;
 		// A flag to avoid resuming if the application has not been suspended first
-		static bool isPaused = false;
+		static bool isSuspended = false;
 
 		switch (cmd) {
-			case APP_CMD_INPUT_CHANGED:
+			case APP_CMD_INPUT_CHANGED: {
 				LOGW("APP_CMD_INPUT_CHANGED event received (not handled)");
 				break;
-
-			case APP_CMD_INIT_WINDOW:
+			}
+			case APP_CMD_INIT_WINDOW: {
 				LOGI("APP_CMD_INIT_WINDOW event received");
 				if (state->window != nullptr) {
-					if (theAndroidApplication().isInitialized() == false) {
-						theAndroidApplication().init();
-						eglGfxDevice = &static_cast<EglGfxDevice&>(theApplication().gfxDevice());
-						theApplication().step();
+					AndroidApplication& app = theAndroidApplication();
+					if (!app.isInitialized()) {
+						app.init();
+						eglGfxDevice = &static_cast<EglGfxDevice&>(app.gfxDevice());
+						app.step();
 					} else {
 						eglGfxDevice->createSurface();
 						eglGfxDevice->bindContext();
 					}
 				}
 				break;
-			case APP_CMD_TERM_WINDOW:
+			}
+			case APP_CMD_TERM_WINDOW: {
 				LOGI("APP_CMD_TERM_WINDOW event received");
 				eglGfxDevice->unbindContext();
 				break;
-			case APP_CMD_WINDOW_RESIZED:
+			}
+			case APP_CMD_WINDOW_RESIZED: {
 				LOGI("APP_CMD_WINDOW_RESIZED event received");
 				eglGfxDevice->querySurfaceSize();
 				break;
-			case APP_CMD_WINDOW_REDRAW_NEEDED:
+			}
+			case APP_CMD_WINDOW_REDRAW_NEEDED: {
 				LOGI("APP_CMD_WINDOW_REDRAW_NEEDED event received");
-				theApplication().step();
+				theAndroidApplication().step();
 				break;
-
-			case APP_CMD_GAINED_FOCUS:
+			}
+			case APP_CMD_GAINED_FOCUS: {
 				LOGI("APP_CMD_GAINED_FOCUS event received");
 				AndroidInputManager::enableAccelerometerSensor();
-				theApplication().setFocus(true);
+				AndroidApplication& app = theAndroidApplication();
+				app.setFocus(true);
+				if (isSuspended && !app.shouldSuspend()) {
+					isSuspended = false;
+					app.resume();
+				}
 				break;
-			case APP_CMD_LOST_FOCUS:
+			}
+			case APP_CMD_LOST_FOCUS: {
 				LOGI("APP_CMD_LOST_FOCUS event received");
 				AndroidInputManager::disableAccelerometerSensor();
-				theApplication().setFocus(false);
-				theApplication().step();
+				AndroidApplication& app = theAndroidApplication();
+				app.setFocus(false);
+				if (!isSuspended && app.shouldSuspend()) {
+					isSuspended = true;
+					app.step();
+					app.suspend();
+				}
 				break;
-
-			case APP_CMD_CONFIG_CHANGED:
+			}
+			case APP_CMD_CONFIG_CHANGED: {
 				LOGW("APP_CMD_CONFIG_CHANGED event received (not handled)");
 				break;
-
-			case APP_CMD_LOW_MEMORY:
+			}
+			case APP_CMD_LOW_MEMORY: {
 				LOGW("APP_CMD_LOW_MEMORY event received (not handled)");
 				break;
-
-			case APP_CMD_START:
-				if (!theAndroidApplication().isInitialized()) {
-					theAndroidApplication().preInit();
-					LOGI("APP_CMD_START event received (first start)");
+			}
+			case APP_CMD_START: {
+				AndroidApplication& app = theAndroidApplication();
+				if (!app.isInitialized()) {
+					app.preInit();
+					LOGI("APP_CMD_START event received (first run)");
 				} else {
 					LOGI("APP_CMD_START event received");
 				}
 				break;
-			case APP_CMD_RESUME:
+			}
+			case APP_CMD_RESUME: {
 				LOGW("APP_CMD_RESUME event received");
-				if (isPaused) {
-					theAndroidApplication().resume();
-					isPaused = false;
+				AndroidApplication& app = theAndroidApplication();
+				app.isSuspended_ = false;
+				if (isSuspended && !app.shouldSuspend()) {
+					isSuspended = false;
+					app.resume();
 				}
 				break;
-			case APP_CMD_SAVE_STATE:
+			}
+			case APP_CMD_SAVE_STATE: {
 				LOGW("APP_CMD_SAVE_STATE event received (not handled)");
 				break;
-			case APP_CMD_PAUSE:
+			}
+			case APP_CMD_PAUSE: {
 				LOGW("APP_CMD_PAUSE event received");
-				theAndroidApplication().suspend();
-				isPaused = true;
+				AndroidApplication& app = theAndroidApplication();
+				app.isSuspended_ = true;
+				if (!isSuspended && app.shouldSuspend()) {
+					isSuspended = true;
+					app.suspend();
+				}
 				break;
-			case APP_CMD_STOP:
+			}
+			case APP_CMD_STOP: {
 				LOGW("APP_CMD_STOP event received (not handled)");
 				break;
-
-			case APP_CMD_DESTROY:
+			}
+			case APP_CMD_DESTROY: {
 				LOGI("APP_CMD_DESTROY event received");
-				theApplication().quit();
+				theAndroidApplication().quit();
 				break;
+			}
 		}
 	}
 
@@ -266,21 +285,5 @@ namespace nCine
 		AndroidJniHelper::DetachJVM();
 		Application::shutdownCommon();
 		isInitialized_ = false;
-	}
-
-	void AndroidApplication::setFocus(bool hasFocus)
-	{
-		Application::setFocus(hasFocus);
-
-		// Check if a focus event has occurred
-		if (hasFocus_ != hasFocus) {
-			hasFocus_ = hasFocus;
-			// Check if focus has been gained
-			if (hasFocus) {
-				theServiceLocator().audioDevice().unfreezePlayers();
-			} else {
-				theServiceLocator().audioDevice().freezePlayers();
-			}
-		}
 	}
 }

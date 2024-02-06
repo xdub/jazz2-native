@@ -32,8 +32,9 @@ extern long _timezone;
 #define DAYS_PER_4_YEARS 1461l
 #define DAYS_PER_400_YEARS 146097l
 
-namespace Death::Containers
-{
+namespace Death { namespace Containers {
+//###==##====#=====--==~--~=~- --- -- -  -  -   -
+
 	namespace Implementation
 	{
 		// The first line is for normal years, the second one is for the leap ones
@@ -90,7 +91,7 @@ namespace Death::Containers
 #endif
 		}
 
-		static bool IsDST(const DateTime& date)
+		static bool IsDST(const DateTime date)
 		{
 			time_t timet = date.GetTicks();
 			if (timet == (time_t)-1) {
@@ -150,7 +151,7 @@ namespace Death::Containers
 #endif
 		}
 
-		static const tm* TryGetTm(time_t t, const DateTime::TimeZone& tz, struct tm* temp)
+		static const tm* TryGetTm(time_t t, const DateTime::TimeZone tz, struct tm* temp)
 		{
 			if (tz.IsLocal()) {
 				return Implementation::GetLocalTm(&t, temp);
@@ -971,7 +972,7 @@ namespace Death::Containers
 	{
 	}
 
-	DateTime::Tm::Tm(const struct tm& tm, const TimeZone& tz)
+	DateTime::Tm::Tm(const struct tm& tm, const TimeZone tz)
 		: _tz(tz), Millisecond(0), Second((std::int32_t)tm.tm_sec), Minute((std::int32_t)tm.tm_min), Hour((std::int32_t)tm.tm_hour),
 			Day((std::int32_t)tm.tm_mday), DayOfYear((std::int32_t)tm.tm_yday), Month((std::int32_t)tm.tm_mon),
 			Year(1900 + (std::int32_t)tm.tm_year), _dayOfWeek((std::int32_t)tm.tm_wday)
@@ -1136,7 +1137,7 @@ namespace Death::Containers
 		return *this;
 	}
 
-	DateTime::Tm DateTime::Partitioned(const TimeZone& tz) const
+	DateTime::Tm DateTime::Partitioned(const TimeZone tz) const
 	{
 		if (!IsValid()) {
 			return { };
@@ -1292,7 +1293,7 @@ namespace Death::Containers
 		return *this;
 	}
 
-	void DateTime::AdjustToTimezone(const TimeZone& tz, bool noDST)
+	void DateTime::AdjustToTimezone(const TimeZone tz, bool noDST)
 	{
 		std::int32_t secDiff = Implementation::GetTimeZone() + tz.GetOffset();
 
@@ -1305,7 +1306,7 @@ namespace Death::Containers
 		_time += secDiff * 1000;
 	}
 
-	void DateTime::AdjustFromTimezone(const TimeZone& tz, bool noDST)
+	void DateTime::AdjustFromTimezone(const TimeZone tz, bool noDST)
 	{
 		std::int32_t secDiff = Implementation::GetTimeZone() + tz.GetOffset();
 
@@ -1335,7 +1336,7 @@ namespace Death::Containers
 	}
 #endif
 
-	bool DateTime::TryParse(const StringView& input, const StringView& format, StringView* endParse)
+	bool DateTime::TryParse(const StringView input, const StringView format, StringView* endParse)
 	{
 		std::size_t endIndex;
 		if (!Implementation::TryParseFormat(*this, input.data(), input.size(), format.data(), format.size(), &endIndex)) {
@@ -1348,7 +1349,7 @@ namespace Death::Containers
 	}
 
 #if defined(DEATH_USE_WCHAR)
-	bool DateTime::TryParse(const std::wstring_view& input, const std::wstring_view& format, std::wstring_view::const_iterator* endParse)
+	bool DateTime::TryParse(const std::wstring_view input, const std::wstring_view format, std::wstring_view::const_iterator* endParse)
 	{
 		std::size_t endIndex;
 		if (!Implementation::TryParseFormat(*this, input.data(), input.size(), format.data(), format.size(), &endIndex)) {
@@ -1360,4 +1361,4 @@ namespace Death::Containers
 		return true;
 	}
 #endif
-}
+}}

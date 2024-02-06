@@ -6,6 +6,8 @@ namespace Jazz2::Actors::Bosses
 {
 	class TurtleBoss : public BossBase
 	{
+		DEATH_RUNTIME_OBJECT(BossBase);
+
 	public:
 		TurtleBoss();
 		~TurtleBoss();
@@ -29,6 +31,8 @@ namespace Jazz2::Actors::Bosses
 
 		class Mace : public EnemyBase
 		{
+			DEATH_RUNTIME_OBJECT(EnemyBase);
+
 		public:
 			~Mace();
 

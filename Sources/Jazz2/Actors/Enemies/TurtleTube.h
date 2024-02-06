@@ -6,6 +6,8 @@ namespace Jazz2::Actors::Enemies
 {
 	class TurtleTube : public EnemyBase
 	{
+		DEATH_RUNTIME_OBJECT(EnemyBase);
+
 	public:
 		TurtleTube();
 

@@ -6,6 +6,8 @@ namespace Jazz2::Actors::Enemies
 {
 	class Doggy : public EnemyBase
 	{
+		DEATH_RUNTIME_OBJECT(EnemyBase);
+
 	public:
 		Doggy();
 

@@ -10,11 +10,14 @@
 #include <android_native_app_glue.h>	// For android_app
 #include <android/asset_manager.h>
 
-namespace Death::IO
-{
+namespace Death { namespace IO {
+//###==##====#=====--==~--~=~- --- -- -  -  -   -
+
 	using Containers::Literals::operator"" _s;
 
-	/** @brief The class dealing with Android asset files */
+	/**
+		@brief Read-only streaming directly from Android asset files
+	*/
 	class AndroidAssetStream : public Stream
 	{
 	public:
@@ -27,10 +30,7 @@ namespace Death::IO
 		std::int32_t Seek(std::int32_t offset, SeekOrigin origin) override;
 		std::int32_t GetPosition() const override;
 		std::int32_t Read(void* buffer, std::int32_t bytes) override;
-
-		std::int32_t Write(const void* buffer, std::int32_t bytes) override {
-			return 0;
-		}
+		std::int32_t Write(const void* buffer, std::int32_t bytes) override;
 
 		bool IsValid() const override;
 
@@ -38,10 +38,12 @@ namespace Death::IO
 			_shouldCloseOnDestruction = shouldCloseOnDestruction;
 		}
 
+#if defined(DEATH_USE_FILE_DESCRIPTORS)
 		/** @brief Returns file descriptor */
 		DEATH_ALWAYS_INLINE std::int32_t GetFileDescriptor() const {
 			return _fileDescriptor;
 		}
+#endif
 
 		/** @brief Sets the global pointer to the AAssetManager */
 		static void InitializeAssetManager(struct android_app* state);
@@ -72,14 +74,16 @@ namespace Death::IO
 		static AAssetManager* _assetManager;
 		static const char* _internalDataPath;
 
-		AAsset* _asset;
+#if defined(DEATH_USE_FILE_DESCRIPTORS)
 		std::int32_t _fileDescriptor;
 		unsigned long int _startOffset;
+#else
+		AAsset* _asset;
+#endif
 		bool _shouldCloseOnDestruction;
 
-		void OpenDescriptor(FileAccessMode mode);
-		void OpenAsset(FileAccessMode mode);
+		void Open(FileAccessMode mode);
 	};
-}
+}}
 
 #endif

@@ -519,8 +519,12 @@ elseif(WINDOWS_PHONE OR WINDOWS_STORE)
 	set(PACKAGE_VERSION_MAJOR ${NCINE_VERSION_MAJOR})
 	set(PACKAGE_VERSION_MINOR ${NCINE_VERSION_MINOR})
 	set(PACKAGE_VERSION_PATCH ${NCINE_VERSION_PATCH})
-	if (NCINE_VERSION_FROM_GIT AND GIT_NO_TAG)
-		set(PACKAGE_VERSION_PATCH "0")
+	if(NCINE_VERSION_FROM_GIT AND GIT_NO_TAG)
+		if(DEFINED NCINE_VERSION_PATCH_LAST)
+			set(PACKAGE_VERSION_PATCH ${NCINE_VERSION_PATCH_LAST})
+		else()
+			set(PACKAGE_VERSION_PATCH "0")
+		endif()
 	endif()
 	set(PACKAGE_VERSION_REV "0")
 	if(DEFINED GIT_REV_COUNT)
@@ -654,21 +658,40 @@ if(WITH_MULTIPLAYER)
 	target_compile_definitions(${NCINE_APP} PUBLIC "WITH_MULTIPLAYER")
 	
 	list(APPEND HEADERS
-		${NCINE_SOURCE_DIR}/Jazz2/Actors/RemoteActor.h
+		${NCINE_SOURCE_DIR}/Jazz2/Actors/Multiplayer/LocalPlayerOnServer.h
+		${NCINE_SOURCE_DIR}/Jazz2/Actors/Multiplayer/PlayerOnServer.h
+		${NCINE_SOURCE_DIR}/Jazz2/Actors/Multiplayer/RemotablePlayer.h
+		${NCINE_SOURCE_DIR}/Jazz2/Actors/Multiplayer/RemoteActor.h
+		${NCINE_SOURCE_DIR}/Jazz2/Actors/Multiplayer/RemotePlayerOnServer.h
 		${NCINE_SOURCE_DIR}/Jazz2/Multiplayer/ConnectionResult.h
 		${NCINE_SOURCE_DIR}/Jazz2/Multiplayer/INetworkHandler.h
 		${NCINE_SOURCE_DIR}/Jazz2/Multiplayer/MultiLevelHandler.h
+		${NCINE_SOURCE_DIR}/Jazz2/Multiplayer/MultiplayerGameMode.h
 		${NCINE_SOURCE_DIR}/Jazz2/Multiplayer/NetworkManager.h
 		${NCINE_SOURCE_DIR}/Jazz2/Multiplayer/PacketTypes.h
 		${NCINE_SOURCE_DIR}/Jazz2/Multiplayer/Peer.h
 		${NCINE_SOURCE_DIR}/Jazz2/Multiplayer/Reason.h
+		${NCINE_SOURCE_DIR}/Jazz2/Multiplayer/ServerDiscovery.h
 		${NCINE_SOURCE_DIR}/Jazz2/Multiplayer/Backends/enet.h
+		${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/CreateServerOptionsSection.h
+		${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/MultiplayerGameModeSelectSection.h
+		${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/PlayCustomSection.h
+		${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/ServerSelectSection.h
 	)
 
 	list(APPEND SOURCES
-		${NCINE_SOURCE_DIR}/Jazz2/Actors/RemoteActor.cpp
+		${NCINE_SOURCE_DIR}/Jazz2/Actors/Multiplayer/LocalPlayerOnServer.cpp
+		${NCINE_SOURCE_DIR}/Jazz2/Actors/Multiplayer/PlayerOnServer.cpp
+		${NCINE_SOURCE_DIR}/Jazz2/Actors/Multiplayer/RemotablePlayer.cpp
+		${NCINE_SOURCE_DIR}/Jazz2/Actors/Multiplayer/RemoteActor.cpp
+		${NCINE_SOURCE_DIR}/Jazz2/Actors/Multiplayer/RemotePlayerOnServer.cpp
 		${NCINE_SOURCE_DIR}/Jazz2/Multiplayer/ConnectionResult.cpp
 		${NCINE_SOURCE_DIR}/Jazz2/Multiplayer/MultiLevelHandler.cpp
 		${NCINE_SOURCE_DIR}/Jazz2/Multiplayer/NetworkManager.cpp
+		${NCINE_SOURCE_DIR}/Jazz2/Multiplayer/ServerDiscovery.cpp
+		${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/CreateServerOptionsSection.cpp
+		${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/MultiplayerGameModeSelectSection.cpp
+		${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/PlayCustomSection.cpp
+		${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/ServerSelectSection.cpp
 	)
 endif()

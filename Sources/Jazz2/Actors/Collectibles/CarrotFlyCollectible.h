@@ -6,6 +6,8 @@ namespace Jazz2::Actors::Collectibles
 {
 	class CarrotFlyCollectible : public CollectibleBase
 	{
+		DEATH_RUNTIME_OBJECT(CollectibleBase);
+
 	public:
 		CarrotFlyCollectible();
 

@@ -6,6 +6,7 @@
 
 #include "../../nCine/Base/Algorithms.h"
 
+#include <Containers/StringUtils.h>
 #include <IO/DeflateStream.h>
 #include <IO/FileSystem.h>
 
@@ -13,7 +14,7 @@ using namespace Death::IO;
 
 namespace Jazz2::Compatibility
 {
-	bool JJ2Level::Open(const StringView& path, bool strictParser)
+	bool JJ2Level::Open(const StringView path, bool strictParser)
 	{
 		auto s = fs::Open(path, FileAccessMode::Read);
 		RETURNF_ASSERT_MSG(s->IsValid(), "Cannot open file for reading");
@@ -22,14 +23,17 @@ namespace Jazz2::Compatibility
 		s->Seek(180, SeekOrigin::Current);
 
 		LevelName = fs::GetFileNameWithoutExtension(path);
-		lowercaseInPlace(LevelName);
+		StringUtils::lowercaseInPlace(LevelName);
 
 		JJ2Block headerBlock(s, 262 - 180);
 
 		uint32_t magic = headerBlock.ReadUInt32();
 		RETURNF_ASSERT_MSG(magic == 0x4C56454C /*LEVL*/, "Invalid magic string");
 
-		/*uint32_t passwordHash =*/ headerBlock.ReadUInt32();
+		// passwordHash is 3 bytes
+		headerBlock.DiscardBytes(3);
+
+		_isHidden = headerBlock.ReadBool();
 
 		DisplayName = headerBlock.ReadString(32, true);
 
@@ -506,7 +510,7 @@ namespace Jazz2::Compatibility
 		}
 	}
 
-	void JJ2Level::Convert(const String& targetPath, const EventConverter& eventConverter, const std::function<LevelToken(const StringView&)>& levelTokenConversion)
+	void JJ2Level::Convert(const StringView targetPath, const EventConverter& eventConverter, const std::function<LevelToken(const StringView)>& levelTokenConversion)
 	{
 		auto so = fs::Open(targetPath, FileAccessMode::Write);
 		ASSERT_MSG(so->IsValid(), "Cannot open file for writing");
@@ -553,6 +557,9 @@ namespace Jazz2::Compatibility
 		if (_useLevelPalette) {
 			flags |= 0x04;
 		}
+		if (_isHidden) {
+			flags |= 0x08;
+		}
 		if (_isMpLevel) {
 			flags |= 0x10;
 			if (_hasLaps) {
@@ -575,16 +582,16 @@ namespace Jazz2::Compatibility
 			co.WriteValue<uint8_t>((uint8_t)formattedName.size());
 			co.Write(formattedName.data(), formattedName.size());
 
-			lowercaseInPlace(NextLevel);
-			lowercaseInPlace(SecretLevel);
-			lowercaseInPlace(BonusLevel);
+			StringUtils::lowercaseInPlace(NextLevel);
+			StringUtils::lowercaseInPlace(SecretLevel);
+			StringUtils::lowercaseInPlace(BonusLevel);
 
 			WriteLevelName(co, NextLevel, levelTokenConversion);
 			WriteLevelName(co, SecretLevel, levelTokenConversion);
 			WriteLevelName(co, BonusLevel, levelTokenConversion);
 
 			// Default Tileset
-			lowercaseInPlace(Tileset);
+			StringUtils::lowercaseInPlace(Tileset);
 			if (StringHasSuffixIgnoreCase(Tileset, ".j2t"_s)) {
 				Tileset = Tileset.exceptSuffix(4);
 			}
@@ -592,7 +599,7 @@ namespace Jazz2::Compatibility
 			co.Write(Tileset.data(), Tileset.size());
 
 			// Default Music
-			lowercaseInPlace(Music);
+			StringUtils::lowercaseInPlace(Music);
 			if (Music.find('.') == nullptr) {
 				String music = Music + ".j2b"_s;
 				co.WriteValue<uint8_t>((uint8_t)music.size());
@@ -641,7 +648,7 @@ namespace Jazz2::Compatibility
 				}
 				co.WriteValue<uint8_t>(tilesetFlags);
 
-				lowercaseInPlace(tileset.Name);
+				StringUtils::lowercaseInPlace(tileset.Name);
 				if (StringHasSuffixIgnoreCase(tileset.Name, ".j2t"_s)) {
 					tileset.Name = tileset.Name.exceptSuffix(4);
 				}
@@ -677,7 +684,7 @@ namespace Jazz2::Compatibility
 						if (j != 0) {
 							adjustedText += "|"_s;
 						}
-						lowercaseInPlace(levelTokens[j]);
+						StringUtils::lowercaseInPlace(levelTokens[j]);
 						LevelToken token = levelTokenConversion(levelTokens[j]);
 						if (!token.Episode.empty()) {
 							adjustedText += token.Episode + "/"_s;
@@ -1058,7 +1065,7 @@ namespace Jazz2::Compatibility
 		}
 	}
 
-	bool JJ2Level::StringHasSuffixIgnoreCase(const StringView& value, const StringView& suffix)
+	bool JJ2Level::StringHasSuffixIgnoreCase(const StringView value, const StringView suffix)
 	{
 		const std::size_t size = value.size();
 		const std::size_t suffixSize = suffix.size();

@@ -31,6 +31,7 @@
 #include "Jazz2/UI/Menu/SimpleMessageSection.h"
 
 #include "Jazz2/Compatibility/JJ2Anims.h"
+#include "Jazz2/Compatibility/JJ2Data.h"
 #include "Jazz2/Compatibility/JJ2Episode.h"
 #include "Jazz2/Compatibility/JJ2Level.h"
 #include "Jazz2/Compatibility/JJ2Strings.h"
@@ -112,8 +113,8 @@ public:
 	bool SaveCurrentStateIfAny() override;
 
 #if defined(WITH_MULTIPLAYER)
-	bool ConnectToServer(const StringView& address, std::uint16_t port) override;
-	bool CreateServer(std::uint16_t port) override;
+	bool ConnectToServer(const StringView address, std::uint16_t port) override;
+	bool CreateServer(LevelInitialization&& levelInit, std::uint16_t port) override;
 
 	ConnectionResult OnPeerConnected(const Peer& peer, std::uint32_t clientData) override;
 	void OnPeerDisconnected(const Peer& peer, Reason reason) override;
@@ -151,10 +152,10 @@ private:
 #endif
 	bool SetLevelHandler(const LevelInitialization& levelInit);
 	void RemoveResumableStateIfAny();
-	static void WriteCacheDescriptor(const StringView& path, std::uint64_t currentVersion, std::int64_t animsModified);
+	static void WriteCacheDescriptor(const StringView path, std::uint64_t currentVersion, std::int64_t animsModified);
 	static void SaveEpisodeEnd(const LevelInitialization& levelInit);
 	static void SaveEpisodeContinue(const LevelInitialization& levelInit);
-	static bool TryParseAddressAndPort(const StringView& input, String& address, std::uint16_t& port);
+	static bool TryParseAddressAndPort(const StringView input, String& address, std::uint16_t& port);
 };
 
 void GameEventHandler::OnPreInit(AppConfiguration& config)
@@ -215,9 +216,27 @@ void GameEventHandler::OnInit()
 		theApplication().inputManager().setCursor(IInputManager::Cursor::Hidden);
 	}
 
+#	if !defined(DEATH_TARGET_EMSCRIPTEN) && !defined(DEATH_TARGET_SWITCH) && !defined(DEATH_TARGET_WINDOWS_RT)
+	// Try to load gamepad mappings from `Content` directory (or from parent directory of `Source` on Android)
+#	if defined(DEATH_TARGET_ANDROID)
+	String mappingsPath = fs::CombinePath(fs::GetDirectoryName(resolver.GetSourcePath()), "gamecontrollerdb.txt"_s);
+#	else
 	String mappingsPath = fs::CombinePath(resolver.GetContentPath(), "gamecontrollerdb.txt"_s);
+#	endif
 	if (fs::IsReadableFile(mappingsPath)) {
 		theApplication().inputManager().addJoyMappingsFromFile(mappingsPath);
+	}
+#	endif
+#endif
+
+#if !defined(DEATH_TARGET_EMSCRIPTEN) && !defined(DEATH_TARGET_SWITCH) && !defined(DEATH_TARGET_WINDOWS_RT)
+	// Try to load gamepad mappings also from config directory
+	auto configDir = PreferencesCache::GetDirectory();
+	if (!configDir.empty()) {
+		String mappingsPath2 = fs::CombinePath(configDir, "gamecontrollerdb.txt"_s);
+		if (fs::IsReadableFile(mappingsPath2)) {
+			theApplication().inputManager().addJoyMappingsFromFile(mappingsPath2);
+		}
 	}
 #endif
 
@@ -259,7 +278,8 @@ void GameEventHandler::OnInit()
 	}, this);
 
 #	if defined(WITH_MULTIPLAYER)
-	if (PreferencesCache::InitialState == "/server"_s) {
+	// TODO: Multiplayer
+	/*if (PreferencesCache::InitialState == "/server"_s) {
 		thread.Join();
 
 		auto mainMenu = std::make_unique<Menu::MainMenu>(this, false);
@@ -268,7 +288,7 @@ void GameEventHandler::OnInit()
 
 		// TODO: Hardcoded port
 		CreateServer(MultiplayerDefaultPort);
-	} else if (PreferencesCache::InitialState.hasPrefix("/connect:"_s)) {
+	} else*/ if (PreferencesCache::InitialState.hasPrefix("/connect:"_s)) {
 		thread.Join();
 
 		String address; std::uint16_t port;
@@ -386,7 +406,9 @@ void GameEventHandler::OnResizeWindow(int width, int height)
 		_currentHandler->OnInitializeViewport(width, height);
 	}
 
+#if !defined(DEATH_TARGET_ANDROID) && !defined(DEATH_TARGET_IOS) && !defined(DEATH_TARGET_SWITCH)
 	PreferencesCache::EnableFullscreen = theApplication().gfxDevice().isFullscreen();
+#endif
 
 	LOGI("Rendering resolution: %ix%i", width, height);
 }
@@ -509,10 +531,10 @@ void GameEventHandler::ChangeLevel(LevelInitialization&& levelInit)
 			PreferencesCache::RemoveEpisodeContinue(levelInit.LastEpisodeName);
 
 			std::optional<Episode> lastEpisode = ContentResolver::Get().GetEpisode(levelInit.LastEpisodeName);
-			if (lastEpisode.has_value()) {
+			if (lastEpisode) {
 				// Redirect to next episode
 				std::optional<Episode> nextEpisode = ContentResolver::Get().GetEpisode(lastEpisode->NextEpisode);
-				if (nextEpisode.has_value()) {
+				if (nextEpisode) {
 					levelInit.EpisodeName = lastEpisode->NextEpisode;
 					levelInit.LevelName = nextEpisode->FirstLevel;
 				}
@@ -571,8 +593,8 @@ void GameEventHandler::ChangeLevel(LevelInitialization&& levelInit)
 
 bool GameEventHandler::HasResumableState() const
 {
-	auto dir = PreferencesCache::GetDirectory();
-	return fs::FileExists(fs::CombinePath(dir, StateFileName));
+	auto configDir = PreferencesCache::GetDirectory();
+	return fs::FileExists(fs::CombinePath(configDir, StateFileName));
 }
 
 void GameEventHandler::ResumeSavedState()
@@ -580,8 +602,8 @@ void GameEventHandler::ResumeSavedState()
 	InvokeAsync([this]() {
 		ZoneScopedNC("GameEventHandler::ResumeSavedState", 0x888888);
 
-		auto dir = PreferencesCache::GetDirectory();
-		auto s = fs::Open(fs::CombinePath(dir, StateFileName), FileAccessMode::Read);
+		auto configDir = PreferencesCache::GetDirectory();
+		auto s = fs::Open(fs::CombinePath(configDir, StateFileName), FileAccessMode::Read);
 		if (s->IsValid()) {
 			std::uint64_t signature = s->ReadValue<std::uint64_t>();
 			std::uint8_t fileType = s->ReadValue<std::uint8_t>();
@@ -592,8 +614,8 @@ void GameEventHandler::ResumeSavedState()
 
 			if (version == 1) {
 				// Version 1 included compressedSize and decompressedSize, it's not needed anymore
-				std::int32_t compressedSize = s->ReadVariableInt32();
-				std::int32_t decompressedSize = s->ReadVariableInt32();
+				/*std::int32_t compressedSize =*/ s->ReadVariableInt32();
+				/*std::int32_t decompressedSize =*/ s->ReadVariableInt32();
 			}
 
 			DeflateStream uc(*s);
@@ -616,8 +638,8 @@ bool GameEventHandler::SaveCurrentStateIfAny()
 
 	if (auto* levelHandler = dynamic_cast<LevelHandler*>(_currentHandler.get())) {
 		if (levelHandler->Difficulty() != GameDifficulty::Multiplayer) {
-			auto dir = PreferencesCache::GetDirectory();
-			auto s = fs::Open(fs::CombinePath(dir, StateFileName), FileAccessMode::Write);
+			auto configDir = PreferencesCache::GetDirectory();
+			auto s = fs::Open(fs::CombinePath(configDir, StateFileName), FileAccessMode::Write);
 			s->WriteValue<std::uint64_t>(0x2095A59FF0BFBBEF);	// Signature
 			s->WriteValue<std::uint8_t>(ContentResolver::StateFile);
 			s->WriteValue<std::uint16_t>(StateVersion);
@@ -635,15 +657,15 @@ bool GameEventHandler::SaveCurrentStateIfAny()
 
 void GameEventHandler::RemoveResumableStateIfAny()
 {
-	auto dir = PreferencesCache::GetDirectory();
-	auto path = fs::CombinePath(dir, StateFileName);
+	auto configDir = PreferencesCache::GetDirectory();
+	auto path = fs::CombinePath(configDir, StateFileName);
 	if (fs::FileExists(path)) {
 		fs::RemoveFile(path);
 	}
 }
 
 #if defined(WITH_MULTIPLAYER)
-bool GameEventHandler::ConnectToServer(const StringView& address, std::uint16_t port)
+bool GameEventHandler::ConnectToServer(const StringView address, std::uint16_t port)
 {
 	LOGI("Connecting to %s:%u...", address.data(), port);
 
@@ -654,7 +676,7 @@ bool GameEventHandler::ConnectToServer(const StringView& address, std::uint16_t 
 	return _networkManager->CreateClient(this, address, port, 0xCA000000 | MultiplayerProtocolVersion);
 }
 
-bool GameEventHandler::CreateServer(std::uint16_t port)
+bool GameEventHandler::CreateServer(LevelInitialization&& levelInit, std::uint16_t port)
 {
 	LOGI("Creating server on port %u...", port);
 
@@ -666,9 +688,7 @@ bool GameEventHandler::CreateServer(std::uint16_t port)
 		return false;
 	}
 
-	InvokeAsync([this]() {
-		// TODO: Hardcoded level
-		LevelInitialization levelInit("rescue", "01_colon1", GameDifficulty::Multiplayer, true, false, PlayerType::Jazz);
+	InvokeAsync([this, levelInit = std::move(levelInit)]() mutable {
 		auto levelHandler = std::make_unique<MultiLevelHandler>(this, _networkManager.get());
 		levelHandler->Initialize(levelInit);
 		SetStateHandler(std::move(levelHandler));
@@ -774,6 +794,7 @@ void GameEventHandler::OnPacketReceived(const Peer& peer, std::uint8_t channelId
 			case ServerPacketType::LoadLevel: {
 				MemoryStream packet(data + 1, dataLength - 1);
 				std::uint8_t flags = packet.ReadValue<std::uint8_t>();
+				MultiplayerGameMode gameMode = (MultiplayerGameMode)packet.ReadValue<std::uint8_t>();
 				std::uint32_t episodeLength = packet.ReadVariableUint32();
 				String episodeName = String(NoInit, episodeLength);
 				packet.Read(episodeName.data(), episodeLength);
@@ -781,10 +802,11 @@ void GameEventHandler::OnPacketReceived(const Peer& peer, std::uint8_t channelId
 				String levelName = String(NoInit, levelLength);
 				packet.Read(levelName.data(), levelLength);
 
-				InvokeAsync([this, flags, episodeName = std::move(episodeName), levelName = std::move(levelName)]() {
+				InvokeAsync([this, flags, gameMode, episodeName = std::move(episodeName), levelName = std::move(levelName)]() {
 					bool isReforged = (flags & 0x01) != 0;
 					LevelInitialization levelInit(episodeName, levelName, GameDifficulty::Multiplayer, isReforged);
 					auto levelHandler = std::make_unique<MultiLevelHandler>(this, _networkManager.get());
+					levelHandler->SetGameMode(gameMode);
 					levelHandler->Initialize(levelInit);
 					SetStateHandler(std::move(levelHandler));
 				});
@@ -925,10 +947,16 @@ RecreateCache:
 
 	String animationsPath = fs::CombinePath(resolver.GetCachePath(), "Animations"_s);
 	fs::RemoveDirectoryRecursive(animationsPath);
-	if (!Compatibility::JJ2Anims::Convert(animsPath, animationsPath, false)) {
+	Compatibility::JJ2Version version = Compatibility::JJ2Anims::Convert(animsPath, animationsPath);
+	if (version == Compatibility::JJ2Version::Unknown) {
 		LOGE("Provided Jazz Jackrabbit 2 version is not supported. Make sure supported Jazz Jackrabbit 2 version is present in \"%s\" directory.", resolver.GetSourcePath().data());
 		_flags |= Flags::IsVerified;
 		return;
+	}
+
+	Compatibility::JJ2Data data;
+	if (data.Open(fs::CombinePath(resolver.GetSourcePath(), "Data.j2d"_s), false)) {
+		data.Convert(resolver.GetCachePath(), version);
 	}
 
 	RefreshCacheLevels();
@@ -1408,7 +1436,7 @@ bool GameEventHandler::SetLevelHandler(const LevelInitialization& levelInit)
 	return true;
 }
 
-void GameEventHandler::WriteCacheDescriptor(const StringView& path, std::uint64_t currentVersion, std::int64_t animsModified)
+void GameEventHandler::WriteCacheDescriptor(const StringView path, std::uint64_t currentVersion, std::int64_t animsModified)
 {
 	auto so = fs::Open(path, FileAccessMode::Write);
 	so->WriteValue<std::uint64_t>(0x2095A59FF0BFBBEF);	// Signature
@@ -1422,7 +1450,7 @@ void GameEventHandler::WriteCacheDescriptor(const StringView& path, std::uint64_
 
 void GameEventHandler::SaveEpisodeEnd(const LevelInitialization& levelInit)
 {
-	if (levelInit.LastEpisodeName.empty()) {
+	if (levelInit.LastEpisodeName.empty() || levelInit.LastEpisodeName == "unknown"_s) {
 		return;
 	}
 
@@ -1454,13 +1482,13 @@ void GameEventHandler::SaveEpisodeEnd(const LevelInitialization& levelInit)
 void GameEventHandler::SaveEpisodeContinue(const LevelInitialization& levelInit)
 {
 	if (levelInit.EpisodeName.empty() || levelInit.LevelName.empty() ||
-		levelInit.EpisodeName == "unknown"_s ||
+		levelInit.EpisodeName == "unknown"_s || levelInit.Difficulty == GameDifficulty::Multiplayer ||
 		(levelInit.EpisodeName == "prince"_s && levelInit.LevelName == "trainer"_s)) {
 		return;
 	}
 
 	std::optional<Episode> currentEpisode = ContentResolver::Get().GetEpisode(levelInit.EpisodeName);
-	if (!currentEpisode.has_value() || currentEpisode->FirstLevel == levelInit.LevelName) {
+	if (!currentEpisode || currentEpisode->FirstLevel == levelInit.LevelName) {
 		return;
 	}
 
@@ -1474,7 +1502,7 @@ void GameEventHandler::SaveEpisodeContinue(const LevelInitialization& levelInit)
 	}
 
 	if (playerCount == 1) {
-		auto episodeContinue = PreferencesCache::GetEpisodeContinue(levelInit.EpisodeName, true);
+		auto* episodeContinue = PreferencesCache::GetEpisodeContinue(levelInit.EpisodeName, true);
 		episodeContinue->LevelName = levelInit.LevelName;
 		episodeContinue->State.Flags = EpisodeContinuationFlags::None;
 		if (levelInit.CheatsUsed) {
@@ -1495,7 +1523,7 @@ void GameEventHandler::SaveEpisodeContinue(const LevelInitialization& levelInit)
 	}
 }
 
-bool GameEventHandler::TryParseAddressAndPort(const StringView& input, String& address, std::uint16_t& port)
+bool GameEventHandler::TryParseAddressAndPort(const StringView input, String& address, std::uint16_t& port)
 {
 	auto portSep = input.findLast(':');
 	if (portSep == nullptr) {

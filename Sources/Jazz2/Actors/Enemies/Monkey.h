@@ -6,6 +6,8 @@ namespace Jazz2::Actors::Enemies
 {
 	class Monkey : public EnemyBase
 	{
+		DEATH_RUNTIME_OBJECT(EnemyBase);
+
 	public:
 		Monkey();
 
@@ -23,6 +25,8 @@ namespace Jazz2::Actors::Enemies
 
 		class Banana : public EnemyBase
 		{
+			DEATH_RUNTIME_OBJECT(EnemyBase);
+
 		protected:
 			Task<bool> OnActivatedAsync(const ActorActivationDetails& details) override;
 			void OnUpdateHitbox() override;

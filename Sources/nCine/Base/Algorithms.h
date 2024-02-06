@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Iterator.h"
+#include "pdqsort/pdqsort.h"
 
 #include <algorithm>
 #include <cmath>
@@ -154,97 +155,17 @@ namespace nCine
 		return last;
 	}
 
-	/// Partition function for quicksort with iterators
-	template<class Iterator, class Compare>
-	inline Iterator partition(Iterator first, Iterator last, Compare comp)
-	{
-		Iterator pivot = last;
-
-		while (first != last) {
-			while (comp(*first, *pivot)) {
-				++first;
-				if (first == last)
-					return first;
-			}
-
-			do {
-				--last;
-				if (first == last)
-					return first;
-			} while (!comp(*last, *pivot));
-
-			std::swap(*first, *last);
-			++first;
-		}
-
-		return first;
-	}
-
-	namespace
-	{
-		/// Quicksort implementation with random access iterators and custom compare function
-		template<class Iterator, class Compare>
-		inline void quicksort(Iterator first, Iterator last, RandomAccessIteratorTag, Compare comp)
-		{
-			std::int32_t size = distance(first, last, RandomAccessIteratorTag());
-			if (size > 1) {
-				Iterator p = prev(last);
-				std::swap(*next(first, size / 2), *p);
-				Iterator q = partition(first, p, comp);
-				std::swap(*q, *p);
-				quicksort(first, q, RandomAccessIteratorTag(), comp);
-				quicksort(next(q), last, RandomAccessIteratorTag(), comp);
-			}
-		}
-
-		/// Quicksort implementation with bidirectional iterators and custom compare function
-		template<class Iterator, class Compare>
-		inline void quicksort(Iterator first, Iterator last, BidirectionalIteratorTag, Compare comp)
-		{
-			if (first != last) {
-				Iterator p = prev(last);
-				std::swap(*first, *p);
-				Iterator q = partition(first, p, comp);
-				std::swap(*q, *p);
-				quicksort(first, q, BidirectionalIteratorTag());
-				quicksort(next(q), last, BidirectionalIteratorTag());
-			}
-		}
-
-	}
-
-	/// Quicksort implementation with iterators and custom compare function
-	template<class Iterator, class Compare>
-	inline void quicksort(Iterator first, Iterator last, Compare comp)
-	{
-		quicksort(first, last, IteratorTraits<Iterator>::IteratorCategory(), comp);
-	}
-
-	/// Quicksort implementation with iterators, ascending order
-	template<class Iterator>
-	inline void quicksort(Iterator first, Iterator last)
-	{
-		quicksort(first, last, IteratorTraits<Iterator>::IteratorCategory(), IsLess<typename IteratorTraits<Iterator>::ValueType>);
-	}
-
-	/// Quicksort implementation with iterators, descending order
-	template<class Iterator>
-	inline void quicksortDesc(Iterator first, Iterator last)
-	{
-		quicksort(first, last, IteratorTraits<Iterator>::IteratorCategory(), IsNotLess<typename IteratorTraits<Iterator>::ValueType>);
-	}
-
 	/// A container for functions to destruct objects and arrays of objects
 	template<bool value>
 	struct destructHelpers
 	{
-		template <class T>
+		template<class T>
 		inline static void destructObject(T* ptr)
 		{
 			ptr->~T();
 		}
 
-		template <class T>
+		template<class T>
 		inline static void destructArray(T* ptr, std::uint32_t numElements)
 		{
 			for (std::uint32_t i = 0; i < numElements; i++)
@@ -260,9 +181,9 @@ namespace nCine
 			using type = T;
 		};
 
-		template <class T>
+		template<class T>
 		auto tryAddRValueReference(int)->typeIdentity<T&&>;
-		template <class T>
+		template<class T>
 		auto tryAddRValueReference(...)->typeIdentity<T>;
 	}
 
@@ -340,27 +261,10 @@ namespace nCine
 		return (std::int32_t)std::round(a + ratio * (float)(b - a));
 	}
 
-	inline void lowercaseInPlace(const Containers::MutableStringView string)
+	inline float lerpByTime(float a, float b, float ratio, float timeMult)
 	{
-		// According to https://twitter.com/MalwareMinigun/status/1087767603647377408, std::tolower() / std::toupper() causes
-		// a mutex lock and a virtual dispatch per character (!!). A proper Unicode-aware *and* locale-aware solution
-		// would involve far more than iterating over bytes anyway - multi-byte characters, composed characters
-		// (ä formed from ¨ and a), SS -> ß in German but not elsewhere etc...
-		for (char& c : string) {
-			if (c >= 'A' && c <= 'Z') {
-				c |= 0x20;
-			}
-		}
-	}
-
-	inline void uppercaseInPlace(const Containers::MutableStringView string)
-	{
-		// See above for why std::toupper() is banned here
-		for (char& c : string) {
-			if (c >= 'a' && c <= 'z') {
-				c &= ~0x20;
-			}
-		}
+		float normalizedRatio = 1.0f - powf(1.0f - ratio, timeMult);
+		return a + normalizedRatio * (b - a);
 	}
 
 	std::int32_t copyStringFirst(char* dest, std::int32_t destSize, const char* source, std::int32_t count = -1);
@@ -410,6 +314,29 @@ namespace nCine
 		}
 		return n;
 	}
+
+	template<class Iter, class Compare>
+	inline void sort(Iter begin, Iter end, Compare comp)
+	{
+#if defined(PREFER_STD_SORT)
+		std::sort(begin, end, comp);
+#else
+		pdqsort(begin, end, comp);
+#endif
+	}
+
+	template<class Iter>
+	inline void sort(Iter begin, Iter end)
+	{
+#if defined(PREFER_STD_SORT)
+		std::sort(begin, end);
+#else
+		pdqsort(begin, end);
+#endif
+	}
+
+	float halfToFloat(std::uint16_t value);
+	std::uint16_t floatToHalf(float value);
 
 	constexpr std::uint64_t parseVersion(const Containers::StringView& version)
 	{

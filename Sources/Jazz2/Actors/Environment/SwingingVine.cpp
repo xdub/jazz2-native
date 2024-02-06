@@ -126,7 +126,7 @@ namespace Jazz2::Actors::Environment
 				instanceBlock->uniform(Material::SpriteSizeUniformName)->setFloatValue(texSize.X, ChunkSize);
 				instanceBlock->uniform(Material::ColorUniformName)->setFloatVector(Colorf::White.Data());
 
-				Matrix4x4f worldMatrix = Matrix4x4f::Translation(_chunkPos[i].X, _chunkPos[i].Y, 0.0f);
+				Matrix4x4f worldMatrix = Matrix4x4f::Translation(_chunkPos[i].X - texSize.X / 2, _chunkPos[i].Y - ChunkSize / 2, 0.0f);
 				worldMatrix.RotateZ(chunkAngle);
 				command->setTransformation(worldMatrix);
 				command->setLayer(_renderer.layer());
@@ -141,7 +141,7 @@ namespace Jazz2::Actors::Environment
 
 	bool SwingingVine::OnHandleCollision(std::shared_ptr<ActorBase> other)
 	{
-		if (auto player = dynamic_cast<Player*>(other.get())) {
+		if (auto* player = runtime_cast<Player*>(other)) {
 			if (player->_springCooldown <= 0.0f) {
 				player->SetCarryingObject(this, true, SuspendType::SwingingVine);
 			}

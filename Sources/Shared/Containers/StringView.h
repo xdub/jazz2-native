@@ -22,15 +22,17 @@
 
 #pragma once
 
-#include <cstddef>
-#include <initializer_list>
-#include <type_traits>
-
 #include "../Common.h"
 #include "Array.h"
 
-namespace Death::Containers
-{
+#include <initializer_list>
+#include <type_traits>
+
+namespace Death { namespace Containers {
+//###==##====#=====--==~--~=~- --- -- -  -  -   -
+
+	// Forward declarations for the Death::Containers namespace
+	template<std::size_t, class> class StaticArray;
 	class String;
 	template<class> class BasicStringView;
 	typedef BasicStringView<const char> StringView;
@@ -835,35 +837,43 @@ namespace Death::Containers
 	}
 
 	template<class T> constexpr T& BasicStringView<T>::operator[](const std::size_t i) const {
-		return _data[i];
+		return DEATH_DEBUG_CONSTEXPR_ASSERT(i < size() + ((flags() & StringViewFlags::NullTerminated) == StringViewFlags::NullTerminated ? 1 : 0),
+					"Containers::StringView::operator[](): Index %zu out of range for %zu %s", i, size(), ((flags() & StringViewFlags::NullTerminated) == StringViewFlags::NullTerminated ? "null-terminated bytes" : "bytes")),
+				_data[i];
 	}
 
 	template<class T> constexpr T& BasicStringView<T>::front() const {
-		return _data[0];
+		return DEATH_DEBUG_CONSTEXPR_ASSERT(size(), "Containers::StringView::front(): View is empty"), _data[0];
 	}
 
 	template<class T> constexpr T& BasicStringView<T>::back() const {
-		return _data[size() - 1];
+		return DEATH_DEBUG_CONSTEXPR_ASSERT(size(), "Containers::StringView::back(): View is empty"), _data[size() - 1];
 	}
 
 	template<class T> constexpr BasicStringView<T> BasicStringView<T>::slice(T* const begin, T* const end) const {
-		return BasicStringView<T>{begin, std::size_t(end - begin) |
-			// Propagate the global flag always
-			(_sizePlusFlags & std::size_t(StringViewFlags::Global)) |
-			// The null termination flag only if the original is null-terminated and end points to the original end
-			((_sizePlusFlags & std::size_t(StringViewFlags::NullTerminated)) * (end == _data + (_sizePlusFlags & ~Implementation::StringViewSizeMask))),
-			// Using an internal assert-less constructor, the public constructor asserts would be redundant
-			nullptr};
+		return DEATH_DEBUG_CONSTEXPR_ASSERT(_data <= begin && begin <= end && end <= _data + (_sizePlusFlags & ~Implementation::StringViewSizeMask),
+					"Containers::StringView::slice(): Slice [%zu:%zu] out of range for %zu elements",
+					std::size_t(begin - _data), std::size_t(end - _data), (_sizePlusFlags & ~Implementation::StringViewSizeMask)),
+				BasicStringView<T>{begin, std::size_t(end - begin) |
+					// Propagate the global flag always
+					(_sizePlusFlags & std::size_t(StringViewFlags::Global)) |
+					// The null termination flag only if the original is null-terminated and end points to the original end
+					((_sizePlusFlags & std::size_t(StringViewFlags::NullTerminated)) * (end == _data + (_sizePlusFlags & ~Implementation::StringViewSizeMask))),
+					// Using an internal assert-less constructor, the public constructor asserts would be redundant
+					nullptr};
 	}
 
 	template<class T> constexpr BasicStringView<T> BasicStringView<T>::slice(const std::size_t begin, const std::size_t end) const {
-		return BasicStringView<T>{_data + begin, (end - begin) |
-			// Propagate the global flag always
-			(_sizePlusFlags & std::size_t(StringViewFlags::Global)) |
-			// The null termination flag only if the original is null-terminated and end points to the original end
-			((_sizePlusFlags & std::size_t(StringViewFlags::NullTerminated)) * (end == (_sizePlusFlags & ~Implementation::StringViewSizeMask))),
-			// Using an internal assert-less constructor, the public constructor asserts would be redundant
-			nullptr};
+		return DEATH_DEBUG_CONSTEXPR_ASSERT(begin <= end && end <= (_sizePlusFlags & ~Implementation::StringViewSizeMask),
+					"Containers::StringView::slice(): Slice [%zu:%zu] out of range for %zu elements",
+					begin, end, (_sizePlusFlags & ~Implementation::StringViewSizeMask)),
+				BasicStringView<T>{_data + begin, (end - begin) |
+					// Propagate the global flag always
+					(_sizePlusFlags & std::size_t(StringViewFlags::Global)) |
+					// The null termination flag only if the original is null-terminated and end points to the original end
+					((_sizePlusFlags & std::size_t(StringViewFlags::NullTerminated)) * (end == (_sizePlusFlags & ~Implementation::StringViewSizeMask))),
+					// Using an internal assert-less constructor, the public constructor asserts would be redundant
+					nullptr};
 	}
 
 	namespace Implementation
@@ -978,4 +988,4 @@ namespace Death::Containers
 		template<class T> struct ErasedArrayViewConverter<BasicStringView<T>> : ArrayViewConverter<T, BasicStringView<T>> {};
 		template<class T> struct ErasedArrayViewConverter<const BasicStringView<T>> : ArrayViewConverter<T, BasicStringView<T>> {};
 	}
-}
+}}

@@ -10,25 +10,39 @@
 
 namespace Jazz2::Tiles
 {
-	TileMap::TileMap(const StringView& tileSetPath, std::uint16_t captionTileId, bool applyPalette)
+	TileMap::TileMap(const StringView tileSetPath, std::uint16_t captionTileId, bool applyPalette)
 		: _owner(nullptr), _sprLayerIndex(-1), _pitType(PitType::FallForever), _renderCommandsCount(0), _collapsingTimer(0.0f),
 			_triggerState(TriggerCount), _texturedBackgroundLayer(-1), _texturedBackgroundPass(this)
 	{
 		auto& tileSetPart = _tileSets.emplace_back();
 		tileSetPart.Data = ContentResolver::Get().RequestTileSet(tileSetPath, captionTileId, applyPalette);
+		RETURN_ASSERT_MSG(tileSetPart.Data != nullptr, "Failed to load main tileset \"%s\"", tileSetPath.data());
+		
 		tileSetPart.Offset = 0;
 		tileSetPart.Count = tileSetPart.Data->TileCount;
 
 		_renderCommands.reserve(128);
-
-		if (tileSetPart.Data == nullptr) {
-			LOGE("Failed to load main tileset \"%s\"", tileSetPath.data());
-		}
 	}
 
 	TileMap::~TileMap()
 	{
 		TracyPlot("TileMap Render Commands", 0LL);
+	}
+
+	bool TileMap::IsValid() const
+	{
+		std::size_t count = _tileSets.size();
+		if (count == 0) {
+			return false;
+		}
+
+		for (std::size_t i = 0; i < count; i++) {
+			if (_tileSets[i].Data == nullptr) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	void TileMap::SetOwner(ITileMapOwner* owner)
@@ -519,7 +533,7 @@ namespace Jazz2::Tiles
 		return AdvanceDestructibleTileAnimation(tile, tx, ty, amount, {});
 	}
 
-	bool TileMap::AdvanceDestructibleTileAnimation(LayerTile& tile, std::int32_t tx, std::int32_t ty, std::int32_t& amount, const StringView& soundName)
+	bool TileMap::AdvanceDestructibleTileAnimation(LayerTile& tile, std::int32_t tx, std::int32_t ty, std::int32_t& amount, const StringView soundName)
 	{
 		AnimatedTile& anim = _animatedTiles[tile.DestructAnimation];
 		std::int32_t max = (std::int32_t)(anim.Tiles.size() - 2);
@@ -588,7 +602,6 @@ namespace Jazz2::Tiles
 		Vector2f viewCenter = _owner->GetCameraPos();
 
 		Vector2i tileCount = layer.LayoutSize;
-		Vector2i tileSize = Vector2i(TileSet::DefaultTileSize, TileSet::DefaultTileSize);
 
 		// Get current layer offsets and speeds
 		float loX = layer.Description.OffsetX;
@@ -764,15 +777,12 @@ namespace Jazz2::Tiles
 					color.W *= tile.Alpha / 255.0f;
 					instanceBlock->uniform(Material::ColorUniformName)->setFloatVector(color.Data());
 
-					float x4 = x2 + (TileSet::DefaultTileSize / 2);
-					float y4 = y2 + (TileSet::DefaultTileSize / 2);
-
+					float x2r = x2, y2r = y2;
 					if (!PreferencesCache::UnalignedViewport) {
-						x4 = std::floor(x4);
-						y4 = std::floor(y4);
+						x2r = std::floor(x2r); y2r = std::floor(y2r);
 					}
 
-					command->setTransformation(Matrix4x4f::Translation(x4, y4, 0.0f));
+					command->setTransformation(Matrix4x4f::Translation(x2r, y2r, 0.0f));
 					command->setLayer(layer.Description.Depth);
 					command->material().setTexture(*tileSet->TextureDiffuse);
 
@@ -826,7 +836,7 @@ namespace Jazz2::Tiles
 		return command;
 	}
 
-	void TileMap::AddTileSet(const StringView& tileSetPath, std::uint16_t offset, std::uint16_t count, const std::uint8_t* paletteRemapping)
+	void TileMap::AddTileSet(const StringView tileSetPath, std::uint16_t offset, std::uint16_t count, const std::uint8_t* paletteRemapping)
 	{
 		auto& tileSetPart = _tileSets.emplace_back();
 		tileSetPart.Data = ContentResolver::Get().RequestTileSet(tileSetPath, 0, false, paletteRemapping);
@@ -1293,6 +1303,7 @@ namespace Jazz2::Tiles
 			Matrix4x4f worldMatrix = Matrix4x4f::Translation(debris.Pos.X, debris.Pos.Y, 0.0f);
 			worldMatrix.RotateZ(debris.Angle);
 			worldMatrix.Scale(debris.Scale, debris.Scale, 1.0f);
+			worldMatrix.Translate(debris.Size.X  * -0.5f, debris.Size.Y * -0.5f, 0.0f);
 			command->setTransformation(worldMatrix);
 			command->setLayer(debris.Depth);
 			command->material().setTexture(*debris.DiffuseTexture);
@@ -1342,7 +1353,17 @@ namespace Jazz2::Tiles
 		RETURN_ASSERT_MSG(layoutSize == realLayoutSize, "Layout size mismatch");
 
 		for (std::int32_t i = 0; i < layoutSize; i++) {
-			spriteLayer.Layout[i].DestructFrameIndex = src.ReadVariableInt32();
+			auto& tile = spriteLayer.Layout[i];
+			tile.DestructFrameIndex = src.ReadVariableInt32();
+			if (tile.DestructFrameIndex > 0) {
+				auto& anim = _animatedTiles[tile.DestructAnimation];
+				std::int32_t max = (std::int32_t)(anim.Tiles.size() - 2);
+				if (tile.DestructFrameIndex > max) {
+					LOGW("Serialized tile %i with animation frame %i is out of range", i, tile.DestructFrameIndex);
+					tile.DestructFrameIndex = max;
+				}
+				tile.TileID = anim.Tiles[tile.DestructFrameIndex].TileID;
+			}
 		}
 
 		src.Read(_triggerState.RawData(), _triggerState.SizeInBytes());
@@ -1387,7 +1408,7 @@ namespace Jazz2::Tiles
 		command->material().uniform("uShift")->setFloatValue(x, y);
 		command->material().uniform("uHorizonColor")->setFloatVector(layer.Description.Color.Data());
 
-		command->setTransformation(Matrix4x4f::Translation(viewCenter.X, viewCenter.Y, 0.0f));
+		command->setTransformation(Matrix4x4f::Translation(viewCenter.X - viewSize.X * 0.5f, viewCenter.Y - viewSize.Y * 0.5f, 0.0f));
 		command->setLayer(layer.Description.Depth);
 		command->material().setTexture(*target);
 
@@ -1484,7 +1505,6 @@ namespace Jazz2::Tiles
 	{
 		TileMapLayer& layer = _owner->_layers[_owner->_texturedBackgroundLayer];
 		Vector2i layoutSize = layer.LayoutSize;
-		Vector2i targetSize = _target->size();
 
 		std::int32_t renderCommandIndex = 0;
 		bool isAnimated = false;
@@ -1525,7 +1545,7 @@ namespace Jazz2::Tiles
 				instanceBlock->uniform(Material::SpriteSizeUniformName)->setFloatValue(TileSet::DefaultTileSize, TileSet::DefaultTileSize);
 				instanceBlock->uniform(Material::ColorUniformName)->setFloatVector(Colorf::White.Data());
 
-				command->setTransformation(Matrix4x4f::Translation(x * TileSet::DefaultTileSize + (TileSet::DefaultTileSize / 2), y * TileSet::DefaultTileSize + (TileSet::DefaultTileSize / 2), 0.0f));
+				command->setTransformation(Matrix4x4f::Translation(x * TileSet::DefaultTileSize, y * TileSet::DefaultTileSize, 0.0f));
 				command->material().setTexture(*tileSet->TextureDiffuse);
 
 				renderQueue.addCommand(command);

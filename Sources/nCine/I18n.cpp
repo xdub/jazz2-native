@@ -16,6 +16,7 @@
 #include <Environment.h>
 #include <Utf8.h>
 #include <Containers/GrowableArray.h>
+#include <Containers/StringUtils.h>
 #include <IO/FileSystem.h>
 
 using namespace Death;
@@ -518,7 +519,7 @@ namespace nCine
 		}
 	}
 
-	bool I18n::LoadFromFile(const StringView& path)
+	bool I18n::LoadFromFile(const StringView path)
 	{
 		return LoadFromFile(fs::Open(path, FileAccessMode::Read));
 	}
@@ -695,7 +696,7 @@ namespace nCine
 #if defined(DEATH_TARGET_ANDROID)
 		String langId = AndroidJniWrap_Activity::getPreferredLanguage();
 		if (!langId.empty()) {
-			lowercaseInPlace(langId);
+			StringUtils::lowercaseInPlace(langId);
 			arrayAppend(preferred, std::move(langId));
 		}
 #elif defined(DEATH_TARGET_APPLE)
@@ -709,7 +710,7 @@ namespace nCine
 				CFTypeRef element = CFArrayGetValueAtIndex(prefArray, i);
 				if (element != nullptr && CFGetTypeID(element) == CFStringGetTypeID() && CFStringGetCString((CFStringRef)element, buffer, sizeof(buffer), kCFStringEncodingASCII)) {
 					String langId = String(buffer);
-					lowercaseInPlace(langId);
+					StringUtils::lowercaseInPlace(langId);
 					arrayAppend(preferred, std::move(langId));
 				} else {
 					break;
@@ -733,7 +734,7 @@ namespace nCine
 			for (char& c : langId) {
 				if (c == '_') c = '-';
 			}
-			lowercaseInPlace(langId);
+			StringUtils::lowercaseInPlace(langId);
 			arrayAppend(preferred, std::move(langId));
 		}
 #elif defined(DEATH_TARGET_WINDOWS)
@@ -747,7 +748,7 @@ namespace nCine
 					wchar_t* buffer = languages.data();
 					for (ULONG k = 0; k < numberOfLanguages; ++k) {
 						String langId = Utf8::FromUtf16(buffer);
-						lowercaseInPlace(langId);
+						StringUtils::lowercaseInPlace(langId);
 						arrayAppend(preferred, std::move(langId));
 
 						while (*buffer != L'\0') {
@@ -762,7 +763,7 @@ namespace nCine
 			wchar_t buffer[LOCALE_NAME_MAX_LENGTH];
 			if (::GetUserDefaultLocaleName(buffer, LOCALE_NAME_MAX_LENGTH)) {
 				String langId = Utf8::FromUtf16(buffer);
-				lowercaseInPlace(langId);
+				StringUtils::lowercaseInPlace(langId);
 				arrayAppend(preferred, std::move(langId));
 			}
 		}
@@ -771,7 +772,7 @@ namespace nCine
 		return preferred;
 	}
 
-	StringView I18n::GetLanguageName(const StringView& langId)
+	StringView I18n::GetLanguageName(const StringView langId)
 	{
 		StringView baseLanguage = TryRemoveLanguageSpecifiers(langId);
 
@@ -792,7 +793,7 @@ namespace nCine
 		return { };
 	}
 
-	StringView I18n::TryRemoveLanguageSpecifiers(const StringView& langId)
+	StringView I18n::TryRemoveLanguageSpecifiers(const StringView langId)
 	{
 		StringView suffix = langId.findAny("-_.@"_s);
 		return (suffix != nullptr ? langId.prefix(suffix.begin()) : langId);

@@ -3,8 +3,11 @@
 #include "MainMenu.h"
 #include "MenuResources.h"
 #include "../../PreferencesCache.h"
-#include "../../../nCine/Base/Algorithms.h"
 #include "../../../nCine/Base/FrameTimer.h"
+
+#if defined(WITH_MULTIPLAYER)
+#	include "CreateServerOptionsSection.h"
+#endif
 
 #include <IO/DeflateStream.h>
 #include <IO/MemoryStream.h>
@@ -14,35 +17,26 @@ using namespace Jazz2::UI::Menu::Resources;
 
 namespace Jazz2::UI::Menu
 {
-	CustomLevelSelectSection::CustomLevelSelectSection()
-		: _selectedIndex(0), _animation(0.0f), _y(0.0f), _height(0.0f), _pressedCount(0), _noiseCooldown(0.0f)
+	CustomLevelSelectSection::CustomLevelSelectSection(bool multiplayer)
+		: _multiplayer(multiplayer), _selectedIndex(0), _animation(0.0f), _y(0.0f), _height(0.0f), _pressedCount(0), _noiseCooldown(0.0f)
 	{
-		auto& resolver = ContentResolver::Get();
+#if defined(WITH_THREADS) && !defined(DEATH_TARGET_EMSCRIPTEN)
+		_indexingThread.Run([](void* arg) {
+			auto* section = static_cast<CustomLevelSelectSection*>(arg);
+			section->AddCustomLevels();
+		}, this);
+#else
+		AddCustomLevels();
+#endif
+	}
 
-		// Search both "Content/Episodes/" and "Cache/Episodes/"
-		fs::Directory dir(fs::CombinePath({ resolver.GetContentPath(), "Episodes"_s, "unknown"_s }), fs::EnumerationOptions::SkipDirectories);
-		while (true) {
-			StringView item = dir.GetNext();
-			if (item == nullptr) {
-				break;
-			}
-
-			AddLevel(item);
-		}
-
-		fs::Directory dirCache(fs::CombinePath({ resolver.GetCachePath(), "Episodes"_s, "unknown"_s }), fs::EnumerationOptions::SkipDirectories);
-		while (true) {
-			StringView item = dirCache.GetNext();
-			if (item == nullptr) {
-				break;
-			}
-
-			AddLevel(item);
-		}
-
-		quicksort(_items.begin(), _items.end(), [](const ItemData& a, const ItemData& b) -> bool {
-			return (a.LevelName < b.LevelName);
-		});
+	CustomLevelSelectSection::~CustomLevelSelectSection()
+	{
+#if defined(WITH_THREADS) && !defined(DEATH_TARGET_EMSCRIPTEN)
+		// Indicate that indexing thread should stop
+		_selectedIndex = -1;
+		_indexingThread.Join();
+#endif
 	}
 
 	Recti CustomLevelSelectSection::GetClipRectangle(const Vector2i& viewSize)
@@ -151,7 +145,8 @@ namespace Jazz2::UI::Menu
 		float column1 = viewSize.X * 0.25f;
 		float column2 = viewSize.X * 0.52f;
 
-		for (int32_t i = 0; i < _items.size(); i++) {
+		std::size_t itemsCount = _items.size();
+		for (int32_t i = 0; i < itemsCount; i++) {
 			_items[i].Y = center.Y;
 
 			if (center.Y > TopLine - ItemHeight && center.Y < bottomLine + ItemHeight) {
@@ -180,7 +175,7 @@ namespace Jazz2::UI::Menu
 		if (_items[0].Y < TopLine + ItemHeight / 2) {
 			_root->DrawElement(MenuGlow, 0, center.X, TopLine, 900, Alignment::Center, Colorf(0.0f, 0.0f, 0.0f, 0.3f), 30.0f, 5.0f);
 		}
-		if (_items[_items.size() - 1].Y > bottomLine - ItemHeight / 2) {
+		if (_items[itemsCount - 1].Y > bottomLine - ItemHeight / 2) {
 			_root->DrawElement(MenuGlow, 0, center.X, bottomLine, 900, Alignment::Center, Colorf(0.0f, 0.0f, 0.0f, 0.3f), 30.0f, 5.0f);
 		}
 	}
@@ -223,7 +218,8 @@ namespace Jazz2::UI::Menu
 				}
 
 				float halfW = viewSize.X * 0.5f;
-				for (int32_t i = 0; i < _items.size(); i++) {
+				std::size_t itemsCount = _items.size();
+				for (int32_t i = 0; i < itemsCount; i++) {
 					if (std::abs(_touchLast.X - halfW) < 150.0f && std::abs(_touchLast.Y - _items[i].Y) < 22.0f) {
 						if (_selectedIndex == i) {
 							ExecuteSelected();
@@ -243,8 +239,19 @@ namespace Jazz2::UI::Menu
 
 	void CustomLevelSelectSection::ExecuteSelected()
 	{
+		if (_items.empty()) {
+			return;
+		}
+
 		auto& selectedItem = _items[_selectedIndex];
 		_root->PlaySfx("MenuSelect"_s, 0.6f);
+
+#if defined(WITH_MULTIPLAYER)
+		if (_multiplayer) {
+			_root->SwitchToSection<CreateServerOptionsSection>("unknown"_s, selectedItem.LevelName, nullptr);
+			return;
+		}
+#endif
 		_root->SwitchToSection<StartGameOptionsSection>("unknown"_s, selectedItem.LevelName, nullptr);
 	}
 
@@ -256,6 +263,44 @@ namespace Jazz2::UI::Menu
 		} else if (_items[_selectedIndex].Y > bottomLine - ItemHeight * 0.5f) {
 			_y += (bottomLine - ItemHeight * 0.5f - _items[_selectedIndex].Y);
 		}
+	}
+
+	void CustomLevelSelectSection::AddCustomLevels()
+	{
+		auto& resolver = ContentResolver::Get();
+
+		// Search both "Content/Episodes/" and "Cache/Episodes/"
+		fs::Directory dir(fs::CombinePath({ resolver.GetContentPath(), "Episodes"_s, "unknown"_s }), fs::EnumerationOptions::SkipDirectories);
+		while (_selectedIndex >= 0) {
+			StringView item = dir.GetNext();
+			if (item == nullptr) {
+				break;
+			}
+
+			AddLevel(item);
+		}
+
+		if (_selectedIndex < 0) {
+			return;
+		}
+
+		fs::Directory dirCache(fs::CombinePath({ resolver.GetCachePath(), "Episodes"_s, "unknown"_s }), fs::EnumerationOptions::SkipDirectories);
+		while (_selectedIndex >= 0) {
+			StringView item = dirCache.GetNext();
+			if (item == nullptr) {
+				break;
+			}
+
+			AddLevel(item);
+		}
+
+		if (_selectedIndex < 0) {
+			return;
+		}
+
+		sort(_items.begin(), _items.end(), [](const ItemData& a, const ItemData& b) -> bool {
+			return (a.LevelName < b.LevelName);
+		});
 	}
 
 	void CustomLevelSelectSection::AddLevel(const StringView& levelFile)
@@ -271,8 +316,14 @@ namespace Jazz2::UI::Menu
 		uint8_t fileType = s->ReadValue<uint8_t>();
 		RETURN_ASSERT_MSG(signature == 0x2095A59FF0BFBBEF && fileType == ContentResolver::LevelFile, "File has invalid signature");
 
-		// TODO: Level flags
-		/*uint16_t flags =*/ s->ReadValue<uint16_t>();
+		uint16_t flags = s->ReadValue<uint16_t>();
+
+#if !defined(DEATH_DEBUG)
+		// Don't show hidden levels in Release build if unlock cheat is not active, but show all levels in Debug build
+		if ((flags & /*Hidden*/0x08) != 0 && !PreferencesCache::AllowCheatsUnlock) {
+			return;
+		}
+#endif
 
 		// Read compressed data
 		int32_t compressedSize = s->ReadValue<int32_t>();

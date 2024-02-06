@@ -41,7 +41,18 @@ namespace Jazz2::Actors::Enemies
 
 	void Fish::OnUpdate(float timeMult)
 	{
+		float waterLevel = _levelHandler->WaterLevel();
+		bool inWater = (_pos.Y > waterLevel - 160.0f);
+		if (!inWater) {
+			// Don't move if not in water
+			return;
+		}
+
 		EnemyBase::OnUpdate(timeMult);
+
+		if (_pos.Y < waterLevel + 8.0f) {
+			MoveInstantly(Vector2f(_pos.X, waterLevel + 8.0f), MoveType::Absolute | MoveType::Force);
+		}
 
 		if (_frozenTimeLeft > 0.0f) {
 			return;

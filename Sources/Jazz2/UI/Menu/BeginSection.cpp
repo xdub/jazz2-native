@@ -1,11 +1,16 @@
 ﻿#include "BeginSection.h"
 #include "MenuResources.h"
-#include "CustomLevelSelectSection.h"
 #include "EpisodeSelectSection.h"
 #include "StartGameOptionsSection.h"
 #include "OptionsSection.h"
 #include "AboutSection.h"
 #include "MainMenu.h"
+
+#if defined(WITH_MULTIPLAYER)
+#	include "PlayCustomSection.h"
+#else
+#	include "CustomLevelSelectSection.h"
+#endif
 
 #include <Utf8.h>
 
@@ -67,14 +72,13 @@ namespace Jazz2::UI::Menu
 
 		// TRANSLATORS: Menu item in main menu
 		_items.emplace_back(ItemData { Item::PlayEpisodes, _("Play Story") });
+#	if defined(WITH_MULTIPLAYER)
+		// TRANSLATORS: Menu item in main menu
+		_items.emplace_back(ItemData { Item::PlayCustomLevels, _("Play Custom Game") });
+#	else
 		// TRANSLATORS: Menu item in main menu
 		_items.emplace_back(ItemData { Item::PlayCustomLevels, _("Play Custom Levels") });
-#endif
-
-#if defined(WITH_MULTIPLAYER)
-		// TODO: Multiplayer
-		_items.emplace_back(ItemData { Item::TODO_ConnectTo, _("Connect To Server") });
-		_items.emplace_back(ItemData { Item::TODO_CreateServer, _("Create Server") });
+#	endif
 #endif
 
 		// TRANSLATORS: Menu item in main menu
@@ -121,10 +125,10 @@ namespace Jazz2::UI::Menu
 				ExecuteSelected();
 			} else if (_root->ActionHit(PlayerActions::Menu)) {
 #if !defined(DEATH_TARGET_EMSCRIPTEN) && !defined(DEATH_TARGET_IOS) && !defined(DEATH_TARGET_SWITCH)
-				if (_selectedIndex != (int32_t)Item::Quit) {
+				if (_selectedIndex != (int32_t)_items.size() - 1) {
 					_root->PlaySfx("MenuSelect"_s, 0.6f);
 					_animation = 0.0f;
-					_selectedIndex = (int32_t)Item::Quit;
+					_selectedIndex = (int32_t)_items.size() - 1;
 				}
 #endif
 			} else if (_root->ActionHit(PlayerActions::Up)) {
@@ -377,23 +381,14 @@ namespace Jazz2::UI::Menu
 			case Item::PlayCustomLevels:
 				if (isPlayable) {
 					_root->PlaySfx("MenuSelect"_s, 0.6f);
+#if defined(WITH_MULTIPLAYER)
+					_root->SwitchToSection<PlayCustomSection>();
+#else
 					_root->SwitchToSection<CustomLevelSelectSection>();
+#endif
 				}
 				break;
 #endif
-
-#if defined(WITH_MULTIPLAYER)
-				// TODO: Multiplayer
-			case Item::TODO_ConnectTo:
-				// TODO: Hardcoded address and port
-				_root->ConnectToServer("127.0.0.1"_s, 7438);
-				break;
-			case Item::TODO_CreateServer:
-				// TODO: Hardcoded address and port
-				_root->CreateServer(7438);
-				break;
-#endif
-
 			case Item::Options:
 				if (isPlayable) {
 					_root->PlaySfx("MenuSelect"_s, 0.6f);

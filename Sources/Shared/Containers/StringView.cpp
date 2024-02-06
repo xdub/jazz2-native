@@ -19,8 +19,9 @@
 #	include <wasm_simd128.h>
 #endif
 
-namespace Death::Containers
-{
+namespace Death { namespace Containers {
+//###==##====#=====--==~--~=~- --- -- -  -  -   -
+
 	template<class T> BasicStringView<T>::BasicStringView(T* const data, const StringViewFlags flags, std::nullptr_t) noexcept : BasicStringView{data,
 		data ? std::strlen(data) : 0,
 		flags | (data ? StringViewFlags::NullTerminated : StringViewFlags::Global)} {}
@@ -369,10 +370,19 @@ namespace Death::Containers
 #endif
 
 #if defined(DEATH_ENABLE_NEON) && !defined(DEATH_TARGET_32BIT)
-			// `vshrn_n_u16` and `vaddvq_u8` are missing in `armeabi-v7a` on Android, so enable it only on ARM64
+#	if defined(DEATH_TARGET_MSVC)
+			// Redirect GCC/Clang intrinsics to MSVC built-in function
+			static DEATH_ALWAYS_INLINE int __builtin_ctzll(uint64_t x) {
+				unsigned long index;
+				_BitScanForward64(&index, x);
+				return (int)index;
+			}
+#	endif
+
+			// `vshrn_n_u16` and `vaddvq_u8` are missing in `armeabi-v7a` on Android, so enable it only on ARM64.
 			// ARM64 doesn't differentiate between aligned and unaligned loads. ARM32 does, but it's not exposed in the intrinsics,
-			// only in compiler-specific ways. Since 32-bit ARM is increasingly rare, not bothering at all.
-			// https://stackoverflow.com/a/53245244
+			// only in compiler-specific ways. Since 32-bit ARM is increasingly rare (and this code doesn't work on
+			// it anyway), not bothering at all. https://stackoverflow.com/a/53245244
 			DEATH_ENABLE(NEON) DEATH_ALWAYS_INLINE const char* findCharacterSingleVectorUnaligned(Cpu::NeonT, const char* at, const uint8x16_t vn1) {
 				const uint8x16_t chunk = vld1q_u8(reinterpret_cast<const std::uint8_t*>(at));
 
@@ -745,11 +755,11 @@ namespace Death::Containers
 		for (const StringView string : strings) {
 			const std::size_t stringSize = string.size();
 			// Apparently memcpy() can't be called with null pointers, even if size is zero. I call that bullying.
-			if (stringSize) {
+			if (stringSize != 0) {
 				std::memcpy(out, string._data, stringSize);
 				out += stringSize;
 			}
-			if (delimiterSize && out != end) {
+			if (delimiterSize != 0 && out != end) {
 				std::memcpy(out, _data, delimiterSize);
 				out += delimiterSize;
 			}
@@ -770,7 +780,7 @@ namespace Death::Containers
 			if (string.empty()) continue;
 			totalSize += string.size() + delimiterSize;
 		}
-		if (totalSize) totalSize -= delimiterSize;
+		if (totalSize != 0) totalSize -= delimiterSize;
 
 		// Reserve memory for the resulting string
 		String result { NoInit, totalSize };
@@ -783,11 +793,11 @@ namespace Death::Containers
 
 			const std::size_t stringSize = string.size();
 			// Apparently memcpy() can't be called with null pointers, even if size is zero. I call that bullying.
-			if (stringSize) {
+			if (stringSize != 0) {
 				std::memcpy(out, string._data, stringSize);
 				out += stringSize;
 			}
-			if (delimiterSize && out != end) {
+			if (delimiterSize != 0 && out != end) {
 				std::memcpy(out, _data, delimiterSize);
 				out += delimiterSize;
 			}
@@ -822,7 +832,7 @@ namespace Death::Containers
 
 	template<class T> bool BasicStringView<T>::hasSuffix(const char suffix) const {
 		const std::size_t size = this->size();
-		return size && _data[size - 1] == suffix;
+		return size != 0 && _data[size - 1] == suffix;
 	}
 
 	template<class T> BasicStringView<T> BasicStringView<T>::exceptPrefix(const StringView prefix) const {
@@ -932,8 +942,8 @@ namespace Death::Containers
 
 		// Apparently memcpy() can't be called with null pointers, even if size is zero. I call that bullying.
 		char* out = result.data();
-		if (aSize) std::memcpy(out, a._data, aSize);
-		if (bSize) std::memcpy(out + aSize, b._data, bSize);
+		if (aSize != 0) std::memcpy(out, a._data, aSize);
+		if (bSize != 0) std::memcpy(out + aSize, b._data, bSize);
 
 		return result;
 	}
@@ -946,7 +956,7 @@ namespace Death::Containers
 
 		// Apparently memcpy() can't be called with null pointers, even if size is zero. I call that bullying.
 		char* out = result.data();
-		if (size) for (std::size_t i = 0; i != count; ++i)
+		if (size != 0) for (std::size_t i = 0; i != count; ++i)
 			std::memcpy(out + i * size, string._data, size);
 
 		return result;
@@ -969,21 +979,21 @@ namespace Death::Containers
 		}
 
 		StringView StringViewConverter<const char, std::string>::from(const std::string& other) {
-			return StringView { other.data(), other.size(), StringViewFlags::NullTerminated };
+			return StringView{other.data(), other.size(), StringViewFlags::NullTerminated};
 		}
 
 		std::string StringViewConverter<const char, std::string>::to(StringView other) {
-			return std::string { other.data(), other.size() };
+			return std::string{other.data(), other.size()};
 		}
 
 		MutableStringView StringViewConverter<char, std::string>::from(std::string& other) {
-			// .data() returns a const pointer until C++17, so have to use &other[0]. It's guaranteed to return a pointer
-			// to a single null character if the string is empty.
-			return MutableStringView { &other[0], other.size(), StringViewFlags::NullTerminated };
+			// .data() returns a const pointer until C++17, so have to use &other[0]. It's guaranteed
+			// to return a pointer to a single null character if the string is empty.
+			return MutableStringView{&other[0], other.size(), StringViewFlags::NullTerminated};
 		}
 
 		std::string StringViewConverter<char, std::string>::to(MutableStringView other) {
-			return std::string { other.data(), other.size() };
+			return std::string{other.data(), other.size()};
 		}
 	}
-}
+}}

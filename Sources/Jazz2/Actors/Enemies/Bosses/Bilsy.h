@@ -6,6 +6,8 @@ namespace Jazz2::Actors::Bosses
 {
 	class Bilsy : public BossBase
 	{
+		DEATH_RUNTIME_OBJECT(BossBase);
+
 	public:
 		Bilsy();
 
@@ -25,6 +27,8 @@ namespace Jazz2::Actors::Bosses
 
 		class Fireball : public EnemyBase
 		{
+			DEATH_RUNTIME_OBJECT(EnemyBase);
+
 		public:
 			bool OnHandleCollision(std::shared_ptr<ActorBase> other) override;
 

@@ -24,18 +24,19 @@ namespace Jazz2::Compatibility
 		String PreviousEpisode;
 		String NextEpisode;
 
-		JJ2Episode() { }
+		int32_t ImageWidth;
+		int32_t ImageHeight;
+		std::unique_ptr<uint8_t[]> ImageData;
 
-		JJ2Episode(const String& name, const String& displayName, const String& firstLevel, int position)
-			: Name(name), DisplayName(displayName), FirstLevel(firstLevel), Position(position)
-		{
-		}
+		int32_t TitleWidth;
+		int32_t TitleHeight;
+		std::unique_ptr<uint8_t[]> TitleData;
 
-		bool Open(const StringView& path);
+		JJ2Episode();
+		JJ2Episode(const StringView name, const StringView displayName, const StringView firstLevel, int32_t position);
 
-		void Convert(const String& targetPath, std::function<JJ2Level::LevelToken(const StringView&)> levelTokenConversion = nullptr, std::function<String(JJ2Episode*)> episodeNameConversion = nullptr, std::function<Pair<String, String>(JJ2Episode*)> episodePrevNext = nullptr);
+		bool Open(const StringView path);
 
-	private:
-		//std::unique_ptr<uint8_t[]> _titleLight;
+		void Convert(const StringView targetPath, const std::function<JJ2Level::LevelToken(const StringView)>& levelTokenConversion = nullptr, const std::function<String(JJ2Episode*)>& episodeNameConversion = nullptr, const std::function<Pair<String, String>(JJ2Episode*)>& episodePrevNext = nullptr);
 	};
 }

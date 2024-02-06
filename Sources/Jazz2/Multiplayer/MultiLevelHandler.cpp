@@ -25,9 +25,21 @@
 #include "../../nCine/Base/Random.h"
 
 #include "../Actors/Player.h"
-#include "../Actors/RemoteActor.h"
+#include "../Actors/Multiplayer/LocalPlayerOnServer.h"
+#include "../Actors/Multiplayer/RemotablePlayer.h"
+#include "../Actors/Multiplayer/RemotePlayerOnServer.h"
+#include "../Actors/Multiplayer/RemoteActor.h"
 #include "../Actors/SolidObjectBase.h"
 #include "../Actors/Enemies/Bosses/BossBase.h"
+
+#include "../Actors/Environment/AirboardGenerator.h"
+#include "../Actors/Environment/SteamNote.h"
+#include "../Actors/Environment/SwingingVine.h"
+#include "../Actors/Solid/Bridge.h"
+#include "../Actors/Solid/MovingPlatform.h"
+#include "../Actors/Solid/PinballBumper.h"
+#include "../Actors/Solid/PinballPaddle.h"
+#include "../Actors/Solid/SpikeBall.h"
 
 #include <float.h>
 
@@ -40,8 +52,9 @@ using namespace nCine;
 namespace Jazz2::Multiplayer
 {
 	MultiLevelHandler::MultiLevelHandler(IRootController* root, NetworkManager* networkManager)
-		: LevelHandler(root), _networkManager(networkManager), _updateTimeLeft(1.0f), _initialUpdateSent(false),
-			_lastSpawnedActorId(-1), _seqNum(0), _seqNumWarped(0), _suppressRemoting(false), _ignorePackets(false)
+		: LevelHandler(root), _gameMode(MultiplayerGameMode::Unknown), _networkManager(networkManager), _updateTimeLeft(1.0f),
+			_initialUpdateSent(false), _lastSpawnedActorId(-1), _seqNum(0), _seqNumWarped(0), _suppressRemoting(false),
+			_ignorePackets(false)
 	{
 		_isServer = (networkManager->GetState() == NetworkState::Listening);
 	}
@@ -59,20 +72,18 @@ namespace Jazz2::Multiplayer
 			return false;
 		}
 
-		for (std::int32_t i = 0; i < countof(levelInit.PlayerCarryOvers); i++) {
-			if (levelInit.PlayerCarryOvers[i].Type != PlayerType::None) {
-				_lastSpawnedActorId = i;
-			}
-		}
-
 		if (_isServer) {
+			// Reserve first 255 indices for players
+			_lastSpawnedActorId = UINT8_MAX;
+
 			std::uint8_t flags = 0;
-			if (PreferencesCache::EnableReforged) {
+			if (PreferencesCache::EnableReforgedGameplay) {
 				flags |= 0x01;
 			}
 			MemoryStream packet(10 + _episodeName.size() + _levelFileName.size());
 			packet.WriteValue<std::uint8_t>((std::uint8_t)ServerPacketType::LoadLevel);
 			packet.WriteValue<std::uint8_t>(flags);
+			packet.WriteValue<std::uint8_t>((std::uint8_t)_gameMode);
 			packet.WriteVariableUint32(_episodeName.size());
 			packet.Write(_episodeName.data(), _episodeName.size());
 			packet.WriteVariableUint32(_levelFileName.size());
@@ -93,9 +104,17 @@ namespace Jazz2::Multiplayer
 		return LevelHandler::GetAmbientLight();
 	}
 
-	void MultiLevelHandler::SetAmbientLight(float value)
+	void MultiLevelHandler::SetAmbientLight(Actors::Player* player, float value)
 	{
-		LevelHandler::SetAmbientLight(value);
+		if (_isServer && player != nullptr) {
+			auto it = _playerStates.find(player->_playerIndex);
+			if (it != _playerStates.end()) {
+				// TODO: Send it to remote peer
+				return;
+			}
+		}
+
+		LevelHandler::SetAmbientLight(player, value);
 	}
 
 	void MultiLevelHandler::OnBeginFrame()
@@ -117,19 +136,20 @@ namespace Jazz2::Multiplayer
 
 		float timeMult = theApplication().timeMult();
 
+		for (auto& [playerIndex, playerState] : _playerStates) {
+			playerState.PressedKeys |= ((playerState.PressedKeys & 0xffffffffu) << 32);
+		}
+
 		_updateTimeLeft -= timeMult;
 		if (_updateTimeLeft < 0.0f) {
-			_updateTimeLeft = 4.0f;
+			_updateTimeLeft = FrameTimer::FramesPerSecond / UpdatesPerSecond;
 
 			if (!_initialUpdateSent) {
 				_initialUpdateSent = true;
 
-				if (_isServer) {
-					// TODO
-				} else {
+				if (!_isServer) {
 					MemoryStream packet(5);
 					packet.WriteValue<std::uint8_t>((std::uint8_t)ClientPacketType::LevelReady);
-
 					_networkManager->SendToPeer(nullptr, NetworkChannel::Main, packet.GetBuffer(), packet.GetSize());
 				}
 			}
@@ -137,18 +157,18 @@ namespace Jazz2::Multiplayer
 			if (_isServer) {
 				std::uint32_t actorCount = (std::uint32_t)(_players.size() + _remotingActors.size());
 
-				MemoryStream packet(5 + actorCount * 9);
+				MemoryStream packet(5 + actorCount * 19);
 				packet.WriteValue<std::uint8_t>((std::uint8_t)ServerPacketType::UpdateAllActors);
 				packet.WriteVariableUint32(actorCount);
 
 				for (Actors::Player* player : _players) {
-					Vector2f pos;
+					/*Vector2f pos;
 					auto it = _playerStates.find(player->_playerIndex);
 					if (it != _playerStates.end()) {
 						// Remote players
-						UpdatePlayerLocalPos(player, it->second, timeMult);
 						pos = player->_pos;
 
+						// TODO: This should be WarpUpdatesLeft
 						if (it->second.WarpTimeLeft > 0.0f) {
 							it->second.WarpTimeLeft -= timeMult;
 							if (it->second.WarpTimeLeft <= 0.0f) {
@@ -165,12 +185,17 @@ namespace Jazz2::Multiplayer
 					} else {
 						// Local players
 						pos = player->_pos;
-					}
+					}*/
+					Vector2f pos = player->_pos;
 
 					packet.WriteVariableUint32(player->_playerIndex);
 					packet.WriteValue<std::int32_t>((std::int32_t)(pos.X * 512.0f));
 					packet.WriteValue<std::int32_t>((std::int32_t)(pos.Y * 512.0f));
 					packet.WriteVariableUint32((std::uint32_t)(player->_currentTransition != nullptr ? player->_currentTransition->State : player->_currentAnimation->State));
+
+					float rotation = player->_renderer.rotation();
+					if (rotation < 0.0f) rotation += fRadAngle360;
+					packet.WriteValue<std::uint8_t>((std::uint8_t)(rotation * 255.0f / fRadAngle360));
 
 					std::uint8_t flags = 0;
 					if (player->IsFacingLeft()) {
@@ -179,7 +204,13 @@ namespace Jazz2::Multiplayer
 					if (player->_renderer.isDrawEnabled()) {
 						flags |= 0x02;
 					}
+					if (player->_renderer.AnimPaused) {
+						flags |= 0x04;
+					}
 					packet.WriteValue<std::uint8_t>(flags);
+
+					Actors::ActorRendererType rendererType = player->_renderer.GetRendererType();
+					packet.WriteValue<std::uint8_t>((std::uint8_t)rendererType);
 				}
 
 				for (const auto& [remotingActor, remotingActorId] : _remotingActors) {
@@ -187,6 +218,10 @@ namespace Jazz2::Multiplayer
 					packet.WriteValue<std::int32_t>((std::int32_t)(remotingActor->_pos.X * 512.0f));
 					packet.WriteValue<std::int32_t>((std::int32_t)(remotingActor->_pos.Y * 512.0f));
 					packet.WriteVariableUint32((std::uint32_t)(remotingActor->_currentTransition != nullptr ? remotingActor->_currentTransition->State : (remotingActor->_currentAnimation != nullptr ? remotingActor->_currentAnimation->State : AnimState::Idle)));
+					
+					float rotation = remotingActor->_renderer.rotation();
+					if (rotation < 0.0f) rotation += fRadAngle360;
+					packet.WriteValue<std::uint8_t>((std::uint8_t)(rotation * 255.0f / fRadAngle360));
 
 					std::uint8_t flags = 0;
 					if (remotingActor->IsFacingLeft()) {
@@ -195,7 +230,13 @@ namespace Jazz2::Multiplayer
 					if (remotingActor->_renderer.isDrawEnabled()) {
 						flags |= 0x02;
 					}
+					if (remotingActor->_renderer.AnimPaused) {
+						flags |= 0x04;
+					}
 					packet.WriteValue<std::uint8_t>(flags);
+
+					Actors::ActorRendererType rendererType = remotingActor->_renderer.GetRendererType();
+					packet.WriteValue<std::uint8_t>((std::uint8_t)rendererType);
 				}
 
 				_networkManager->SendToAll(NetworkChannel::UnreliableUpdates, packet.GetBuffer(), packet.GetSize());
@@ -246,7 +287,7 @@ namespace Jazz2::Multiplayer
 		if (PreferencesCache::ShowPerformanceMetrics) {
 			ImDrawList* drawList = ImGui::GetBackgroundDrawList();
 
-			if (_isServer) {
+			/*if (_isServer) {
 				for (Actors::Player* player : _players) {
 					char actorIdString[32];
 
@@ -309,7 +350,7 @@ namespace Jazz2::Multiplayer
 					aabbMin.y += 3.0f;
 					drawList->AddText(aabbMin, ImColor(255, 255, 255), actorIdString);
 				}
-			}
+			}*/
 		}
 #endif
 	}
@@ -338,37 +379,61 @@ namespace Jazz2::Multiplayer
 	{
 		LevelHandler::AddActor(actor);
 
-		if (!_suppressRemoting && _isServer && (actor->_currentAnimation != nullptr || actor->_currentTransition != nullptr)) {
-			++_lastSpawnedActorId;
-			std::uint32_t actorId = _lastSpawnedActorId;
-			_remotingActors[actor.get()] = actorId;
+		if (!_suppressRemoting && _isServer) {
+			std::uint32_t actorId = FindFreeActorId();
+			Actors::ActorBase* actorPtr = actor.get();
+			_remotingActors[actorPtr] = actorId;
 
-			const auto& metadataPath = actor->_metadata->Path;
+			// Store only used IDs on server-side
+			_remoteActors[actorId] = nullptr;
 
-			for (const auto& [peer, peerDesc] : _peerDesc) {
-				MemoryStream packet(24 + metadataPath.size());
-				packet.WriteValue<std::uint8_t>((std::uint8_t)ServerPacketType::CreateRemoteActor);
-				packet.WriteVariableUint32(actorId);
-				packet.WriteVariableInt32((std::int32_t)actor->_pos.X);
-				packet.WriteVariableInt32((std::int32_t)actor->_pos.Y);
-				packet.WriteVariableInt32((std::int32_t)actor->_renderer.layer());
-				packet.WriteVariableUint32((std::uint32_t)actor->_state);
-				packet.WriteVariableUint32((std::uint32_t)metadataPath.size());
-				packet.Write(metadataPath.data(), (std::uint32_t)metadataPath.size());
-				packet.WriteVariableUint32((std::uint32_t)(actor->_currentTransition != nullptr ? actor->_currentTransition->State : actor->_currentAnimation->State));
+			if (ActorShouldBeMirrored(actorPtr)) {
+				Vector2i originTile = actorPtr->_originTile;
+				const auto& eventTile = _eventMap->GetEventTile(originTile.X, originTile.Y);
+				if (eventTile.Event != EventType::Empty) {
+					for (const auto& [peer, peerDesc] : _peerDesc) {
+						MemoryStream packet(13 + Events::EventSpawner::SpawnParamsSize);
+						packet.WriteValue<std::uint8_t>((std::uint8_t)ServerPacketType::CreateMirroredActor);
+						packet.WriteVariableUint32(actorId);
+						packet.WriteVariableUint32((std::uint32_t)eventTile.Event);
+						packet.Write(eventTile.EventParams, Events::EventSpawner::SpawnParamsSize);
+						packet.WriteVariableUint32((std::uint32_t)eventTile.EventFlags);
+						packet.WriteVariableInt32((std::int32_t)originTile.X);
+						packet.WriteVariableInt32((std::int32_t)originTile.Y);
+						packet.WriteVariableInt32((std::int32_t)actorPtr->_renderer.layer());
 
-				// TODO: If it fail, it will release the packet which is wrong
-				_networkManager->SendToPeer(peer, NetworkChannel::Main, packet.GetBuffer(), packet.GetSize());
+						// TODO: If it fail, it will release the packet which is wrong
+						_networkManager->SendToPeer(peer, NetworkChannel::Main, packet.GetBuffer(), packet.GetSize());
+					}
+				}
+			} else {
+				const auto& metadataPath = actorPtr->_metadata->Path;
+
+				for (const auto& [peer, peerDesc] : _peerDesc) {
+					MemoryStream packet(24 + metadataPath.size());
+					packet.WriteValue<std::uint8_t>((std::uint8_t)ServerPacketType::CreateRemoteActor);
+					packet.WriteVariableUint32(actorId);
+					packet.WriteVariableInt32((std::int32_t)actorPtr->_pos.X);
+					packet.WriteVariableInt32((std::int32_t)actorPtr->_pos.Y);
+					packet.WriteVariableInt32((std::int32_t)actorPtr->_renderer.layer());
+					packet.WriteVariableUint32((std::uint32_t)actorPtr->_state);
+					packet.WriteVariableUint32((std::uint32_t)metadataPath.size());
+					packet.Write(metadataPath.data(), (std::uint32_t)metadataPath.size());
+					packet.WriteVariableUint32((std::uint32_t)(actorPtr->_currentTransition != nullptr ? actorPtr->_currentTransition->State : actorPtr->_currentAnimation->State));
+
+					// TODO: If it fail, it will release the packet which is wrong
+					_networkManager->SendToPeer(peer, NetworkChannel::Main, packet.GetBuffer(), packet.GetSize());
+				}
 			}
 		}
 	}
 
-	std::shared_ptr<AudioBufferPlayer> MultiLevelHandler::PlaySfx(Actors::ActorBase* self, const StringView& identifier, AudioBuffer* buffer, const Vector3f& pos, bool sourceRelative, float gain, float pitch)
+	std::shared_ptr<AudioBufferPlayer> MultiLevelHandler::PlaySfx(Actors::ActorBase* self, const StringView identifier, AudioBuffer* buffer, const Vector3f& pos, bool sourceRelative, float gain, float pitch)
 	{
 		if (_isServer) {
 			std::uint32_t actorId;
 			auto it = _remotingActors.find(self);
-			if (auto* player = dynamic_cast<Actors::Player*>(self)) {
+			if (auto* player = runtime_cast<Actors::Player*>(self)) {
 				actorId = player->_playerIndex;
 			} else if (it != _remotingActors.end()) {
 				actorId = it->second;
@@ -382,13 +447,13 @@ namespace Jazz2::Multiplayer
 						continue;
 					}
 
-					MemoryStream packet(9 + identifier.size());
+					MemoryStream packet(13 + identifier.size());
 					packet.WriteValue<std::uint8_t>((std::uint8_t)ServerPacketType::PlaySfx);
 					packet.WriteVariableUint32(actorId);
 					// TODO: sourceRelative
 					// TODO: looping
-					// TODO: gain
-					// TODO: pitch
+					packet.WriteValue<std::uint16_t>(floatToHalf(gain));
+					packet.WriteValue<std::uint16_t>(floatToHalf(pitch));
 					packet.WriteVariableUint32((std::uint32_t)identifier.size());
 					packet.Write(identifier.data(), (std::uint32_t)identifier.size());
 
@@ -401,17 +466,17 @@ namespace Jazz2::Multiplayer
 		return LevelHandler::PlaySfx(self, identifier, buffer, pos, sourceRelative, gain, pitch);
 	}
 
-	std::shared_ptr<AudioBufferPlayer> MultiLevelHandler::PlayCommonSfx(const StringView& identifier, const Vector3f& pos, float gain, float pitch)
+	std::shared_ptr<AudioBufferPlayer> MultiLevelHandler::PlayCommonSfx(const StringView identifier, const Vector3f& pos, float gain, float pitch)
 	{
 		if (_isServer) {
 			for (const auto& [peer, peerDesc] : _peerDesc) {
-				MemoryStream packet(10 + identifier.size());
+				MemoryStream packet(14 + identifier.size());
 				packet.WriteValue<std::uint8_t>((std::uint8_t)ServerPacketType::PlayCommonSfx);
 				packet.WriteVariableInt32((std::int32_t)pos.X);
 				packet.WriteVariableInt32((std::int32_t)pos.Y);
 				// TODO: looping
-				// TODO: gain
-				// TODO: pitch
+				packet.WriteValue<std::uint16_t>(floatToHalf(gain));
+				packet.WriteValue<std::uint16_t>(floatToHalf(pitch));
 				packet.WriteVariableUint32((std::uint32_t)identifier.size());
 				packet.Write(identifier.data(), (std::uint32_t)identifier.size());
 
@@ -453,7 +518,7 @@ namespace Jazz2::Multiplayer
 		LevelHandler::BroadcastTriggeredEvent(initiator, eventType, eventParams);
 	}
 
-	void MultiLevelHandler::BeginLevelChange(ExitType exitType, const StringView& nextLevel)
+	void MultiLevelHandler::BeginLevelChange(ExitType exitType, const StringView nextLevel)
 	{
 		if (!_isServer) {
 			// Level can be changed only by server
@@ -463,9 +528,10 @@ namespace Jazz2::Multiplayer
 		LevelHandler::BeginLevelChange(exitType, nextLevel);
 	}
 
-	void MultiLevelHandler::HandleGameOver()
+	void MultiLevelHandler::HandleGameOver(Actors::Player* player)
 	{
-		LevelHandler::HandleGameOver();
+		// TODO
+		//LevelHandler::HandleGameOver(player);
 	}
 
 	bool MultiLevelHandler::HandlePlayerDied(Actors::Player* player)
@@ -473,18 +539,9 @@ namespace Jazz2::Multiplayer
 		return LevelHandler::HandlePlayerDied(player);
 	}
 
-	bool MultiLevelHandler::HandlePlayerFireWeapon(Actors::Player* player, WeaponType& weaponType, std::uint16_t& ammoDecrease)
-	{
-		if (!_isServer) {
-			// TODO
-			return false;
-		}
-
-		return true;
-	}
-
 	bool MultiLevelHandler::HandlePlayerSpring(Actors::Player* player, const Vector2f& pos, const Vector2f& force, bool keepSpeedX, bool keepSpeedY)
 	{
+		// TODO: Only called by RemotePlayerOnServer
 		if (_isServer) {
 			for (const auto& [peer, peerDesc] : _peerDesc) {
 				if (peerDesc.Player == player) {
@@ -510,51 +567,180 @@ namespace Jazz2::Multiplayer
 			}
 		}
 
-		return LevelHandler::HandlePlayerSpring(player, pos, force, keepSpeedX, keepSpeedY);
+		return true;
+	}
+
+	void MultiLevelHandler::HandlePlayerBeforeWarp(Actors::Player* player, const Vector2f& pos, Actors::WarpFlags flags)
+	{
+		if (!_isServer) {
+			return;
+		}
+
+		if (_gameMode == MultiplayerGameMode::Race && (flags & Actors::WarpFlags::IncrementLaps) == Actors::WarpFlags::IncrementLaps) {
+			// TODO: Increment laps
+		}
+
+		if ((flags & Actors::WarpFlags::Fast) == Actors::WarpFlags::Fast) {
+			// Nothing to do, sending PlayerMoveInstantly packet is enough
+			return;
+		}
+
+		for (const auto& [peer, peerDesc] : _peerDesc) {
+			if (peerDesc.Player == player) {
+				MemoryStream packet(5);
+				packet.WriteValue<std::uint8_t>((std::uint8_t)ServerPacketType::PlayerWarpIn);
+				packet.WriteVariableUint32(player->_playerIndex);
+				_networkManager->SendToPeer(peer, NetworkChannel::Main, packet.GetBuffer(), packet.GetSize());
+				break;
+			}
+		}
+	}
+
+	void MultiLevelHandler::HandlePlayerTakeDamage(Actors::Player* player, std::int32_t amount, float pushForce)
+	{
+		// TODO: Only called by RemotePlayerOnServer
+		if (_isServer) {
+			for (const auto& [peer, peerDesc] : _peerDesc) {
+				if (peerDesc.Player == player) {
+					MemoryStream packet(11);
+					packet.WriteValue<std::uint8_t>((std::uint8_t)ServerPacketType::PlayerTakeDamage);
+					packet.WriteVariableUint32(player->_playerIndex);
+					packet.WriteVariableInt32(player->_health);
+					packet.WriteValue<std::int16_t>((std::int16_t)(pushForce * 512.0f));
+					_networkManager->SendToPeer(peer, NetworkChannel::Main, packet.GetBuffer(), packet.GetSize());
+					break;
+				}
+			}
+		}
+	}
+
+	void MultiLevelHandler::HandlePlayerRefreshAmmo(Actors::Player* player, WeaponType weaponType)
+	{
+		// TODO: Only called by RemotePlayerOnServer
+		if (_isServer) {
+			for (const auto& [peer, peerDesc] : _peerDesc) {
+				if (peerDesc.Player == player) {
+					MemoryStream packet(8);
+					packet.WriteValue<std::uint8_t>((std::uint8_t)ServerPacketType::PlayerRefreshAmmo);
+					packet.WriteVariableUint32(player->_playerIndex);
+					packet.WriteValue<std::uint8_t>((std::uint8_t)player->_currentWeapon);
+					packet.WriteValue<std::uint16_t>((std::uint16_t)player->_weaponAmmo[(std::uint8_t)player->_currentWeapon]);
+					_networkManager->SendToPeer(peer, NetworkChannel::Main, packet.GetBuffer(), packet.GetSize());
+					break;
+				}
+			}
+		}
+	}
+
+	void MultiLevelHandler::HandlePlayerRefreshWeaponUpgrades(Actors::Player* player, WeaponType weaponType)
+	{
+		// TODO: Only called by RemotePlayerOnServer
+		if (_isServer) {
+			for (const auto& [peer, peerDesc] : _peerDesc) {
+				if (peerDesc.Player == player) {
+					MemoryStream packet(7);
+					packet.WriteValue<std::uint8_t>((std::uint8_t)ServerPacketType::PlayerRefreshWeaponUpgrades);
+					packet.WriteVariableUint32(player->_playerIndex);
+					packet.WriteValue<std::uint8_t>((std::uint8_t)player->_currentWeapon);
+					packet.WriteValue<std::uint8_t>((std::uint8_t)player->_weaponUpgrades[(std::uint8_t)player->_currentWeapon]);
+					_networkManager->SendToPeer(peer, NetworkChannel::Main, packet.GetBuffer(), packet.GetSize());
+					break;
+				}
+			}
+		}
+	}
+
+	void MultiLevelHandler::HandlePlayerWeaponChanged(Actors::Player* player)
+	{
+		// TODO: Only called by RemotePlayerOnServer
+		if (_isServer) {
+			for (const auto & [peer, peerDesc] : _peerDesc) {
+				if (peerDesc.Player == player) {
+					MemoryStream packet(6);
+					packet.WriteValue<std::uint8_t>((std::uint8_t)ServerPacketType::PlayerChangeWeapon);
+					packet.WriteVariableUint32(player->_playerIndex);
+					packet.WriteValue<std::uint8_t>((std::uint8_t)player->_currentWeapon);
+					_networkManager->SendToPeer(peer, NetworkChannel::Main, packet.GetBuffer(), packet.GetSize());
+					break;
+				}
+			}
+		}
 	}
 
 	void MultiLevelHandler::HandlePlayerWarped(Actors::Player* player, const Vector2f& prevPos, bool fast)
 	{
 		LevelHandler::HandlePlayerWarped(player, prevPos, fast);
 
-		if (_isServer) {
+		/*if (_isServer) {
 			auto it = _playerStates.find(player->_playerIndex);
 			if (it != _playerStates.end()) {
 				it->second.Flags |= PlayerFlags::JustWarped;
 			}
 		} else {
 			_seqNumWarped = _seqNum;
+		}*/
+
+		if (_isServer) {
+			for (const auto& [peer, peerDesc] : _peerDesc) {
+				if (peerDesc.Player == player) {
+					MemoryStream packet(17);
+					packet.WriteValue<std::uint8_t>((std::uint8_t)ServerPacketType::PlayerMoveInstantly);
+					packet.WriteVariableUint32(player->_playerIndex);
+					packet.WriteValue<std::int32_t>((std::int32_t)(player->_pos.X * 512.0f));
+					packet.WriteValue<std::int32_t>((std::int32_t)(player->_pos.Y * 512.0f));
+					packet.WriteValue<std::int16_t>((std::int16_t)(player->_speed.X * 512.0f));
+					packet.WriteValue<std::int16_t>((std::int16_t)(player->_speed.Y * 512.0f));
+					_networkManager->SendToPeer(peer, NetworkChannel::Main, packet.GetBuffer(), packet.GetSize());
+					break;
+				}
+			}
 		}
 	}
 
-	void MultiLevelHandler::SetCheckpoint(const Vector2f& pos)
+	void MultiLevelHandler::SetCheckpoint(Actors::Player* player, const Vector2f& pos)
 	{
-		LevelHandler::SetCheckpoint(pos);
+		LevelHandler::SetCheckpoint(player, pos);
 	}
 
-	void MultiLevelHandler::RollbackToCheckpoint()
+	void MultiLevelHandler::RollbackToCheckpoint(Actors::Player* player)
 	{
-		LevelHandler::RollbackToCheckpoint();
+		LevelHandler::RollbackToCheckpoint(player);
 	}
 
-	void MultiLevelHandler::ActivateSugarRush()
+	void MultiLevelHandler::ActivateSugarRush(Actors::Player* player)
 	{
-		LevelHandler::ActivateSugarRush();
+		LevelHandler::ActivateSugarRush(player);
 	}
 
-	void MultiLevelHandler::ShowLevelText(const StringView& text)
+	void MultiLevelHandler::ShowLevelText(const StringView text)
 	{
 		LevelHandler::ShowLevelText(text);
 	}
 
-	void MultiLevelHandler::ShowCoins(int32_t count)
+	void MultiLevelHandler::ShowCoins(Actors::Player* player, std::int32_t count)
 	{
-		LevelHandler::ShowCoins(count);
+		if (_isServer) {
+			auto it = _playerStates.find(player->_playerIndex);
+			if (it != _playerStates.end()) {
+				// TODO: Send it to remote peer
+				return;
+			}
+		}
+
+		LevelHandler::ShowCoins(player, count);
 	}
 
-	void MultiLevelHandler::ShowGems(int32_t count)
+	void MultiLevelHandler::ShowGems(Actors::Player* player, std::int32_t count)
 	{
-		LevelHandler::ShowGems(count);
+		if (_isServer) {
+			auto it = _playerStates.find(player->_playerIndex);
+			if (it != _playerStates.end()) {
+				// TODO: Send it to remote peer
+				return;
+			}
+		}
+
+		LevelHandler::ShowGems(player, count);
 	}
 
 	StringView MultiLevelHandler::GetLevelText(uint32_t textId, int32_t index, uint32_t delimiter)
@@ -562,7 +748,7 @@ namespace Jazz2::Multiplayer
 		return LevelHandler::GetLevelText(textId, index, delimiter);
 	}
 
-	void MultiLevelHandler::OverrideLevelText(uint32_t textId, const StringView& value)
+	void MultiLevelHandler::OverrideLevelText(uint32_t textId, const StringView value)
 	{
 		LevelHandler::OverrideLevelText(textId, value);
 
@@ -581,13 +767,7 @@ namespace Jazz2::Multiplayer
 
 	bool MultiLevelHandler::PlayerActionPressed(int32_t index, PlayerActions action, bool includeGamepads)
 	{
-		if (index > 0) {
-			auto it = _playerStates.find(index);
-			if (it != _playerStates.end()) {
-				return (it->second.PressedKeys & (1ull << (int32_t)action)) != 0;
-			}
-		}
-
+		// TODO: Remove this override
 		return LevelHandler::PlayerActionPressed(index, action, includeGamepads);
 	}
 
@@ -596,8 +776,14 @@ namespace Jazz2::Multiplayer
 		if (index > 0) {
 			auto it = _playerStates.find(index);
 			if (it != _playerStates.end()) {
+				std::uint64_t pressedKeys = it->second.PressedKeys;
+				if ((pressedKeys & (1ull << (int32_t)action)) != 0) {
+					isGamepad = (pressedKeys & (1ull << (16 + (int32_t)action))) != 0;
+					return true;
+				}
+
 				isGamepad = false;
-				return (it->second.PressedKeys & (1ull << (int32_t)action)) != 0;
+				return false;
 			}
 		}
 
@@ -606,14 +792,7 @@ namespace Jazz2::Multiplayer
 
 	bool MultiLevelHandler::PlayerActionHit(int32_t index, PlayerActions action, bool includeGamepads)
 	{
-		if (index > 0) {
-			auto it = _playerStates.find(index);
-			if (it != _playerStates.end()) {
-				// TODO
-				return (it->second.PressedKeys & (1ull << (int32_t)action)) != 0;
-			}
-		}
-
+		// TODO: Remove this override
 		return LevelHandler::PlayerActionHit(index, action, includeGamepads);
 	}
 
@@ -622,9 +801,14 @@ namespace Jazz2::Multiplayer
 		if (index > 0) {
 			auto it = _playerStates.find(index);
 			if (it != _playerStates.end()) {
-				// TODO
+				std::uint64_t pressedKeys = it->second.PressedKeys;
+				if ((pressedKeys & ((1ull << (int32_t)action) | (1ull << (32 + (int32_t)action)))) == (1ull << (int32_t)action)) {
+					isGamepad = (pressedKeys & (1ull << (16 + (int32_t)action))) != 0;
+					return true;
+				}
+
 				isGamepad = false;
-				return (it->second.PressedKeys & (1ull << (int32_t)action)) != 0;
+				return false;
 			}
 		}
 
@@ -716,6 +900,68 @@ namespace Jazz2::Multiplayer
 		}
 	}
 
+	void MultiLevelHandler::SpawnPlayers(const LevelInitialization& levelInit)
+	{
+		if (!_isServer) {
+			// Player spawning is delayed/controlled by server
+			return;
+		}
+
+		for (std::int32_t i = 0; i < countof(levelInit.PlayerCarryOvers); i++) {
+			if (levelInit.PlayerCarryOvers[i].Type == PlayerType::None) {
+				continue;
+			}
+
+			Vector2 spawnPosition = _eventMap->GetSpawnPosition(levelInit.PlayerCarryOvers[i].Type);
+			if (spawnPosition.X < 0.0f && spawnPosition.Y < 0.0f) {
+				spawnPosition = _eventMap->GetSpawnPosition(PlayerType::Jazz);
+				if (spawnPosition.X < 0.0f && spawnPosition.Y < 0.0f) {
+					continue;
+				}
+			}
+
+			std::shared_ptr<Actors::Multiplayer::LocalPlayerOnServer> player = std::make_shared<Actors::Multiplayer::LocalPlayerOnServer>();
+			std::uint8_t playerParams[2] = { (std::uint8_t)levelInit.PlayerCarryOvers[i].Type, (std::uint8_t)i };
+			player->OnActivated(Actors::ActorActivationDetails(
+				this,
+				Vector3i(spawnPosition.X + (i * 30), spawnPosition.Y - (i * 30), PlayerZ - i),
+				playerParams
+			));
+
+			Actors::Multiplayer::LocalPlayerOnServer* ptr = player.get();
+			_players.push_back(ptr);
+			AddActor(player);
+
+			ptr->ReceiveLevelCarryOver(levelInit.LastExitType, levelInit.PlayerCarryOvers[i]);
+		}
+	}
+
+	MultiplayerGameMode MultiLevelHandler::GetGameMode() const
+	{
+		return _gameMode;
+	}
+
+	bool MultiLevelHandler::SetGameMode(MultiplayerGameMode value)
+	{
+		if (!_isServer) {
+			return false;
+		}
+
+		_gameMode = value;
+
+		// TODO: Reset level and broadcast it to players
+		for (const auto& [peer, peerDesc] : _peerDesc) {
+			MemoryStream packet(2);
+			packet.WriteValue<std::uint8_t>((std::uint8_t)ServerPacketType::ChangeGameMode);
+			packet.WriteValue<std::uint8_t>((std::uint8_t)_gameMode);
+
+			// TODO: If it fail, it will release the packet which is wrong
+			_networkManager->SendToPeer(peer, NetworkChannel::Main, packet.GetBuffer(), packet.GetSize());
+		}
+
+		return true;
+	}
+
 	bool MultiLevelHandler::OnPeerDisconnected(const Peer& peer)
 	{
 		if (_isServer) {
@@ -766,13 +1012,14 @@ namespace Jazz2::Multiplayer
 			switch (packetType) {
 				case ClientPacketType::Auth: {
 					std::uint8_t flags = 0;
-					if (PreferencesCache::EnableReforged) {
+					if (PreferencesCache::EnableReforgedGameplay) {
 						flags |= 0x01;
 					}
 
 					MemoryStream packet(10 + _episodeName.size() + _levelFileName.size());
 					packet.WriteValue<std::uint8_t>((std::uint8_t)ServerPacketType::LoadLevel);
 					packet.WriteValue<std::uint8_t>(flags);
+					packet.WriteValue<std::uint8_t>((std::uint8_t)_gameMode);
 					packet.WriteVariableUint32(_episodeName.size());
 					packet.Write(_episodeName.data(), _episodeName.size());
 					packet.WriteVariableUint32(_levelFileName.size());
@@ -812,7 +1059,7 @@ namespace Jazz2::Multiplayer
 					float speedY = packet.ReadValue<std::int16_t>() / 512.0f;
 					PlayerFlags flags = (PlayerFlags)packet.ReadVariableUint32();
 
-					bool justWarped = (flags & PlayerFlags::JustWarped) == PlayerFlags::JustWarped;
+					/*bool justWarped = (flags & PlayerFlags::JustWarped) == PlayerFlags::JustWarped;
 					if (justWarped) {
 						std::uint64_t seqNumWarped = packet.ReadVariableUint64();
 						if (seqNumWarped == it2->second.WarpSeqNum) {
@@ -868,19 +1115,18 @@ namespace Jazz2::Multiplayer
 							packet2.WriteValue<std::int32_t>((std::int32_t)(posY * 512.0f));
 							packet2.WriteValue<std::int16_t>((std::int16_t)(player->_speed.X * 512.0f));
 							packet2.WriteValue<std::int16_t>((std::int16_t)(player->_speed.Y * 512.0f));
-
 							_networkManager->SendToPeer(peer, NetworkChannel::Main, packet2.GetBuffer(), packet2.GetSize());
 						}
-					}
+					}*/
 
-					player->SetFacingLeft((flags & PlayerFlags::IsFacingLeft) != PlayerFlags::None);
-					player->_renderer.setDrawEnabled((flags & PlayerFlags::IsVisible) != PlayerFlags::None);
-					player->_isActivelyPushing = (flags & PlayerFlags::IsActivelyPushing) != PlayerFlags::None;
 					// TODO: Special move
 
 					it->second.LastUpdated = now;
 
-					OnRemotePlayerPosReceived(it2->second, Vector2f(posX, posY), Vector2f(speedX, speedY), flags);
+					player->SyncWithServer(Vector2f(posX, posY), Vector2f(speedX, speedY),
+						(flags & PlayerFlags::IsVisible) != PlayerFlags::None,
+						(flags & PlayerFlags::IsFacingLeft) != PlayerFlags::None, 
+						(flags & PlayerFlags::IsActivelyPushing) != PlayerFlags::None);
 					return true;
 				}
 				case ClientPacketType::PlayerKeyPress: {
@@ -891,30 +1137,11 @@ namespace Jazz2::Multiplayer
 					if (it == _playerStates.end()) {
 						return true;
 					}
-
-					it->second.PressedKeys = packet.ReadVariableUint32();
-					return true;
-				}
-				case ClientPacketType::PlayerFireWeapon: {
-					// TODO
-					MemoryStream packet(data + 1, dataLength - 1);
-					std::uint32_t playerIndex = packet.ReadVariableUint32();
-
-					auto it = _peerDesc.find(peer);
-					auto it2 = _playerStates.find(playerIndex);
-					if (it == _peerDesc.end() || it2 == _playerStates.end()) {
-						return true;
-					}
-
-					auto player = it->second.Player;
-					if (playerIndex != player->_playerIndex) {
-						LOGW("PlayerFireWeapon packet received with wrong player index %i instead of %i", playerIndex, player->_playerIndex);
-						return true;
-					}
-
-					WeaponType weaponType = (WeaponType)packet.ReadValue<std::uint8_t>();
 					
-					LOGW("[TODO] Player %i fires weapon %i", playerIndex, (std::int32_t)weaponType);
+					std::uint64_t prevState = (it->second.PressedKeys & 0xffffffffu);
+					it->second.PressedKeys = packet.ReadVariableUint32() | (prevState << 32);
+
+					//LOGD("Player %i pressed 0x%08x, last state was 0x%08x", playerIndex, it->second.PressedKeys & 0xffffffffu, prevState);
 					return true;
 				}
 			}
@@ -926,29 +1153,45 @@ namespace Jazz2::Multiplayer
 					_ignorePackets = true;
 					break;
 				}
+				case ServerPacketType::ChangeGameMode: {
+					MemoryStream packet(data + 1, dataLength - 1);
+					MultiplayerGameMode gameMode = (MultiplayerGameMode)packet.ReadValue<std::uint8_t>();
+					_gameMode = gameMode;
+					break;
+				}
 				case ServerPacketType::PlaySfx: {
 					MemoryStream packet(data + 1, dataLength - 1);
 					std::uint32_t actorId = packet.ReadVariableUint32();
+					float gain = halfToFloat(packet.ReadValue<std::uint16_t>());
+					float pitch = halfToFloat(packet.ReadValue<std::uint16_t>());
 					std::uint32_t identifierLength = packet.ReadVariableUint32();
 					String identifier = String(NoInit, identifierLength);
 					packet.Read(identifier.data(), identifierLength);
-					
-					auto it = _remoteActors.find(actorId);
-					if (it != _remoteActors.end()) {
-						// TODO: gain, pitch, ...
-						it->second->PlaySfx(identifier);
-					}
+
+					// TODO: Use only lock here
+					_root->InvokeAsync([this, actorId, gain, pitch, identifier = std::move(identifier)]() {
+						auto it = _remoteActors.find(actorId);
+						if (it != _remoteActors.end()) {
+							// TODO: gain, pitch, ...
+							it->second->PlaySfx(identifier, gain, pitch);
+						}
+					});
 					break;
 				}
 				case ServerPacketType::PlayCommonSfx: {
 					MemoryStream packet(data + 1, dataLength - 1);
 					std::int32_t posX = packet.ReadVariableInt32();
 					std::int32_t posY = packet.ReadVariableInt32();
+					float gain = halfToFloat(packet.ReadValue<std::uint16_t>());
+					float pitch = halfToFloat(packet.ReadValue<std::uint16_t>());
 					std::uint32_t identifierLength = packet.ReadVariableUint32();
 					String identifier = String(NoInit, identifierLength);
 					packet.Read(identifier.data(), identifierLength);
-					// TODO: gain, pitch, ...
-					PlayCommonSfx(identifier, Vector3f(posX, posY, 0.0f));
+
+					// TODO: Use only lock here
+					_root->InvokeAsync([this, posX, posY, gain, pitch, identifier = std::move(identifier)]() {
+						PlayCommonSfx(identifier, Vector3f(posX, posY, 0.0f), gain, pitch);
+					});
 					break;
 				}
 				case ServerPacketType::ShowMessage: {
@@ -965,23 +1208,27 @@ namespace Jazz2::Multiplayer
 					PlayerType playerType = (PlayerType)packet.ReadValue<std::uint8_t>();
 					std::uint8_t health = packet.ReadValue<std::uint8_t>();
 					std::uint8_t flags = packet.ReadValue<std::uint8_t>();
+					std::uint8_t teamId = packet.ReadValue<std::uint8_t>();
 					std::int32_t posX = packet.ReadVariableInt32();
 					std::int32_t posY = packet.ReadVariableInt32();
 
-					std::shared_ptr<Actors::Player> player = std::make_shared<Actors::Player>();
-					uint8_t playerParams[2] = { (uint8_t)playerType, 0 };
-					player->OnActivated(Actors::ActorActivationDetails(
-						this,
-						Vector3i(posX, posY, PlayerZ),
-						playerParams
-					));
-					player->SetHealth(health);
-
-					Actors::Player* ptr = player.get();
-					_players.push_back(ptr);
-					AddActor(player);
-
 					_lastSpawnedActorId = playerIndex;
+
+					_root->InvokeAsync([this, playerType, health, teamId, posX, posY]() {
+						std::shared_ptr<Actors::Multiplayer::RemotablePlayer> player = std::make_shared<Actors::Multiplayer::RemotablePlayer>();
+						uint8_t playerParams[2] = { (uint8_t)playerType, 0 };
+						player->OnActivated(Actors::ActorActivationDetails(
+							this,
+							Vector3i(posX, posY, PlayerZ),
+							playerParams
+						));
+						player->SetTeamId(teamId);
+						player->SetHealth(health);
+
+						Actors::Multiplayer::RemotablePlayer* ptr = player.get();
+						_players.push_back(ptr);
+						AddActor(player);
+					});
 					return true;
 				}
 				case ServerPacketType::CreateRemoteActor: {
@@ -996,27 +1243,54 @@ namespace Jazz2::Multiplayer
 					packet.Read(metadataPath.data(), metadataLength);
 					std::uint32_t anim = packet.ReadVariableUint32();
 
-					std::shared_ptr<Actors::RemoteActor> remoteActor = std::make_shared<Actors::RemoteActor>();
-					remoteActor->OnActivated(Actors::ActorActivationDetails(this, Vector3i(posX, posY, posZ)));
-					remoteActor->AssignMetadata(metadataPath, (AnimState)anim, state);
-
-					_remoteActors[actorId] = remoteActor;
-					AddActor(std::static_pointer_cast<Actors::ActorBase>(remoteActor));
-
 					LOGD("Remote actor %u created on [%i;%i] with metadata \"%s\"", actorId, posX, posY, metadataPath.data());
+
+					_root->InvokeAsync([this, actorId, posX, posY, posZ, state, metadataPath = std::move(metadataPath), anim]() {
+						std::shared_ptr<Actors::Multiplayer::RemoteActor> remoteActor = std::make_shared<Actors::Multiplayer::RemoteActor>();
+						remoteActor->OnActivated(Actors::ActorActivationDetails(this, Vector3i(posX, posY, posZ)));
+						remoteActor->AssignMetadata(metadataPath, (AnimState)anim, state);
+
+						_remoteActors[actorId] = remoteActor;
+						AddActor(std::static_pointer_cast<Actors::ActorBase>(remoteActor));
+					});
+					return true;
+				}
+				case ServerPacketType::CreateMirroredActor: {
+					MemoryStream packet(data + 1, dataLength - 1);
+					std::uint32_t actorId = packet.ReadVariableUint32();
+					EventType eventType = (EventType)packet.ReadVariableUint32();
+					StaticArray<Events::EventSpawner::SpawnParamsSize, std::uint8_t> eventParams(NoInit);
+					packet.Read(eventParams, Events::EventSpawner::SpawnParamsSize);
+					Actors::ActorState actorFlags = (Actors::ActorState)packet.ReadVariableUint32();
+					std::int32_t tileX = packet.ReadVariableInt32();
+					std::int32_t tileY = packet.ReadVariableInt32();
+					std::int32_t posZ = packet.ReadVariableInt32();
+
+					LOGD("Mirrored actor %u created on [%i;%i] with event %u", actorId, tileX * 32 + 16, tileY * 32 + 16, (std::uint32_t)eventType);
+
+					_root->InvokeAsync([this, actorId, eventType, eventParams = std::move(eventParams), actorFlags, tileX, tileY, posZ]() {
+						// TODO: Remove const_cast
+						std::shared_ptr<Actors::ActorBase> actor =_eventSpawner.SpawnEvent(eventType, const_cast<std::uint8_t*>(eventParams.data()), actorFlags, tileX, tileY, ILevelHandler::SpritePlaneZ);
+						if (actor != nullptr) {
+							_remoteActors[actorId] = actor;
+							AddActor(actor);
+						}
+					});
 					return true;
 				}
 				case ServerPacketType::DestroyRemoteActor: {
 					MemoryStream packet(data + 1, dataLength - 1);
 					std::uint32_t actorId = packet.ReadVariableUint32();
 
-					auto it = _remoteActors.find(actorId);
-					if (it != _remoteActors.end()) {
-						it->second->SetState(Actors::ActorState::IsDestroyed, true);
-						_remoteActors.erase(it);
-					}
-
 					LOGD("Remote actor %u destroyed", actorId);
+
+					_root->InvokeAsync([this, actorId]() {
+						auto it = _remoteActors.find(actorId);
+						if (it != _remoteActors.end()) {
+							it->second->SetState(Actors::ActorState::IsDestroyed, true);
+							_remoteActors.erase(it);
+						}
+					});
 					return true;
 				}
 				case ServerPacketType::UpdateAllActors: {
@@ -1027,20 +1301,33 @@ namespace Jazz2::Multiplayer
 						float posX = packet.ReadValue<std::int32_t>() / 512.0f;
 						float posY = packet.ReadValue<std::int32_t>() / 512.0f;
 						std::uint32_t anim = packet.ReadVariableUint32();
+						float rotation = packet.ReadValue<std::uint8_t>() * fRadAngle360 / 255.0f;
 						std::uint8_t flags = packet.ReadValue<std::uint8_t>();
+						Actors::ActorRendererType rendererType = (Actors::ActorRendererType)packet.ReadValue<std::uint8_t>();
 
 						auto it = _remoteActors.find(index);
 						if (it != _remoteActors.end()) {
-							it->second->SyncWithServer(Vector2f(posX, posY), (AnimState)anim, (flags & 0x02) != 0, (flags & 0x01) != 0);
+							if (auto* remoteActor = runtime_cast<Actors::Multiplayer::RemoteActor*>(it->second)) {
+								remoteActor->SyncWithServer(Vector2f(posX, posY), (AnimState)anim, rotation,
+									(flags & 0x02) != 0, (flags & 0x01) != 0, (flags & 0x04) != 0, rendererType);
+							}
 						}
 					}
+					return true;
+				}
+				case ServerPacketType::SyncTileMap: {
+					MemoryStream packet(data + 1, dataLength - 1);
+					// TODO: No lock here ???
+					TileMap()->InitializeFromStream(packet);
 					return true;
 				}
 				case ServerPacketType::SetTrigger: {
 					MemoryStream packet(data + 1, dataLength - 1);
 					std::uint8_t triggerId = packet.ReadValue<std::uint8_t>();
 					bool newState = (bool)packet.ReadValue<std::uint8_t>();
-					TileMap()->SetTrigger(triggerId, newState);
+					_root->InvokeAsync([this, triggerId, newState]() {
+						TileMap()->SetTrigger(triggerId, newState);
+					});
 					return true;
 				}
 				case ServerPacketType::AdvanceTileAnimation: {
@@ -1048,7 +1335,9 @@ namespace Jazz2::Multiplayer
 					std::int32_t tx = packet.ReadVariableInt32();
 					std::int32_t ty = packet.ReadVariableInt32();
 					std::int32_t amount = packet.ReadVariableInt32();
-					TileMap()->AdvanceDestructibleTileAnimation(tx, ty, amount);
+					_root->InvokeAsync([this, tx, ty, amount]() {
+						TileMap()->AdvanceDestructibleTileAnimation(tx, ty, amount);
+					});
 					return true;
 				}
 				case ServerPacketType::PlayerMoveInstantly: {
@@ -1063,8 +1352,9 @@ namespace Jazz2::Multiplayer
 					float speedX = packet.ReadValue<std::int16_t>() / 512.0f;
 					float speedY = packet.ReadValue<std::int16_t>() / 512.0f;
 
-					_players[0]->_speed = Vector2f(speedX, speedY);
-					_players[0]->MoveInstantly(Vector2f(posX, posY), Actors::MoveType::Absolute);
+					_root->InvokeAsync([this, posX, posY, speedX, speedY]() {
+						static_cast<Actors::Multiplayer::RemotablePlayer*>(_players[0])->MoveRemotely(Vector2f(posX, posY), Vector2f(speedX, speedY));
+					});
 					return true;
 				}
 				case ServerPacketType::PlayerAckWarped: {
@@ -1074,6 +1364,55 @@ namespace Jazz2::Multiplayer
 					if (_lastSpawnedActorId == playerIndex && _seqNumWarped == seqNum) {
 						_seqNumWarped = 0;
 					}
+					return true;
+				}
+				case ServerPacketType::PlayerChangeWeapon: {
+					MemoryStream packet(data + 1, dataLength - 1);
+					std::uint32_t playerIndex = packet.ReadVariableUint32();
+					if (_lastSpawnedActorId != playerIndex) {
+						return true;
+					}
+
+					std::uint8_t weaponType = packet.ReadValue<std::uint8_t>();
+					_players[0]->SetCurrentWeapon((WeaponType)weaponType);
+					return true;
+				}
+				case ServerPacketType::PlayerRefreshAmmo: {
+					MemoryStream packet(data + 1, dataLength - 1);
+					std::uint32_t playerIndex = packet.ReadVariableUint32();
+					if (_lastSpawnedActorId != playerIndex) {
+						return true;
+					}
+
+					std::uint8_t weaponType = packet.ReadValue<std::uint8_t>();
+					std::uint16_t weaponAmmo = packet.ReadValue<std::uint16_t>();
+					_players[0]->_weaponAmmo[weaponType] = weaponAmmo;
+					return true;
+				}
+				case ServerPacketType::PlayerRefreshWeaponUpgrades: {
+					MemoryStream packet(data + 1, dataLength - 1);
+					std::uint32_t playerIndex = packet.ReadVariableUint32();
+					if (_lastSpawnedActorId != playerIndex) {
+						return true;
+					}
+
+					std::uint8_t weaponType = packet.ReadValue<std::uint8_t>();
+					std::uint8_t weaponUpgrades = packet.ReadValue<std::uint8_t>();
+					_players[0]->_weaponUpgrades[weaponType] = weaponUpgrades;
+					return true;
+				}
+				case ServerPacketType::PlayerTakeDamage: {
+					MemoryStream packet(data + 1, dataLength - 1);
+					std::uint32_t playerIndex = packet.ReadVariableUint32();
+					if (_lastSpawnedActorId != playerIndex) {
+						return true;
+					}
+
+					std::int32_t health = packet.ReadVariableInt32();
+					float pushForce = packet.ReadValue<std::int16_t>() / 512.0f;
+					_root->InvokeAsync([this, health, pushForce]() {
+						_players[0]->TakeDamage(_players[0]->_health - health, pushForce);
+					});
 					return true;
 				}
 				case ServerPacketType::PlayerActivateSpring: {
@@ -1088,12 +1427,26 @@ namespace Jazz2::Multiplayer
 					float forceX = packet.ReadValue<std::int16_t>() / 512.0f;
 					float forceY = packet.ReadValue<std::int16_t>() / 512.0f;
 					std::uint8_t flags = packet.ReadValue<std::uint8_t>();
-					bool removeSpecialMove = false;
-					_players[0]->OnHitSpring(Vector2f(posX, posY), Vector2f(forceX, forceY), (flags & 0x01) == 0x01, (flags & 0x02) == 0x02, removeSpecialMove);
-					if (removeSpecialMove) {
-						_players[0]->_controllable = true;
-						_players[0]->EndDamagingMove();
+					_root->InvokeAsync([this, posX, posY, forceX, forceY, flags]() {
+						bool removeSpecialMove = false;
+						_players[0]->OnHitSpring(Vector2f(posX, posY), Vector2f(forceX, forceY), (flags & 0x01) == 0x01, (flags & 0x02) == 0x02, removeSpecialMove);
+						if (removeSpecialMove) {
+							_players[0]->_controllable = true;
+							_players[0]->EndDamagingMove();
+						}
+					});
+					return true;
+				}
+				case ServerPacketType::PlayerWarpIn: {
+					MemoryStream packet(data + 1, dataLength - 1);
+					std::uint32_t playerIndex = packet.ReadVariableUint32();
+					if (_lastSpawnedActorId != playerIndex) {
+						return true;
 					}
+
+					_root->InvokeAsync([this]() {
+						static_cast<Actors::Multiplayer::RemotablePlayer*>(_players[0])->WarpIn();
+					});
 					return true;
 				}
 			}
@@ -1134,7 +1487,7 @@ namespace Jazz2::Multiplayer
 		LevelHandler::SetWeather(type, intensity);
 	}
 
-	bool MultiLevelHandler::BeginPlayMusic(const StringView& path, bool setDefault, bool forceReload)
+	bool MultiLevelHandler::BeginPlayMusic(const StringView path, bool setDefault, bool forceReload)
 	{
 		// TODO: This should probably be client local
 		return LevelHandler::BeginPlayMusic(path, setDefault, forceReload);
@@ -1142,21 +1495,28 @@ namespace Jazz2::Multiplayer
 
 	void MultiLevelHandler::BeforeActorDestroyed(Actors::ActorBase* actor)
 	{
+		if (!_isServer) {
+			return;
+		}
+
 		auto it = _remotingActors.find(actor);
 		if (it == _remotingActors.end()) {
 			return;
 		}
 
+		std::uint32_t actorId = it->second;
+
 		for (auto& [peer, peerDesc] : _peerDesc) {
 			MemoryStream packet(5);
 			packet.WriteValue<std::uint8_t>((std::uint8_t)ServerPacketType::DestroyRemoteActor);
-			packet.WriteVariableUint32(it->second);
+			packet.WriteVariableUint32(actorId);
 
 			// TODO: If it fails, it will release the packet which is wrong
 			_networkManager->SendToPeer(peer, NetworkChannel::Main, packet.GetBuffer(), packet.GetSize());
 		}
 
 		_remotingActors.erase(it);
+		_remoteActors.erase(actorId);
 	}
 
 	void MultiLevelHandler::ProcessEvents(float timeMult)
@@ -1184,16 +1544,15 @@ namespace Jazz2::Multiplayer
 				continue;
 			}
 
-			// TODO
+			// TODO: Spawn on the latest checkpoint
 			Vector2 spawnPosition = EventMap()->GetSpawnPosition(PlayerType::Jazz);
 			if (spawnPosition.X < 0.0f && spawnPosition.Y < 0.0f) {
 				continue;
 			}
 
-			++_lastSpawnedActorId;
-			std::int32_t playerIndex = _lastSpawnedActorId;
+			std::uint8_t playerIndex = FindFreePlayerId();
 
-			std::shared_ptr<Actors::Player> player = std::make_shared<Actors::Player>();
+			std::shared_ptr<Actors::Multiplayer::RemotePlayerOnServer> player = std::make_shared<Actors::Multiplayer::RemotePlayerOnServer>();
 			std::uint8_t playerParams[2] = { (std::uint8_t)PlayerType::Spaz, (std::uint8_t)playerIndex };
 			player->OnActivated(Actors::ActorActivationDetails(
 				this,
@@ -1201,7 +1560,7 @@ namespace Jazz2::Multiplayer
 				playerParams
 			));
 
-			Actors::Player* ptr = player.get();
+			Actors::Multiplayer::RemotePlayerOnServer* ptr = player.get();
 			_players.push_back(ptr);
 
 			peerDesc.Player = ptr;
@@ -1212,6 +1571,15 @@ namespace Jazz2::Multiplayer
 			_suppressRemoting = true;
 			AddActor(player);
 			_suppressRemoting = false;
+
+			// Synchronize tilemap
+			{
+				// TODO: Use deflate compression here?
+				MemoryStream packet(20 * 1024);
+				packet.WriteValue<std::uint8_t>((std::uint8_t)ServerPacketType::SyncTileMap);
+				_tileMap->SerializeResumableToStream(packet);
+				_networkManager->SendToPeer(peer, NetworkChannel::Main, packet.GetBuffer(), packet.GetSize());
+			}
 
 			// Spawn the player also on the remote side
 			{
@@ -1226,6 +1594,7 @@ namespace Jazz2::Multiplayer
 				packet.WriteValue<std::uint8_t>((std::uint8_t)player->_playerType);
 				packet.WriteValue<std::uint8_t>((std::uint8_t)player->_health);
 				packet.WriteValue<std::uint8_t>(flags);
+				packet.WriteValue<std::uint8_t>(player->GetTeamId());
 				packet.WriteVariableInt32((std::int32_t)player->_pos.X);
 				packet.WriteVariableInt32((std::int32_t)player->_pos.Y);
 
@@ -1255,21 +1624,42 @@ namespace Jazz2::Multiplayer
 			}
 
 			for (const auto& [remotingActor, remotingActorId] : _remotingActors) {
-				const auto& metadataPath = remotingActor->_metadata->Path;
+				if (ActorShouldBeMirrored(remotingActor)) {
+					Vector2i originTile = remotingActor->_originTile;
+					const auto& eventTile = _eventMap->GetEventTile(originTile.X, originTile.Y);
+					if (eventTile.Event != EventType::Empty) {
+						for (const auto& [peer, peerDesc] : _peerDesc) {
+							MemoryStream packet(13 + Events::EventSpawner::SpawnParamsSize);
+							packet.WriteValue<std::uint8_t>((std::uint8_t)ServerPacketType::CreateMirroredActor);
+							packet.WriteVariableUint32(remotingActorId);
+							packet.WriteVariableUint32((std::uint32_t)eventTile.Event);
+							packet.Write(eventTile.EventParams, Events::EventSpawner::SpawnParamsSize);
+							packet.WriteVariableUint32((std::uint32_t)eventTile.EventFlags);
+							packet.WriteVariableInt32((std::int32_t)originTile.X);
+							packet.WriteVariableInt32((std::int32_t)originTile.Y);
+							packet.WriteVariableInt32((std::int32_t)remotingActor->_renderer.layer());
 
-				MemoryStream packet(24 + metadataPath.size());
-				packet.WriteValue<std::uint8_t>((std::uint8_t)ServerPacketType::CreateRemoteActor);
-				packet.WriteVariableUint32(remotingActorId);
-				packet.WriteVariableInt32((std::int32_t)remotingActor->_pos.X);
-				packet.WriteVariableInt32((std::int32_t)remotingActor->_pos.Y);
-				packet.WriteVariableInt32((std::int32_t)remotingActor->_renderer.layer());
-				packet.WriteVariableUint32((std::uint32_t)remotingActor->_state);
-				packet.WriteVariableUint32((std::uint32_t)metadataPath.size());
-				packet.Write(metadataPath.data(), (std::uint32_t)metadataPath.size());
-				packet.WriteVariableUint32((std::uint32_t)(remotingActor->_currentTransition != nullptr ? remotingActor->_currentTransition->State : remotingActor->_currentAnimation->State));
+							// TODO: If it fail, it will release the packet which is wrong
+							_networkManager->SendToPeer(peer, NetworkChannel::Main, packet.GetBuffer(), packet.GetSize());
+						}
+					}
+				} else {
+					const auto& metadataPath = remotingActor->_metadata->Path;
 
-				// TODO: If it fail, it will release the packet which is wrong
-				_networkManager->SendToPeer(peer, NetworkChannel::Main, packet.GetBuffer(), packet.GetSize());
+					MemoryStream packet(24 + metadataPath.size());
+					packet.WriteValue<std::uint8_t>((std::uint8_t)ServerPacketType::CreateRemoteActor);
+					packet.WriteVariableUint32(remotingActorId);
+					packet.WriteVariableInt32((std::int32_t)remotingActor->_pos.X);
+					packet.WriteVariableInt32((std::int32_t)remotingActor->_pos.Y);
+					packet.WriteVariableInt32((std::int32_t)remotingActor->_renderer.layer());
+					packet.WriteVariableUint32((std::uint32_t)remotingActor->_state);
+					packet.WriteVariableUint32((std::uint32_t)metadataPath.size());
+					packet.Write(metadataPath.data(), (std::uint32_t)metadataPath.size());
+					packet.WriteVariableUint32((std::uint32_t)(remotingActor->_currentTransition != nullptr ? remotingActor->_currentTransition->State : remotingActor->_currentAnimation->State));
+
+					// TODO: If it fail, it will release the packet which is wrong
+					_networkManager->SendToPeer(peer, NetworkChannel::Main, packet.GetBuffer(), packet.GetSize());
+				}
 			}
 
 			for (const auto& [otherPeer, otherPeerDesc] : _peerDesc) {
@@ -1296,7 +1686,60 @@ namespace Jazz2::Multiplayer
 		}
 	}
 
-	void MultiLevelHandler::UpdatePlayerLocalPos(Actors::Player* player, PlayerState& playerState, float timeMult)
+	std::uint32_t MultiLevelHandler::FindFreeActorId()
+	{
+		//return ++_lastSpawnedActorId;
+
+		for (std::uint32_t i = UINT8_MAX + 1; i < UINT32_MAX - 1; i++) {
+			if (!_remoteActors.contains(i)) {
+				return i;
+			}
+		}
+
+		return UINT32_MAX;
+	}
+
+	std::uint8_t MultiLevelHandler::FindFreePlayerId()
+	{
+		/*for (std::uint8_t i = 0; i < UINT8_MAX - 1; i++) {
+			if (!_playerStates.contains(i)) {
+				return i;
+			}
+		}*/
+
+		std::size_t count = _players.size();
+		for (std::uint8_t i = 0; i < UINT8_MAX - 1; i++) {
+			bool found = false;
+			for (std::size_t j = 0; j < count; j++) {
+				if (_players[j]->_playerIndex == i) {
+					found = true;
+					break;
+				}
+			}
+
+			if (!found) {
+				return i;
+			}
+		}
+
+		return UINT8_MAX;
+	}
+
+	bool MultiLevelHandler::ActorShouldBeMirrored(Actors::ActorBase* actor)
+	{
+		// If actor has no animation, it's probably some special object (usually lights and ambient sounds)
+		if (actor->_currentAnimation == nullptr && actor->_currentTransition == nullptr) {
+			return true;
+		}
+
+		// List of objects that needs to be recreated on client-side instead of remoting
+		return (runtime_cast<Actors::Environment::AirboardGenerator*>(actor) || runtime_cast<Actors::Environment::SteamNote*>(actor) ||
+				runtime_cast<Actors::Environment::SwingingVine*>(actor) || runtime_cast<Actors::Solid::Bridge*>(actor) ||
+				runtime_cast<Actors::Solid::MovingPlatform*>(actor) || runtime_cast<Actors::Solid::PinballBumper*>(actor) ||
+				runtime_cast<Actors::Solid::PinballPaddle*>(actor) || runtime_cast<Actors::Solid::SpikeBall*>(actor));
+	}
+
+	/*void MultiLevelHandler::UpdatePlayerLocalPos(Actors::Player* player, PlayerState& playerState, float timeMult)
 	{
 		if (playerState.WarpTimeLeft > 0.0f || !player->_controllable || !player->GetState(Actors::ActorState::CollideWithTileset)) {
 			// Don't interpolate if warping is in progress or if collisions with tileset are disabled (when climbing or in tube)
@@ -1364,9 +1807,9 @@ namespace Jazz2::Multiplayer
 				LOGW("Deviation of player %i is high (alpha: %0.1f, deviation: %0.2fpx, speed: %0.2f)", player->_playerIndex, alpha, sqrt(devSqr), sqrt(speedSqr));
 			}
 		}
-	}
+	}*/
 
-	void MultiLevelHandler::OnRemotePlayerPosReceived(PlayerState& playerState, const Vector2f& pos, const Vector2f speed, PlayerFlags flags)
+	/*void MultiLevelHandler::OnRemotePlayerPosReceived(PlayerState& playerState, const Vector2f& pos, const Vector2f speed, PlayerFlags flags)
 	{
 		Clock& c = nCine::clock();
 		std::int64_t now = c.now() * 1000 / c.frequency();
@@ -1399,22 +1842,15 @@ namespace Jazz2::Multiplayer
 		}
 
 		playerState.Flags = (flags & ~PlayerFlags::JustWarped);
-	}
+	}*/
 
 	MultiLevelHandler::PlayerState::PlayerState()
 	{
 	}
 
 	MultiLevelHandler::PlayerState::PlayerState(const Vector2f& pos, const Vector2f& speed)
-		: StateBufferPos(0), Flags(PlayerFlags::None), PressedKeys(0), WarpSeqNum(0), WarpTimeLeft(0.0f), DeviationTime(0.0f)
+		: Flags(PlayerFlags::None), PressedKeys(0)/*, WarpSeqNum(0), WarpTimeLeft(0.0f)*/
 	{
-		Clock& c = nCine::clock();
-		std::uint64_t now = c.now() * 1000 / c.frequency();
-		for (std::int32_t i = 0; i < countof(StateBuffer); i++) {
-			StateBuffer[i].Time = now - countof(StateBuffer) + i;
-			StateBuffer[i].Pos = pos;
-			StateBuffer[i].Pos = speed;
-		}
 	}
 }
 

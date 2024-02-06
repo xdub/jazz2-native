@@ -2,6 +2,11 @@
 
 namespace Jazz2::Compatibility
 {
+	AnimSetMapping::AnimSetMapping(JJ2Version version)
+		: _version(version), _currentItem(0), _currentSet(0), _currentOrdinal(0)
+	{
+	}
+
 	AnimSetMapping AnimSetMapping::GetAnimMapping(JJ2Version version)
 	{
 		AnimSetMapping m(version);
@@ -69,8 +74,8 @@ namespace Jazz2::Compatibility
 			m.Add("Weapon"_s, "shield_lightning_trail"_s);
 			m.Add("Unknown"_s, "flame_red"_s);
 			m.Add("Weapon"_s, "shield_fire"_s);
-			m.Add("Unknown"_s, "flare_diag_downleft"_s);
-			m.Add("Unknown"_s, "flare_hor"_s);
+			m.Add("Weapon"_s, "flare_diag_downleft"_s);
+			m.Add("Weapon"_s, "flare_hor"_s);
 			m.Add("Weapon"_s, "bullet_blaster"_s);
 			m.Add("UI"_s, "blaster_upgraded_jazz"_s);
 			m.Add("UI"_s, "blaster_upgraded_spaz"_s);
@@ -164,7 +169,7 @@ namespace Jazz2::Compatibility
 			m.Add("Common"_s, "explosion_freezer_maybe"_s);
 			m.Add("Common"_s, "explosion_tiny_black"_s);
 			m.Add("Weapon"_s, "bullet_fireball_upgraded_hor_2"_s);
-			m.Add("Unknown"_s, "flare_hor_2"_s);
+			m.Add("Weapon"_s, "flare_hor_2"_s);
 			m.Add("Unknown"_s, "green_explosion"_s);
 			m.Add("Weapon"_s, "bullet_bladegun_alt"_s);
 			m.Add("Weapon"_s, "bullet_tnt_explosion"_s);
@@ -655,7 +660,8 @@ namespace Jazz2::Compatibility
 			m.Add(JJ2Version::TSF | JJ2Version::CC, "Lori"_s, "crouch_shoot"_s);
 			m.Add(JJ2Version::TSF | JJ2Version::CC, "Lori"_s, "crouch_end"_s);
 			m.Add(JJ2Version::TSF | JJ2Version::CC, "Lori"_s, "vine_walk"_s);
-			m.Add(JJ2Version::TSF | JJ2Version::CC, "Lori"_s, "eol"_s);
+			//m.Add(JJ2Version::TSF | JJ2Version::CC, "Lori"_s, "eol"_s);
+			m.DiscardItems(1, JJ2Version::TSF | JJ2Version::CC);
 			m.Add(JJ2Version::TSF | JJ2Version::CC, "Lori"_s, "fall"_s);
 			m.Add(JJ2Version::TSF | JJ2Version::CC, "Lori"_s, "buttstomp"_s);
 			m.Add(JJ2Version::TSF | JJ2Version::CC, "Lori"_s, "fall_end"_s);
@@ -736,7 +742,8 @@ namespace Jazz2::Compatibility
 			m.DiscardItems(1);
 
 			m.Add("UI"_s, "character_art_difficulty_jazz"_s, JJ2DefaultPalette::Menu, true);
-			m.Add(JJ2Version::TSF | JJ2Version::CC, "UI"_s, "character_art_difficulty_lori"_s, JJ2DefaultPalette::Menu, true);
+			//m.Add(JJ2Version::TSF | JJ2Version::CC, "UI"_s, "character_art_difficulty_lori"_s, JJ2DefaultPalette::Menu, true);
+			m.DiscardItems(1, JJ2Version::TSF | JJ2Version::CC);
 			m.Add("UI"_s, "character_art_difficulty_spaz"_s, JJ2DefaultPalette::Menu, true);
 			//m.Add("Unimplemented"_s, "key"_s, JJ2DefaultPalette::Menu, true);
 			m.DiscardItems(1);
@@ -752,9 +759,12 @@ namespace Jazz2::Compatibility
 			//m.Add("UI"_s, "character_name_spaz"_s, JJ2DefaultPalette.Menu, skipNormalMap: true);
 			m.DiscardItems(1);
 
-			m.Add("UI"_s, "character_art_jazz"_s, JJ2DefaultPalette::Menu, true);
-			m.Add(JJ2Version::TSF | JJ2Version::CC, "UI"_s, "character_art_lori"_s, JJ2DefaultPalette::Menu, true);
-			m.Add("UI"_s, "character_art_spaz"_s, JJ2DefaultPalette::Menu, true);
+			//m.Add("UI"_s, "character_art_jazz"_s, JJ2DefaultPalette::Menu, true);
+			m.DiscardItems(1);
+			//m.Add(JJ2Version::TSF | JJ2Version::CC, "UI"_s, "character_art_lori"_s, JJ2DefaultPalette::Menu, true);
+			m.DiscardItems(1, JJ2Version::TSF | JJ2Version::CC);
+			//m.Add("UI"_s, "character_art_spaz"_s, JJ2DefaultPalette::Menu, true);
+			m.DiscardItems(1);
 			m.NextSet();
 
 			//m.Add("UI"_s, "font_medium_2"_s, JJ2DefaultPalette.Menu);
@@ -1503,7 +1513,7 @@ namespace Jazz2::Compatibility
 
 			if (isFull) {
 				m.NextSet(2);
-				m.Add("Cinematic"_s, "ending_eva_thankyou"_s);
+				m.Add("Cinematics"_s, "ending_eva_thankyou"_s);
 			}
 
 			m.NextSet();
@@ -1514,8 +1524,8 @@ namespace Jazz2::Compatibility
 			m.Add("Spaz"_s, "level_complete"_s);
 
 			m.NextSet();
-			//m.Add("Cinematic"_s, "logo_epic_1"_s);
-			//m.Add("Cinematic"_s, "logo_epic_2"_s);
+			//m.Add("Cinematics"_s, "logo_epic_1"_s);
+			//m.Add("Cinematics"_s, "logo_epic_2"_s);
 			m.DiscardItems(2);
 
 			m.NextSet();
@@ -1564,44 +1574,44 @@ namespace Jazz2::Compatibility
 			}
 
 			m.NextSet();
-			m.Add("Cinematic"_s, "opening_blow"_s);
-			m.Add("Cinematic"_s, "opening_boom_1"_s);
-			m.Add("Cinematic"_s, "opening_boom_2"_s);
-			m.Add("Cinematic"_s, "opening_brake"_s);
-			m.Add("Cinematic"_s, "opening_end_shoot"_s);
-			m.Add("Cinematic"_s, "opening_rope_grab"_s);
-			m.Add("Cinematic"_s, "opening_sweep_1"_s);
-			m.Add("Cinematic"_s, "opening_sweep_2"_s);
-			m.Add("Cinematic"_s, "opening_sweep_3"_s);
-			m.Add("Cinematic"_s, "opening_gun_noise_1"_s);
-			m.Add("Cinematic"_s, "opening_gun_noise_2"_s);
-			m.Add("Cinematic"_s, "opening_gun_noise_3"_s);
-			m.Add("Cinematic"_s, "opening_helicopter"_s);
-			m.Add("Cinematic"_s, "opening_hit_spaz"_s);
-			m.Add("Cinematic"_s, "opening_hit_turtle"_s);
-			m.Add("Cinematic"_s, "opening_vo_1"_s);
-			m.Add("Cinematic"_s, "opening_gun_blow"_s);
-			m.Add("Cinematic"_s, "opening_insect"_s);
-			m.Add("Cinematic"_s, "opening_trolley_push"_s);
-			m.Add("Cinematic"_s, "opening_land"_s);
-			m.Add("Cinematic"_s, "opening_turtle_growl"_s);
-			m.Add("Cinematic"_s, "opening_turtle_grunt"_s);
-			m.Add("Cinematic"_s, "opening_rock"_s);
-			m.Add("Cinematic"_s, "opening_rope_1"_s);
-			m.Add("Cinematic"_s, "opening_rope_2"_s);
-			m.Add("Cinematic"_s, "opening_run"_s);
-			m.Add("Cinematic"_s, "opening_shot"_s);
-			m.Add("Cinematic"_s, "opening_shot_grn"_s);
-			m.Add("Cinematic"_s, "opening_slide"_s);
-			m.Add("Cinematic"_s, "opening_end_sfx"_s);
-			m.Add("Cinematic"_s, "opening_swish_1"_s);
-			m.Add("Cinematic"_s, "opening_swish_2"_s);
-			m.Add("Cinematic"_s, "opening_swish_3"_s);
-			m.Add("Cinematic"_s, "opening_swish_4"_s);
-			m.Add("Cinematic"_s, "opening_turtle_ugh"_s);
-			m.Add("Cinematic"_s, "opening_up_1"_s);
-			m.Add("Cinematic"_s, "opening_up_2"_s);
-			m.Add("Cinematic"_s, "opening_wind"_s);
+			m.Add("Cinematics"_s, "opening_blow"_s);
+			m.Add("Cinematics"_s, "opening_boom_1"_s);
+			m.Add("Cinematics"_s, "opening_boom_2"_s);
+			m.Add("Cinematics"_s, "opening_brake"_s);
+			m.Add("Cinematics"_s, "opening_end_shoot"_s);
+			m.Add("Cinematics"_s, "opening_rope_grab"_s);
+			m.Add("Cinematics"_s, "opening_sweep_1"_s);
+			m.Add("Cinematics"_s, "opening_sweep_2"_s);
+			m.Add("Cinematics"_s, "opening_sweep_3"_s);
+			m.Add("Cinematics"_s, "opening_gun_noise_1"_s);
+			m.Add("Cinematics"_s, "opening_gun_noise_2"_s);
+			m.Add("Cinematics"_s, "opening_gun_noise_3"_s);
+			m.Add("Cinematics"_s, "opening_helicopter"_s);
+			m.Add("Cinematics"_s, "opening_hit_spaz"_s);
+			m.Add("Cinematics"_s, "opening_hit_turtle"_s);
+			m.Add("Cinematics"_s, "opening_vo_1"_s);
+			m.Add("Cinematics"_s, "opening_gun_blow"_s);
+			m.Add("Cinematics"_s, "opening_insect"_s);
+			m.Add("Cinematics"_s, "opening_trolley_push"_s);
+			m.Add("Cinematics"_s, "opening_land"_s);
+			m.Add("Cinematics"_s, "opening_turtle_growl"_s);
+			m.Add("Cinematics"_s, "opening_turtle_grunt"_s);
+			m.Add("Cinematics"_s, "opening_rock"_s);
+			m.Add("Cinematics"_s, "opening_rope_1"_s);
+			m.Add("Cinematics"_s, "opening_rope_2"_s);
+			m.Add("Cinematics"_s, "opening_run"_s);
+			m.Add("Cinematics"_s, "opening_shot"_s);
+			m.Add("Cinematics"_s, "opening_shot_grn"_s);
+			m.Add("Cinematics"_s, "opening_slide"_s);
+			m.Add("Cinematics"_s, "opening_end_sfx"_s);
+			m.Add("Cinematics"_s, "opening_swish_1"_s);
+			m.Add("Cinematics"_s, "opening_swish_2"_s);
+			m.Add("Cinematics"_s, "opening_swish_3"_s);
+			m.Add("Cinematics"_s, "opening_swish_4"_s);
+			m.Add("Cinematics"_s, "opening_turtle_ugh"_s);
+			m.Add("Cinematics"_s, "opening_up_1"_s);
+			m.Add("Cinematics"_s, "opening_up_2"_s);
+			m.Add("Cinematics"_s, "opening_wind"_s);
 
 			if (isFull) {
 				m.NextSet();
@@ -1679,47 +1689,47 @@ namespace Jazz2::Compatibility
 			}
 
 			m.NextSet();
-			//m.Add("Cinematic"_s, "orangegames_1_boom_l"_s);
-			//m.Add("Cinematic"_s, "orangegames_1_boom_r"_s);
-			//m.Add("Cinematic"_s, "orangegames_7_bubble_l"_s);
-			//m.Add("Cinematic"_s, "orangegames_7_bubble_r"_s);
-			//m.Add("Cinematic"_s, "orangegames_2_glass_1_l"_s);
-			//m.Add("Cinematic"_s, "orangegames_2_glass_1_r"_s);
-			//m.Add("Cinematic"_s, "orangegames_5_glass_2_l"_s);
-			//m.Add("Cinematic"_s, "orangegames_5_glass_2_r"_s);
-			//m.Add("Cinematic"_s, "orangegames_6_merge"_s);
-			//m.Add("Cinematic"_s, "orangegames_3_sweep_1_l"_s);
-			//m.Add("Cinematic"_s, "orangegames_3_sweep_1_r"_s);
-			//m.Add("Cinematic"_s, "orangegames_4_sweep_2_l"_s);
-			//m.Add("Cinematic"_s, "orangegames_4_sweep_2_r"_s);
-			//m.Add("Cinematic"_s, "orangegames_5_sweep_3_l"_s);
-			//m.Add("Cinematic"_s, "orangegames_5_sweep_3_r"_s);
+			//m.Add("Cinematics"_s, "orangegames_1_boom_l"_s);
+			//m.Add("Cinematics"_s, "orangegames_1_boom_r"_s);
+			//m.Add("Cinematics"_s, "orangegames_7_bubble_l"_s);
+			//m.Add("Cinematics"_s, "orangegames_7_bubble_r"_s);
+			//m.Add("Cinematics"_s, "orangegames_2_glass_1_l"_s);
+			//m.Add("Cinematics"_s, "orangegames_2_glass_1_r"_s);
+			//m.Add("Cinematics"_s, "orangegames_5_glass_2_l"_s);
+			//m.Add("Cinematics"_s, "orangegames_5_glass_2_r"_s);
+			//m.Add("Cinematics"_s, "orangegames_6_merge"_s);
+			//m.Add("Cinematics"_s, "orangegames_3_sweep_1_l"_s);
+			//m.Add("Cinematics"_s, "orangegames_3_sweep_1_r"_s);
+			//m.Add("Cinematics"_s, "orangegames_4_sweep_2_l"_s);
+			//m.Add("Cinematics"_s, "orangegames_4_sweep_2_r"_s);
+			//m.Add("Cinematics"_s, "orangegames_5_sweep_3_l"_s);
+			//m.Add("Cinematics"_s, "orangegames_5_sweep_3_r"_s);
 			m.DiscardItems(15);
 			m.NextSet(); // set 70 (1.24) / set 66 (1.23)
-			//m.Add("Cinematic"_s, "project2_unused_crunch"_s);
-			//m.Add("Cinematic"_s, "project2_10_fart"_s);
-			//m.Add("Cinematic"_s, "project2_unused_foew1"_s);
-			//m.Add("Cinematic"_s, "project2_unused_foew4"_s);
-			//m.Add("Cinematic"_s, "project2_unused_foew5"_s);
-			//m.Add("Cinematic"_s, "project2_unused_frog1"_s);
-			//m.Add("Cinematic"_s, "project2_unused_frog2"_s);
-			//m.Add("Cinematic"_s, "project2_unused_frog3"_s);
-			//m.Add("Cinematic"_s, "project2_unused_frog4"_s);
-			//m.Add("Cinematic"_s, "project2_unused_frog5"_s);
-			//m.Add("Cinematic"_s, "project2_unused_kiss4"_s);
-			//m.Add("Cinematic"_s, "project2_unused_open"_s);
-			//m.Add("Cinematic"_s, "project2_unused_pinch1"_s);
-			//m.Add("Cinematic"_s, "project2_unused_pinch2"_s);
-			//m.Add("Cinematic"_s, "project2_3_plop_1"_s);
-			//m.Add("Cinematic"_s, "project2_4_plop_2"_s);
-			//m.Add("Cinematic"_s, "project2_5_plop_3"_s);
-			//m.Add("Cinematic"_s, "project2_6_plop_4"_s);
-			//m.Add("Cinematic"_s, "project2_7_plop_5"_s);
-			//m.Add("Cinematic"_s, "project2_9_spit"_s);
-			//m.Add("Cinematic"_s, "project2_unused_splout"_s);
-			//m.Add("Cinematic"_s, "project2_2_splat"_s);
-			//m.Add("Cinematic"_s, "project2_1_8_throw"_s);
-			//m.Add("Cinematic"_s, "project2_unused_tong"_s);
+			//m.Add("Cinematics"_s, "project2_unused_crunch"_s);
+			//m.Add("Cinematics"_s, "project2_10_fart"_s);
+			//m.Add("Cinematics"_s, "project2_unused_foew1"_s);
+			//m.Add("Cinematics"_s, "project2_unused_foew4"_s);
+			//m.Add("Cinematics"_s, "project2_unused_foew5"_s);
+			//m.Add("Cinematics"_s, "project2_unused_frog1"_s);
+			//m.Add("Cinematics"_s, "project2_unused_frog2"_s);
+			//m.Add("Cinematics"_s, "project2_unused_frog3"_s);
+			//m.Add("Cinematics"_s, "project2_unused_frog4"_s);
+			//m.Add("Cinematics"_s, "project2_unused_frog5"_s);
+			//m.Add("Cinematics"_s, "project2_unused_kiss4"_s);
+			//m.Add("Cinematics"_s, "project2_unused_open"_s);
+			//m.Add("Cinematics"_s, "project2_unused_pinch1"_s);
+			//m.Add("Cinematics"_s, "project2_unused_pinch2"_s);
+			//m.Add("Cinematics"_s, "project2_3_plop_1"_s);
+			//m.Add("Cinematics"_s, "project2_4_plop_2"_s);
+			//m.Add("Cinematics"_s, "project2_5_plop_3"_s);
+			//m.Add("Cinematics"_s, "project2_6_plop_4"_s);
+			//m.Add("Cinematics"_s, "project2_7_plop_5"_s);
+			//m.Add("Cinematics"_s, "project2_9_spit"_s);
+			//m.Add("Cinematics"_s, "project2_unused_splout"_s);
+			//m.Add("Cinematics"_s, "project2_2_splat"_s);
+			//m.Add("Cinematics"_s, "project2_1_8_throw"_s);
+			//m.Add("Cinematics"_s, "project2_unused_tong"_s);
 			m.DiscardItems(24);
 			m.NextSet();
 			m.Add("Object"_s, "checkpoint_open"_s);
@@ -1946,27 +1956,29 @@ namespace Jazz2::Compatibility
 		return m;
 	}
 
-	void AnimSetMapping::DiscardItems(int advanceBy, JJ2Version appliesTo)
+	void AnimSetMapping::DiscardItems(std::uint32_t advanceBy, JJ2Version appliesTo)
 	{
 		if ((_version & appliesTo) != JJ2Version::Unknown) {
-			for (int i = 0; i < advanceBy; i++) {
+			for (std::uint32_t i = 0; i < advanceBy; i++) {
 				Entry entry;
 				entry.Category = Discard;
 
-				int32_t key = (_currentSet << 16) | _currentItem;
+				std::int32_t key = (_currentSet << 16) | _currentItem;
 				_entries.emplace(key, std::move(entry));
 
 				_currentItem++;
+				_currentOrdinal++;
 			}
 		}
 	}
 
-	void AnimSetMapping::SkipItems(int advanceBy)
+	void AnimSetMapping::SkipItems(std::uint32_t advanceBy)
 	{
 		_currentItem += advanceBy;
+		_currentOrdinal += advanceBy;
 	}
 
-	void AnimSetMapping::NextSet(int advanceBy, JJ2Version appliesTo)
+	void AnimSetMapping::NextSet(std::uint32_t advanceBy, JJ2Version appliesTo)
 	{
 		if ((_version & appliesTo) != JJ2Version::Unknown) {
 			_currentSet += advanceBy;
@@ -1974,19 +1986,22 @@ namespace Jazz2::Compatibility
 		}
 	}
 
-	void AnimSetMapping::Add(JJ2Version appliesTo, const StringView& category, const StringView& name, JJ2DefaultPalette palette, bool skipNormalMap, bool allowRealtimePalette) {
+	void AnimSetMapping::Add(JJ2Version appliesTo, const StringView& category, const StringView& name, JJ2DefaultPalette palette, bool skipNormalMap, bool allowRealtimePalette)
+	{
 		if ((_version & appliesTo) != JJ2Version::Unknown) {
 			Entry entry;
 			entry.Category = category;
 			entry.Name = name;
+			entry.Ordinal = _currentOrdinal;
 			entry.Palette = palette;
 			entry.SkipNormalMap = skipNormalMap;
 			entry.AllowRealtimePalette = allowRealtimePalette;
 
-			int32_t key = (_currentSet << 16) | _currentItem;
+			std::uint32_t key = (_currentSet << 16) | _currentItem;
 			_entries.emplace(key, std::move(entry));
 
 			_currentItem++;
+			_currentOrdinal++;
 		}
 	}
 
@@ -1995,28 +2010,41 @@ namespace Jazz2::Compatibility
 		Entry entry;
 		entry.Category = category;
 		entry.Name = name;
+		entry.Ordinal = _currentOrdinal;
 		entry.Palette = palette;
 		entry.SkipNormalMap = skipNormalMap;
 		entry.AllowRealtimePalette = allowRealtimePalette;
 
-		int32_t key = (_currentSet << 16) | _currentItem;
+		std::uint32_t key = (_currentSet << 16) | _currentItem;
 		_entries.emplace(key, std::move(entry));
 
 		_currentItem++;
+		_currentOrdinal++;
 	}
 
-	AnimSetMapping::Entry* AnimSetMapping::Get(int32_t set, int32_t item)
+	AnimSetMapping::Entry* AnimSetMapping::Get(std::uint32_t set, std::uint32_t item)
 	{
 		if (set > UINT16_MAX || item > UINT16_MAX) {
 			return nullptr;
 		}
 
-		int32_t key = (set << 16) | item;
+		std::uint32_t key = (set << 16) | item;
 		auto it = _entries.find(key);
 		if (it != _entries.end()) {
 			return &it->second;
 		} else {
 			return nullptr;
 		}
+	}
+
+	AnimSetMapping::Entry* AnimSetMapping::GetByOrdinal(std::uint32_t index)
+	{
+		for (auto& [key, entry] : _entries) {
+			if (entry.Ordinal == index) {
+				return &entry;
+			}
+		}
+
+		return nullptr;
 	}
 }

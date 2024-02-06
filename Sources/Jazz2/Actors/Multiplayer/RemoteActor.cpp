@@ -2,9 +2,9 @@
 
 #if defined(WITH_MULTIPLAYER)
 
-#include "../../nCine/Base/Clock.h"
+#include "../../../nCine/Base/Clock.h"
 
-namespace Jazz2::Actors
+namespace Jazz2::Actors::Multiplayer
 {
 	RemoteActor::RemoteActor()
 		: _stateBufferPos(0), _lastAnim(AnimState::Idle)
@@ -61,7 +61,7 @@ namespace Jazz2::Actors
 				pos = _stateBuffer[nextIdx].Pos;
 			}
 
-			MoveInstantly(pos, MoveType::Absolute);
+			MoveInstantly(pos, MoveType::Absolute | MoveType::Force);
 		}
 
 		ActorBase::OnUpdate(timeMult);
@@ -78,19 +78,23 @@ namespace Jazz2::Actors
 		SetState((GetState() & ~RemotedFlags) | (state & RemotedFlags));
 	}
 
-	void RemoteActor::SyncWithServer(const Vector2f& pos, AnimState anim, bool isVisible, bool isFacingLeft)
+	void RemoteActor::SyncWithServer(const Vector2f& pos, AnimState anim, float rotation, bool isVisible, bool isFacingLeft, bool animPaused, Actors::ActorRendererType rendererType)
 	{
 		Clock& c = nCine::clock();
 		std::int64_t now = c.now() * 1000 / c.frequency();
 
 		bool wasVisible = _renderer.isDrawEnabled();
 		_renderer.setDrawEnabled(isVisible);
+		_renderer.AnimPaused = animPaused;
 		SetFacingLeft(isFacingLeft);
 
 		if (_lastAnim != anim) {
 			_lastAnim = anim;
 			SetAnimation(anim);
 		}
+
+		_renderer.setRotation(rotation);
+		_renderer.Initialize(rendererType);
 
 		if (wasVisible) {
 			// Actor is still visible, enable interpolation

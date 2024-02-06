@@ -8,9 +8,7 @@
 namespace Jazz2::Actors::Environment
 {
 	Moth::Moth()
-		:
-		_timer(0.0f),
-		_direction(0)
+		: _timer(0.0f), _direction(0)
 	{
 	}
 
@@ -39,8 +37,8 @@ namespace Jazz2::Actors::Environment
 			} else {
 				_timer -= timeMult;
 
-				_externalForce.X = lerp(_externalForce.X, sinf((100.0f - _timer) / 6.0f) * 4.0f * _direction, timeMult);
-				_externalForce.Y = lerp(_externalForce.Y, -0.00005f * _timer * _timer, 0.4f + timeMult * 0.1f);
+				_externalForce.X = lerpByTime(_externalForce.X, sinf((100.0f - _timer) / 6.0f) * 4.0f * _direction, 0.6f, timeMult);
+				_externalForce.Y = lerpByTime(_externalForce.Y, -0.00005f * _timer * _timer, 0.6f, timeMult);
 
 				SetFacingLeft(_speed.X < 0.0f);
 			}
@@ -58,7 +56,7 @@ namespace Jazz2::Actors::Environment
 
 	bool Moth::OnHandleCollision(std::shared_ptr<ActorBase> other)
 	{
-		if (auto player = dynamic_cast<Player*>(other.get())) {
+		if (auto* player = runtime_cast<Player*>(other)) {
 			if (_timer <= 50.0f) {
 				_timer = 100.0f - _timer * 0.2f;
 

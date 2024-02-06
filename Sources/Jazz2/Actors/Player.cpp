@@ -56,11 +56,12 @@ namespace Jazz2::Actors
 		_isFreefall(false), _inWater(false), _isLifting(false), _isSpring(false),
 		_inShallowWater(-1),
 		_activeModifier(Modifier::None),
+		_externalForceCooldown(0.0f),
 		_springCooldown(0.0f),
 		_inIdleTransition(false), _inLedgeTransition(false),
 		_carryingObject(nullptr),
 		_canDoubleJump(true),
-		_lives(0), _coins(0), _coinsCheckpoint(0), _foodEaten(0), _score(0),
+		_lives(0), _coins(0), _coinsCheckpoint(0), _foodEaten(0), _foodEatenCheckpoint(0), _score(0),
 		_checkpointLight(1.0f),
 		_sugarRushLeft(0.0f), _sugarRushStarsTime(0.0f),
 		_shieldSpawnTime(ShieldDisabled),
@@ -80,6 +81,7 @@ namespace Jazz2::Actors
 		_dizzyTime(0.0f),
 		_activeShield(ShieldType::None),
 		_activeShieldTime(0.0f),
+		_weaponFlareTime(0.0f),
 		_weaponCooldown(0.0f),
 		_weaponAllowed(true),
 		_weaponWheelState(WeaponWheelState::Hidden)
@@ -195,8 +197,9 @@ namespace Jazz2::Actors
 					_controllableTimeout = 100.0f;
 					_frozenTimeLeft = 100.0f;
 				} else {
-					SetState(ActorState::IsInvulnerable, false);
 					_controllable = true;
+					// UpdateAnimation() was probably skipped in this step, because _controllable was false, so call it here
+					UpdateAnimation(0.0f);
 				}
 			});
 
@@ -274,6 +277,9 @@ namespace Jazz2::Actors
 		bool areaWeaponAllowed = true;
 		int areaWaterBlock = -1;
 		OnHandleAreaEvents(timeMult, areaWeaponAllowed, areaWaterBlock);
+
+		// Force collisions every frame even if player doesn't move
+		SetState(ActorState::IsDirty, true);
 
 		// Invulnerability
 		if (_invulnerableTime > 0.0f) {
@@ -417,6 +423,9 @@ namespace Jazz2::Actors
 				}
 			}
 		}
+		if (_weaponFlareTime > 0.0f) {
+			_weaponFlareTime -= timeMult;
+		}
 
 		// Dizziness
 		if (_dizzyTime > 0.0f) {
@@ -551,14 +560,12 @@ namespace Jazz2::Actors
 		// Shallow Water
 		if (areaWaterBlock != -1) {
 			if (_inShallowWater == -1) {
-				Explosion::Create(_levelHandler, Vector3i((int)_pos.X, areaWaterBlock, _renderer.layer() + 2), Explosion::Type::WaterSplash);
-				_levelHandler->PlayCommonSfx("WaterSplash"_s, Vector3f(_pos.X, (float)areaWaterBlock, 0.0f), 0.7f, 0.5f);
+				OnWaterSplash(Vector2f(_pos.X, (float)areaWaterBlock), true);
 			}
 
 			_inShallowWater = areaWaterBlock;
 		} else if (_inShallowWater != -1) {
-			Explosion::Create(_levelHandler, Vector3i((int)_pos.X, _inShallowWater, _renderer.layer() + 2), Explosion::Type::WaterSplash);
-			_levelHandler->PlayCommonSfx("WaterSplash"_s, Vector3f(_pos.X, (float)_inShallowWater, 0.0f), 1.0f, 0.5f);
+			OnWaterSplash(Vector2f(_pos.X, (float)_inShallowWater), false);
 
 			_inShallowWater = -1;
 		}
@@ -590,7 +597,12 @@ namespace Jazz2::Actors
 
 			float playerMovement = _levelHandler->PlayerHorizontalMovement(_playerIndex);
 			float playerMovementVelocity = std::abs(playerMovement);
-			if (canWalk && playerMovementVelocity > 0.5f) {
+			if (_currentSpecialMove == SpecialMoveType::Buttstomp) {
+				_speed.X = 0.2f * playerMovement;
+				if (_levelHandler->PlayerActionPressed(_playerIndex, PlayerActions::Run)) {
+					_speed.X *= 2.6f;
+				}
+			} else if (canWalk && playerMovementVelocity > 0.5f) {
 				SetAnimation(_currentAnimation->State & ~(AnimState::Lookup | AnimState::Crouch));
 
 				if (_dizzyTime > 0.0f) {
@@ -605,7 +617,7 @@ namespace Jazz2::Actors
 				if (_dizzyTime > 0.0f || _playerType == PlayerType::Frog) {
 					_speed.X = std::clamp(_speed.X + acceleration * timeMult * (IsFacingLeft() ? -1 : 1), -MaxDizzySpeed * playerMovementVelocity, MaxDizzySpeed * playerMovementVelocity);
 				} else if (_inShallowWater != -1 && _levelHandler->IsReforged() && _playerType != PlayerType::Lori) {
-					// Use lower speed in shallow water if Reforged Mode is enabled
+					// Use lower speed in shallow water if Reforged
 					// Also, exclude Lori, because she can't ledge climb or double jump (rescue/01_colon1)
 					_speed.X = std::clamp(_speed.X + acceleration * timeMult * (IsFacingLeft() ? -1 : 1), -MaxShallowWaterSpeed * playerMovementVelocity, MaxShallowWaterSpeed * playerMovementVelocity);
 				} else {
@@ -657,7 +669,7 @@ namespace Jazz2::Actors
 			_hitFloorTime -= timeMult;
 		}
 
-		if (!_controllable || !_controllableExternal) {
+		if (!_controllable || !_controllableExternal || _currentSpecialMove == SpecialMoveType::Buttstomp) {
 			// Weapons are automatically disabled if player is not controllable
 			if (_currentWeapon != WeaponType::Thunderbolt || _fireFramesLeft <= 0.0f) {
 				if (_weaponSound != nullptr) {
@@ -725,7 +737,6 @@ namespace Jazz2::Actors
 					} else if (!_wasDownPressed && _playerType != PlayerType::Frog) {
 						_wasDownPressed = true;
 
-						_controllable = false;
 						_speed.X = 0.0f;
 						_speed.Y = 0.0f;
 						_internalForceY = 0.0f;
@@ -975,18 +986,112 @@ namespace Jazz2::Actors
 				if (!isGamepad || PreferencesCache::WeaponWheel == WeaponWheelStyle::Disabled) {
 					SwitchToNextWeapon();
 				}
+			} else {
+				for (std::uint32_t i = 0; i <= (std::uint32_t)PlayerActions::SwitchToThunderbolt - (std::uint32_t)PlayerActions::SwitchToBlaster; i++) {
+					if (_levelHandler->PlayerActionHit(_playerIndex, (PlayerActions)(i + (std::uint32_t)PlayerActions::SwitchToBlaster))) {
+						SwitchToWeaponByIndex(i);
+					}
+				}
 			}
 		}
 	}
 
 	bool Player::OnDraw(RenderQueue& renderQueue)
 	{
+		if (_weaponFlareTime > 0.0f && !_inWater && _currentTransition == nullptr) {
+			auto* res = _metadata->FindAnimation((AnimState)536870950); // WeaponFlare
+			if (res != nullptr) {
+				auto& command = _weaponFlareCommand;
+				if (command == nullptr) {
+					command = std::make_unique<RenderCommand>();
+					command->material().setBlendingEnabled(true);
+				}
+
+				if (command->material().setShaderProgramType(Material::ShaderProgramType::SPRITE)) {
+					command->material().reserveUniformsDataMemory();
+					command->material().setBlendingFactors(GL_SRC_ALPHA, GL_ONE);
+					//command->material().setBlendingFactors(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+					command->geometry().setDrawParameters(GL_TRIANGLE_STRIP, 0, 4);
+
+					GLUniformCache* textureUniform = command->material().uniform(Material::TextureUniformName);
+					if (textureUniform && textureUniform->intValue(0) != 0) {
+						textureUniform->setIntValue(0); // GL_TEXTURE0
+					}
+				}
+
+				Vector2i texSize = res->Base->TextureDiffuse->size();
+				int curAnimFrame = res->FrameOffset + (_weaponFlareFrame % res->FrameCount);
+				int col = curAnimFrame % res->Base->FrameConfiguration.X;
+				int row = curAnimFrame / res->Base->FrameConfiguration.X;
+				float texScaleX = (float(res->Base->FrameDimensions.X) / float(texSize.X));
+				float texBiasX = (float(res->Base->FrameDimensions.X * col) / float(texSize.X));
+				float texScaleY = (float(res->Base->FrameDimensions.Y) / float(texSize.Y));
+				float texBiasY = (float(res->Base->FrameDimensions.Y * row) / float(texSize.Y));
+
+				float scaleY = std::max(_weaponFlareTime / 8.0f, 0.4f);
+				switch (_playerType) {
+					case  PlayerType::Jazz: scaleY *= 1.1f; break;
+					case  PlayerType::Spaz: scaleY *= 1.6f; break;
+					case  PlayerType::Lori: scaleY *= 1.3f; break;
+				}
+
+				bool facingLeft = IsFacingLeft();
+				bool lookUp = (_currentAnimation->State & AnimState::Lookup) == AnimState::Lookup;
+				std::int32_t gunspotOffsetX = (_currentAnimation->Base->Hotspot.X - _currentAnimation->Base->Gunspot.X);
+				std::int32_t gunspotOffsetY = (_currentAnimation->Base->Hotspot.Y - _currentAnimation->Base->Gunspot.Y);
+
+				float gunspotPosX, gunspotPosY;
+				if (lookUp) {
+					gunspotPosX = _pos.X + (gunspotOffsetX) * (facingLeft ? 1 : -1);
+					gunspotPosY = _pos.Y - (gunspotOffsetY - 3) - res->Base->FrameDimensions.Y;
+				} else {
+					gunspotPosX = _pos.X + (gunspotOffsetX - 7) * (facingLeft ? 1 : -1);
+					gunspotPosY = _pos.Y - gunspotOffsetY;
+					if (facingLeft) {
+						texBiasX += texScaleX;
+						texScaleX *= -1.0f;
+					}
+				}
+
+				if (!PreferencesCache::UnalignedViewport) {
+					gunspotPosX = std::floor(gunspotPosX);
+					gunspotPosY = std::floor(gunspotPosY);
+				}
+
+				auto instanceBlock = command->material().uniformBlock(Material::InstanceBlockName);
+				instanceBlock->uniform(Material::TexRectUniformName)->setFloatValue(texScaleX, texBiasX, texScaleY, texBiasY);
+				instanceBlock->uniform(Material::SpriteSizeUniformName)->setFloatValue(res->Base->FrameDimensions.X, res->Base->FrameDimensions.Y * scaleY);
+				instanceBlock->uniform(Material::ColorUniformName)->setFloatValue(1.0f, 1.0f, 1.0f, 1.8f);
+
+				Matrix4x4f worldMatrix = Matrix4x4f::Translation(gunspotPosX, gunspotPosY, 0.0f);
+				if (lookUp) {
+					worldMatrix.RotateZ(-fRadAngle90);
+				}
+				worldMatrix.Translate(res->Base->FrameDimensions.X * -0.5f, res->Base->FrameDimensions.Y * scaleY * -0.5f, 0.0f);
+				command->setTransformation(worldMatrix);
+				command->setLayer(_renderer.layer() + 2);
+				command->material().setTexture(*res->Base->TextureDiffuse.get());
+
+				renderQueue.addCommand(command.get());
+			}
+		}
+
 		switch (_activeShield) {
 			case ShieldType::Fire: {
 				auto* res = _metadata->FindAnimation((AnimState)536870929); // ShieldFire
 				if (res != nullptr) {
+					float frames = _levelHandler->ElapsedFrames();
 					float shieldAlpha = std::min(_activeShieldTime * 0.01f, 1.0f);
 					float shieldScale = std::min(_activeShieldTime * 0.016f + 0.6f, 1.0f);
+					float shieldSize = 70.0f * shieldScale;
+
+					float shieldPosX = _pos.X - shieldSize * 0.5f;
+					float shieldPosY = _pos.Y - shieldSize * 0.5f;
+
+					if (!PreferencesCache::UnalignedViewport) {
+						shieldPosX = std::floor(shieldPosX);
+						shieldPosY = std::floor(shieldPosY);
+					}
 
 					{
 						auto& command = _shieldRenderCommands[0];
@@ -1006,14 +1111,12 @@ namespace Jazz2::Actors
 							}
 						}
 
-						float frames = _levelHandler->ElapsedFrames();
-
 						auto instanceBlock = command->material().uniformBlock(Material::InstanceBlockName);
 						instanceBlock->uniform(Material::TexRectUniformName)->setFloatValue(frames * -0.008f, frames * 0.006f - sinf(frames * 0.006f), -sinf(frames * 0.015f), frames * 0.006f);
-						instanceBlock->uniform(Material::SpriteSizeUniformName)->setFloatValue(70.0f * shieldScale, 70.0f * shieldScale);
+						instanceBlock->uniform(Material::SpriteSizeUniformName)->setFloatValue(shieldSize, shieldSize);
 						instanceBlock->uniform(Material::ColorUniformName)->setFloatValue(2.0f, 2.0f, 0.8f, 0.9f * shieldAlpha);
 
-						command->setTransformation(Matrix4x4f::Translation(_pos.X, _pos.Y, 0.0f));
+						command->setTransformation(Matrix4x4f::Translation(shieldPosX, shieldPosX, 0.0f));
 						command->setLayer(_renderer.layer() - 4);
 						command->material().setTexture(*res->Base->TextureDiffuse.get());
 
@@ -1037,14 +1140,12 @@ namespace Jazz2::Actors
 							}
 						}
 
-						float frames = _levelHandler->ElapsedFrames();
-
 						auto instanceBlock = command->material().uniformBlock(Material::InstanceBlockName);
 						instanceBlock->uniform(Material::TexRectUniformName)->setFloatValue(frames * 0.006f, sinf(frames * 0.006f), sinf(frames * 0.015f), frames * -0.006f);
-						instanceBlock->uniform(Material::SpriteSizeUniformName)->setFloatValue(70.0f * shieldScale, 70.0f * shieldScale);
+						instanceBlock->uniform(Material::SpriteSizeUniformName)->setFloatValue(shieldSize, shieldSize);
 						instanceBlock->uniform(Material::ColorUniformName)->setFloatValue(2.0f, 2.0f, 1.0f, 1.0f * shieldAlpha);
 
-						command->setTransformation(Matrix4x4f::Translation(_pos.X, _pos.Y, 0.0f));
+						command->setTransformation(Matrix4x4f::Translation(shieldPosX, shieldPosY, 0.0f));
 						command->setLayer(_renderer.layer() + 4);
 						command->material().setTexture(*res->Base->TextureDiffuse.get());
 
@@ -1056,6 +1157,7 @@ namespace Jazz2::Actors
 			case ShieldType::Water: {
 				auto* res = _metadata->FindAnimation((AnimState)536870930); // ShieldWater
 				if (res != nullptr) {
+					float frames = _levelHandler->ElapsedFrames();
 					float shieldAlpha = std::min(_activeShieldTime * 0.01f, 1.0f);
 					float shieldScale = std::min(_activeShieldTime * 0.016f + 0.6f, 1.0f);
 
@@ -1076,8 +1178,6 @@ namespace Jazz2::Actors
 						}
 					}
 
-					float frames = _levelHandler->ElapsedFrames();
-
 					Vector2i texSize = res->Base->TextureDiffuse->size();
 					int curAnimFrame = res->FrameOffset + ((int)(frames * 0.24f) % res->FrameCount);
 					int col = curAnimFrame % res->Base->FrameConfiguration.X;
@@ -1087,12 +1187,20 @@ namespace Jazz2::Actors
 					float texScaleY = (float(res->Base->FrameDimensions.Y) / float(texSize.Y));
 					float texBiasY = (float(res->Base->FrameDimensions.Y * row) / float(texSize.Y));
 
+					float shieldPosX = _pos.X - res->Base->FrameDimensions.X * shieldScale * 0.5f;
+					float shieldPosY = _pos.Y - res->Base->FrameDimensions.Y * shieldScale * 0.5f;
+
+					if (!PreferencesCache::UnalignedViewport) {
+						shieldPosX = std::floor(shieldPosX);
+						shieldPosY = std::floor(shieldPosY);
+					}
+
 					auto instanceBlock = command->material().uniformBlock(Material::InstanceBlockName);
 					instanceBlock->uniform(Material::TexRectUniformName)->setFloatValue(texScaleX, texBiasX, texScaleY, texBiasY);
 					instanceBlock->uniform(Material::SpriteSizeUniformName)->setFloatValue(res->Base->FrameDimensions.X * shieldScale, res->Base->FrameDimensions.Y * shieldScale);
 					instanceBlock->uniform(Material::ColorUniformName)->setFloatValue(1.0f, 1.0f, 1.0f, shieldAlpha);
 
-					command->setTransformation(Matrix4x4f::Translation(_pos.X, _pos.Y, 0.0f));
+					command->setTransformation(Matrix4x4f::Translation(shieldPosX, shieldPosY, 0.0f));
 					command->setLayer(_renderer.layer() + 4);
 					command->material().setTexture(*res->Base->TextureDiffuse.get());
 
@@ -1103,8 +1211,18 @@ namespace Jazz2::Actors
 			case ShieldType::Lightning: {
 				auto* res = _metadata->FindAnimation((AnimState)536870931); // ShieldLightning
 				if (res != nullptr) {
+					float frames = _levelHandler->ElapsedFrames();
 					float shieldAlpha = std::min(_activeShieldTime * 0.01f, 1.0f);
 					float shieldScale = std::min(_activeShieldTime * 0.016f + 0.6f, 1.0f);
+					float shieldSize = 70.0f * shieldScale + sinf(frames * 0.06f) * 4.0f;
+
+					float shieldPosX = _pos.X - shieldSize * 0.5f;
+					float shieldPosY = _pos.Y - shieldSize * 0.5f;
+
+					if (!PreferencesCache::UnalignedViewport) {
+						shieldPosX = std::floor(shieldPosX);
+						shieldPosY = std::floor(shieldPosY);
+					}
 
 					{
 						auto& command = _shieldRenderCommands[0];
@@ -1124,14 +1242,12 @@ namespace Jazz2::Actors
 							}
 						}
 
-						float frames = _levelHandler->ElapsedFrames();
-
 						auto instanceBlock = command->material().uniformBlock(Material::InstanceBlockName);
 						instanceBlock->uniform(Material::TexRectUniformName)->setFloatValue(frames * -0.008f, frames * 0.006f - sinf(frames * 0.006f), -sinf(frames * 0.015f), frames * 0.006f);
-						instanceBlock->uniform(Material::SpriteSizeUniformName)->setFloatValue(70.0f * shieldScale, 70.0f * shieldScale);
+						instanceBlock->uniform(Material::SpriteSizeUniformName)->setFloatValue(shieldSize, shieldSize);
 						instanceBlock->uniform(Material::ColorUniformName)->setFloatValue(2.0f, 2.0f, 0.8f, 0.9f * shieldAlpha);
 
-						command->setTransformation(Matrix4x4f::Translation(_pos.X, _pos.Y, 0.0f));
+						command->setTransformation(Matrix4x4f::Translation(shieldPosX, shieldPosY, 0.0f));
 						command->setLayer(_renderer.layer() - 4);
 						command->material().setTexture(*res->Base->TextureDiffuse.get());
 
@@ -1155,14 +1271,12 @@ namespace Jazz2::Actors
 							}
 						}
 
-						float frames = _levelHandler->ElapsedFrames();
-
 						auto* instanceBlock = command->material().uniformBlock(Material::InstanceBlockName);
 						instanceBlock->uniform(Material::TexRectUniformName)->setFloatValue(frames * 0.006f, sinf(frames * 0.006f), sinf(frames * 0.015f), frames * -0.006f);
-						instanceBlock->uniform(Material::SpriteSizeUniformName)->setFloatValue(70.0f * shieldScale, 70.0f * shieldScale);
+						instanceBlock->uniform(Material::SpriteSizeUniformName)->setFloatValue(shieldSize, shieldSize);
 						instanceBlock->uniform(Material::ColorUniformName)->setFloatValue(2.0f, 2.0f, 1.0f, shieldAlpha);
 
-						command->setTransformation(Matrix4x4f::Translation(_pos.X, _pos.Y, 0.0f));
+						command->setTransformation(Matrix4x4f::Translation(shieldPosX, shieldPosY, 0.0f));
 						command->setLayer(_renderer.layer() + 4);
 						command->material().setTexture(*res->Base->TextureDiffuse.get());
 
@@ -1253,7 +1367,7 @@ namespace Jazz2::Actors
 
 		bool handled = false;
 		bool removeSpecialMove = false;
-		if (auto turtleShell = dynamic_cast<Enemies::TurtleShell*>(other.get())) {
+		if (auto* turtleShell = runtime_cast<Enemies::TurtleShell*>(other)) {
 			if (_currentSpecialMove != SpecialMoveType::None || _sugarRushLeft > 0.0f) {
 				other->DecreaseHealth(INT32_MAX, this);
 
@@ -1264,7 +1378,7 @@ namespace Jazz2::Actors
 				}
 				return true;
 			}
-		} else if (auto enemy = dynamic_cast<Enemies::EnemyBase*>(other.get())) {
+		} else if (auto* enemy = runtime_cast<Enemies::EnemyBase*>(other)) {
 			if (_currentSpecialMove != SpecialMoveType::None || _sugarRushLeft > 0.0f || _activeShieldTime > 0.0f) {
 				if (!enemy->IsInvulnerable()) {
 					enemy->DecreaseHealth(4, this);
@@ -1302,7 +1416,7 @@ namespace Jazz2::Actors
 			} else if (enemy->CanHurtPlayer()) {
 				TakeDamage(1, 4 * (_pos.X > enemy->GetPos().X ? 1.0f : -1.0f));
 			}
-		} else if (auto spring = dynamic_cast<Environment::Spring*>(other.get())) {
+		} else if (auto* spring = runtime_cast<Environment::Spring*>(other)) {
 			// Collide only with hitbox here
 			if (_controllableExternal && (_currentTransition == nullptr || _currentTransition->State != AnimState::TransitionLedgeClimb) && _springCooldown <= 0.0f && spring->AABBInner.Overlaps(AABBInner)) {
 				Vector2f force = spring->Activate();
@@ -1310,7 +1424,7 @@ namespace Jazz2::Actors
 			}
 
 			handled = true;
-		} else if (auto bonusWarp = dynamic_cast<Environment::BonusWarp*>(other.get())) {
+		} else if (auto* bonusWarp = runtime_cast<Environment::BonusWarp*>(other)) {
 			if (_currentTransition == nullptr || _currentTransitionCancellable) {
 				auto cost = bonusWarp->GetCost();
 				if (cost <= _coins) {
@@ -1321,7 +1435,7 @@ namespace Jazz2::Actors
 					_gems += _coins;
 					_coins = 0;
 				} else if (_bonusWarpTimer <= 0.0f) {
-					_levelHandler->ShowCoins(_coins);
+					_levelHandler->ShowCoins(this, _coins);
 					PlaySfx("BonusWarpNotEnoughCoins"_s);
 
 					_bonusWarpTimer = 400.0f;
@@ -1337,83 +1451,6 @@ namespace Jazz2::Actors
 		}
 
 		return handled;
-	}
-
-	void Player::OnHitSpring(const Vector2f& pos, const Vector2f& force, bool keepSpeedX, bool keepSpeedY, bool& removeSpecialMove)
-	{
-		if (!_levelHandler->HandlePlayerSpring(this, pos, force, keepSpeedX, keepSpeedY)) {
-			return;
-		}
-
-		std::int32_t sign = ((force.X + force.Y) > std::numeric_limits<float>::epsilon() ? 1 : -1);
-		if (std::abs(force.X) > 0.0f) {
-			MoveInstantly(Vector2f(_pos.X, (_pos.Y + pos.Y) * 0.5f), MoveType::Absolute);
-
-			removeSpecialMove = true;
-			_copterFramesLeft = 0.0f;
-			//speedX = force.X;
-			_speed.X = (1.0f + std::abs(force.X)) * sign;
-			_externalForce.X = force.X * 0.6f;
-			_springCooldown = 10.0f;
-			SetState(ActorState::CanJump, false);
-
-			_wasActivelyPushing = false;
-			_keepRunningTime = 100.0f;
-
-			if (!keepSpeedY) {
-				_speed.Y = 0.0f;
-				_externalForce.Y = 0.0f;
-			}
-
-			if (_inIdleTransition) {
-				_inIdleTransition = false;
-				CancelTransition();
-			}
-
-			SetPlayerTransition(AnimState::Dash | AnimState::Jump, true, false, SpecialMoveType::None);
-			_controllableTimeout = 2.0f;
-		} else if (std::abs(force.Y) > 0.0f) {
-			MoveInstantly(Vector2f((_pos.X + pos.X) * 0.5f, _pos.Y), MoveType::Absolute);
-
-			if (_copterFramesLeft > 0.0f) {
-				_copterFramesLeft = 0.0f;
-				SetAnimation(_currentAnimation->State & ~AnimState::Copter);
-				SetState(ActorState::ApplyGravitation, true);
-			}
-
-			_speed.Y = (4.0f + std::abs(force.Y)) * sign;
-			if (!GetState(ActorState::ApplyGravitation)) {
-				_externalForce.Y = force.Y * 0.14f;
-			} else if (_levelHandler->IsReforged()) {
-				_externalForce.Y = force.Y;
-			} else {
-				_externalForce.Y = force.Y * 0.8f;
-			}
-			_springCooldown = 10.0f;
-			SetState(ActorState::CanJump, false);
-
-			if (!keepSpeedX) {
-				_speed.X = 0.0f;
-				_externalForce.X = 0.0f;
-				_keepRunningTime = 0.0f;
-			}
-
-			if (_inIdleTransition) {
-				_inIdleTransition = false;
-				CancelTransition();
-			}
-
-			if (sign > 0) {
-				removeSpecialMove = false;
-				_currentSpecialMove = SpecialMoveType::Buttstomp;
-				SetAnimation(AnimState::Buttstomp);
-			} else {
-				removeSpecialMove = true;
-				_isSpring = true;
-			}
-
-			PlaySfx("Spring"_s);
-		}
 	}
 
 	void Player::OnHitFloor(float timeMult)
@@ -1548,6 +1585,85 @@ namespace Jazz2::Actors
 		}
 	}
 
+	void Player::OnHitSpring(const Vector2f& pos, const Vector2f& force, bool keepSpeedX, bool keepSpeedY, bool& removeSpecialMove)
+	{
+		std::int32_t sign = ((force.X + force.Y) > std::numeric_limits<float>::epsilon() ? 1 : -1);
+		if (std::abs(force.X) > 0.0f) {
+			MoveInstantly(Vector2f(_pos.X, (_pos.Y + pos.Y) * 0.5f), MoveType::Absolute);
+
+			removeSpecialMove = true;
+			_copterFramesLeft = 0.0f;
+			//speedX = force.X;
+			_speed.X = (1.0f + std::abs(force.X)) * sign;
+			_externalForce.X = force.X * 0.6f;
+			_springCooldown = 10.0f;
+			SetState(ActorState::CanJump, false);
+
+			_wasActivelyPushing = false;
+			_keepRunningTime = 100.0f;
+
+			if (!keepSpeedY) {
+				_speed.Y = 0.0f;
+				_externalForce.Y = 0.0f;
+			}
+
+			if (_inIdleTransition) {
+				_inIdleTransition = false;
+				CancelTransition();
+			}
+
+			SetPlayerTransition(AnimState::Dash | AnimState::Jump, true, false, SpecialMoveType::None);
+			_controllableTimeout = 2.0f;
+		} else if (std::abs(force.Y) > 0.0f) {
+			MoveInstantly(Vector2f(lerp(_pos.X, pos.X, 0.3f), _pos.Y), MoveType::Absolute);
+
+			if (_copterFramesLeft > 0.0f) {
+				_copterFramesLeft = 0.0f;
+				SetAnimation(_currentAnimation->State & ~AnimState::Copter);
+				SetState(ActorState::ApplyGravitation, true);
+			}
+
+			_speed.Y = (4.0f + std::abs(force.Y)) * sign;
+			if (!GetState(ActorState::ApplyGravitation)) {
+				_externalForce.Y = force.Y * 0.14f;
+			} else if (_levelHandler->IsReforged()) {
+				_externalForce.Y = force.Y;
+			} else {
+				_externalForce.Y = force.Y * 0.8f;
+			}
+			_springCooldown = 10.0f;
+			SetState(ActorState::CanJump, false);
+
+			if (!keepSpeedX) {
+				_speed.X = 0.0f;
+				_externalForce.X = 0.0f;
+				_keepRunningTime = 0.0f;
+			}
+
+			if (_inIdleTransition) {
+				_inIdleTransition = false;
+				CancelTransition();
+			}
+
+			if (sign > 0) {
+				removeSpecialMove = false;
+				_currentSpecialMove = SpecialMoveType::Buttstomp;
+				SetAnimation(AnimState::Buttstomp);
+			} else {
+				removeSpecialMove = true;
+				_isSpring = true;
+			}
+
+			PlaySfx("Spring"_s);
+		}
+	}
+
+	void Player::OnWaterSplash(const Vector2f& pos, bool inwards)
+	{
+		Explosion::Create(_levelHandler, Vector3i((std::int32_t)pos.X, (std::int32_t)pos.Y, _renderer.layer() + 2), Explosion::Type::WaterSplash);
+		_levelHandler->PlayCommonSfx("WaterSplash"_s, Vector3f(pos.X, pos.Y, 0.0f), inwards ? 0.7f : 1.0f, 0.5f);
+	}
+
 	void Player::UpdateAnimation(float timeMult)
 	{
 		if (!_controllable) {
@@ -1660,65 +1776,67 @@ namespace Jazz2::Actors
 
 		SetAnimation(newState);
 
-		switch (oldState) {
-			case AnimState::Walk:
-				if (newState == AnimState::Idle) {
-					_inIdleTransition = true;
-					SetTransition(AnimState::TransitionRunToIdle, true, [this]() {
-						_inIdleTransition = false;
-					});
-				} else if (newState == AnimState::Dash) {
-					SetTransition(AnimState::TransitionRunToDash, true);
-				}
-				break;
-			case AnimState::Dash:
-				if (newState == AnimState::Idle) {
-					_inIdleTransition = true;
-					SetTransition(AnimState::TransitionDashToIdle, true, [this]() {
-						if (_inIdleTransition) {
-							SetTransition(AnimState::TransitionRunToIdle, true, [this]() {
-								_inIdleTransition = false;
-							});
-						}
-					});
-				}
-				break;
-			case AnimState::Fall:
-			case AnimState::Freefall:
-				if (newState == AnimState::Idle) {
-					SetTransition(AnimState::TransitionFallToIdle, true);
-				}
-				break;
-			case AnimState::Idle:
-				if (newState == AnimState::Jump) {
-					SetTransition(AnimState::TransitionIdleToJump, true);
-				} else if (newState != AnimState::Idle) {
-					_inLedgeTransition = false;
-					if (_currentTransition != nullptr && _currentTransition->State == AnimState::TransitionLedge) {
-						CancelTransition();
+		if (!_isAttachedToPole) {
+			switch (oldState) {
+				case AnimState::Walk:
+					if (newState == AnimState::Idle) {
+						_inIdleTransition = true;
+						SetTransition(AnimState::TransitionRunToIdle, true, [this]() {
+							_inIdleTransition = false;
+						});
+					} else if (newState == AnimState::Dash) {
+						SetTransition(AnimState::TransitionRunToDash, true);
 					}
-				} else if (!_inLedgeTransition && _carryingObject == nullptr && std::abs(_speed.X) < 1.0f && std::abs(_speed.Y) < 1.0f) {
-					AABBf aabbL = AABBf(AABBInner.L + 2, AABBInner.B - 10, AABBInner.L + 4, AABBInner.B + 28);
-					AABBf aabbR = AABBf(AABBInner.R - 4, AABBInner.B - 10, AABBInner.R - 2, AABBInner.B + 28);
-					TileCollisionParams params = { TileDestructType::None, true };
-					if (IsFacingLeft()
-						? (_levelHandler->IsPositionEmpty(this, aabbL, params) && !_levelHandler->IsPositionEmpty(this, aabbR, params))
-						: (!_levelHandler->IsPositionEmpty(this, aabbL, params) && _levelHandler->IsPositionEmpty(this, aabbR, params))) {
-
-						_inLedgeTransition = true;
-						if (_playerType == PlayerType::Spaz) {
-							// Spaz's and Lori's animation should be continual, so reset it in callback
-							SetTransition(AnimState::TransitionLedge, true, [this]() {
-								_inLedgeTransition = false;
-							});
-						} else {
-							SetTransition(AnimState::TransitionLedge, true);
-						}
-
-						PlaySfx("Ledge"_s);
+					break;
+				case AnimState::Dash:
+					if (newState == AnimState::Idle) {
+						_inIdleTransition = true;
+						SetTransition(AnimState::TransitionDashToIdle, true, [this]() {
+							if (_inIdleTransition) {
+								SetTransition(AnimState::TransitionRunToIdle, true, [this]() {
+									_inIdleTransition = false;
+								});
+							}
+						});
 					}
-				}
-				break;
+					break;
+				case AnimState::Fall:
+				case AnimState::Freefall:
+					if (newState == AnimState::Idle) {
+						SetTransition(AnimState::TransitionFallToIdle, true);
+					}
+					break;
+				case AnimState::Idle:
+					if (newState == AnimState::Jump) {
+						SetTransition(AnimState::TransitionIdleToJump, true);
+					} else if (newState != AnimState::Idle) {
+						_inLedgeTransition = false;
+						if (_currentTransition != nullptr && _currentTransition->State == AnimState::TransitionLedge) {
+							CancelTransition();
+						}
+					} else if (!_inLedgeTransition && _carryingObject == nullptr && std::abs(_speed.X) < 1.0f && std::abs(_speed.Y) < 1.0f) {
+						AABBf aabbL = AABBf(AABBInner.L + 2, AABBInner.B - 10, AABBInner.L + 4, AABBInner.B + 28);
+						AABBf aabbR = AABBf(AABBInner.R - 4, AABBInner.B - 10, AABBInner.R - 2, AABBInner.B + 28);
+						TileCollisionParams params = { TileDestructType::None, true };
+						if (IsFacingLeft()
+							? (_levelHandler->IsPositionEmpty(this, aabbL, params) && !_levelHandler->IsPositionEmpty(this, aabbR, params))
+							: (!_levelHandler->IsPositionEmpty(this, aabbL, params) && _levelHandler->IsPositionEmpty(this, aabbR, params))) {
+
+							_inLedgeTransition = true;
+							if (_playerType == PlayerType::Spaz) {
+								// Spaz's and Lori's animation should be continual, so reset it in callback
+								SetTransition(AnimState::TransitionLedge, true, [this]() {
+									_inLedgeTransition = false;
+								});
+							} else {
+								SetTransition(AnimState::TransitionLedge, true);
+							}
+
+							PlaySfx("Ledge"_s);
+						}
+					}
+					break;
+			}
 		}
 	}
 
@@ -1733,7 +1851,7 @@ namespace Jazz2::Actors
 			TileCollisionParams params = { TileDestructType::None, false };
 			ActorBase* collider;
 			if (!_levelHandler->IsPositionEmpty(this, hitbox, params, &collider)) {
-				if (auto solidObject = dynamic_cast<SolidObjectBase*>(collider)) {
+				if (auto* solidObject = runtime_cast<SolidObjectBase*>(collider)) {
 					SetState(ActorState::IsSolidObject, false);
 					float pushSpeedX = solidObject->Push(_speed.X < 0, timeMult);
 					if (std::abs(pushSpeedX) > 0.0f) {
@@ -1750,7 +1868,7 @@ namespace Jazz2::Actors
 			ActorState prevState = GetState();
 			SetState(ActorState::CollideWithTileset, false);
 			if (!_levelHandler->IsPositionEmpty(this, aabb, params, &collider)) {
-				if (auto solidObject = dynamic_cast<SolidObjectBase*>(collider)) {
+				if (auto* solidObject = runtime_cast<SolidObjectBase*>(collider)) {
 					if (AABBInner.T >= solidObject->AABBInner.T && !_isLifting && std::abs(_speed.Y) < 1.0f) {
 						_isLifting = true;
 						SetTransition(AnimState::TransitionLiftStart, true);
@@ -1794,11 +1912,11 @@ namespace Jazz2::Actors
 				}
 
 				if (_levelHandler->IsReforged()) {
+					_controllable = false;
 					SetTransition(AnimState::TransitionButtstompEnd, false, [this]() {
 						_controllable = true;
 					});
 				} else {
-					_controllable = true;
 					SetTransition(AnimState::TransitionButtstompEnd, true);
 				}
 			} else {
@@ -1974,14 +2092,12 @@ namespace Jazz2::Actors
 				_waterCooldownLeft = 20.0f;
 
 				SetState(ActorState::ApplyGravitation | ActorState::CanJump, true);
-				_externalForce.Y = -0.45f;
+				_externalForce.Y = -0.6f;
 				_renderer.setRotation(0.0f);
 
 				SetAnimation(AnimState::Jump);
 
-				float y = _levelHandler->WaterLevel();
-				Explosion::Create(_levelHandler, Vector3i((std::int32_t)_pos.X, (std::int32_t)y, _renderer.layer() + 2), Explosion::Type::WaterSplash);
-				_levelHandler->PlayCommonSfx("WaterSplash"_s, Vector3f(_pos.X, y, 0.0f), 1.0f, 0.5f);
+				OnWaterSplash(Vector2f(_pos.X, _levelHandler->WaterLevel()), false);
 			}
 		} else {
 			if (_pos.Y >= _levelHandler->WaterLevel() && _waterCooldownLeft <= 0.0f) {
@@ -1991,9 +2107,7 @@ namespace Jazz2::Actors
 				_controllable = true;
 				EndDamagingMove();
 
-				float y = _levelHandler->WaterLevel();
-				Explosion::Create(_levelHandler, Vector3i((int)_pos.X, (int)y, _renderer.layer() + 2), Explosion::Type::WaterSplash);
-				_levelHandler->PlayCommonSfx("WaterSplash"_s, Vector3f(_pos.X, y, 0.0f), 0.7f, 0.5f);
+				OnWaterSplash(Vector2f(_pos.X, _levelHandler->WaterLevel()), true);
 			}
 
 			// Adjust walking animation speed
@@ -2018,20 +2132,22 @@ namespace Jazz2::Actors
 		switch (tileEvent) {
 			case EventType::LightAmbient: { // Intensity, Red, Green, Blue, Flicker
 				// TODO: Change only player view, handle splitscreen multiplayer
-				_levelHandler->SetAmbientLight(p[0] / 255.0f);
+				_levelHandler->SetAmbientLight(this, p[0] / 255.0f);
 				break;
 			}
 			case EventType::WarpOrigin: { // Warp ID, Fast, Set Lap
 				if (_currentTransition == nullptr || _currentTransition->State == (AnimState::Dash | AnimState::Jump) || _currentTransitionCancellable) {
 					Vector2f c = events->GetWarpTarget(p[0]);
 					if (c.X >= 0.0f && c.Y >= 0.0f) {
-						WarpToPosition(c, p[1] != 0);
-
-#if MULTIPLAYER && SERVER
-						if (p[2] != 0) {
-							((LevelHandler)levelHandler).OnPlayerIncrementLaps(this);
+						WarpFlags flags = WarpFlags::Default;
+						if (p[1] != 0) {
+							flags |= WarpFlags::Fast;
 						}
-#endif
+						if (p[2] != 0) {
+							flags |= WarpFlags::IncrementLaps;
+						}
+
+						WarpToPosition(c, flags);
 					}
 				}
 				break;
@@ -2115,7 +2231,7 @@ namespace Jazz2::Actors
 						}
 						_levelHandler->BeginLevelChange(exitType, nextLevel);
 					} else if (_bonusWarpTimer <= 0.0f) {
-						_levelHandler->ShowCoins(_coins);
+						_levelHandler->ShowCoins(this, _coins);
 						PlaySfx("BonusWarpNotEnoughCoins"_s);
 
 						_bonusWarpTimer = 400.0f;
@@ -2256,7 +2372,7 @@ namespace Jazz2::Actors
 		}
 	}
 
-	std::shared_ptr<AudioBufferPlayer> Player::PlayPlayerSfx(const StringView& identifier, float gain, float pitch)
+	std::shared_ptr<AudioBufferPlayer> Player::PlayPlayerSfx(const StringView identifier, float gain, float pitch)
 	{
 		auto it = _metadata->Sounds.find(String::nullTerminatedView(identifier));
 		if (it != _metadata->Sounds.end()) {
@@ -2333,8 +2449,25 @@ namespace Jazz2::Actors
 					_lives--;
 				}
 
-				// Remove fast fires
-				_weaponUpgrades[(int)WeaponType::Blaster] = (uint8_t)(_weaponUpgrades[(int)WeaponType::Blaster] & 0x1);
+				// Revert food eaten only if Reforged
+				if (_levelHandler->IsReforged()) {
+					_foodEaten = _foodEatenCheckpoint;
+				}
+
+				// Revert coins, gems, ammo and weapon upgrades
+				_coins = _coinsCheckpoint;
+				_gems = _gemsCheckpoint;
+
+				std::memcpy(_weaponAmmo, _weaponAmmoCheckpoint, sizeof(_weaponAmmo));
+				std::memcpy(_weaponUpgrades, _weaponUpgradesCheckpoint, sizeof(_weaponUpgrades));
+
+				// Remove all fast fires and Blaster upgrades
+				_weaponUpgrades[(std::int32_t)WeaponType::Blaster] = 0;
+
+				// Reset current weapon to Blaster if player has no ammo on checkpoint
+				if (_weaponAmmo[(std::int32_t)_currentWeapon] == 0) {
+					SetCurrentWeapon(WeaponType::Blaster);
+				}
 
 				if (_sugarRushLeft > 0.0f) {
 					_sugarRushLeft = 0.0f;
@@ -2364,16 +2497,9 @@ namespace Jazz2::Actors
 
 					// Return to the last save point
 					MoveInstantly(_checkpointPos, MoveType::Absolute | MoveType::Force);
-					_levelHandler->SetAmbientLight(_checkpointLight);
+					_levelHandler->SetAmbientLight(this, _checkpointLight);
 
-					_coins = _coinsCheckpoint;
-					_gems = _gemsCheckpoint;
-
-					std::memcpy(_weaponAmmo, _weaponAmmoCheckpoint, sizeof(_weaponAmmo));
-					std::memcpy(_weaponUpgrades, _weaponUpgradesCheckpoint, sizeof(_weaponUpgrades));
-
-					_levelHandler->RollbackToCheckpoint();
-
+					_levelHandler->RollbackToCheckpoint(this);
 				} else {
 					// Respawn is delayed
 					_renderer.setDrawEnabled(false);
@@ -2383,7 +2509,7 @@ namespace Jazz2::Actors
 			} else {
 				_renderer.setDrawEnabled(false);
 
-				_levelHandler->HandleGameOver();
+				_levelHandler->HandleGameOver(this);
 			}
 		});
 
@@ -2398,16 +2524,16 @@ namespace Jazz2::Actors
 		}
 
 		// Find next available weapon
-		_currentWeapon = (WeaponType)(((int)_currentWeapon + 1) % (int)WeaponType::Count);
-
-		for (int i = 0; i < (int)WeaponType::Count && _weaponAmmo[(int)_currentWeapon] == 0; i++) {
-			_currentWeapon = (WeaponType)(((int)_currentWeapon + 1) % (int)WeaponType::Count);
+		WeaponType weaponType = (WeaponType)(((std::int32_t)_currentWeapon + 1) % (std::int32_t)WeaponType::Count);
+		for (std::int32_t i = 0; i < (std::int32_t)WeaponType::Count && _weaponAmmo[(std::int32_t)weaponType] == 0; i++) {
+			weaponType = (WeaponType)(((std::int32_t)weaponType + 1) % (std::int32_t)WeaponType::Count);
 		}
+		SetCurrentWeapon(weaponType);
 
 		_weaponCooldown = 1.0f;
 	}
 
-	void Player::SwitchToWeaponByIndex(uint32_t weaponIndex)
+	void Player::SwitchToWeaponByIndex(std::uint32_t weaponIndex)
 	{
 		if (weaponIndex >= (uint32_t)WeaponType::Count || _weaponAmmo[weaponIndex] == 0) {
 			PlaySfx("ChangeWeapon"_s);
@@ -2419,12 +2545,12 @@ namespace Jazz2::Actors
 			_weaponSound = nullptr;
 		}
 
-		_currentWeapon = (WeaponType)weaponIndex;
+		SetCurrentWeapon((WeaponType)weaponIndex);
 		_weaponCooldown = 1.0f;
 	}
 
 	template<typename T, WeaponType weaponType>
-	void Player::FireWeapon(float cooldownBase, float cooldownUpgrade)
+	void Player::FireWeapon(float cooldownBase, float cooldownUpgrade, bool emitFlare)
 	{
 		// NOTE: cooldownBase and cooldownUpgrade cannot be template parameters in Emscripten
 		Vector3i initialPos;
@@ -2442,7 +2568,13 @@ namespace Jazz2::Actors
 		shot->OnFire(shared_from_this(), gunspotPos, _speed, angle, IsFacingLeft());
 		_levelHandler->AddActor(shot);
 
-		_weaponCooldown = cooldownBase - (_weaponUpgrades[(int)WeaponType::Blaster] * cooldownUpgrade);
+		std::int32_t fastFire = (_weaponUpgrades[(std::int32_t)WeaponType::Blaster] >> 1);
+		_weaponCooldown = cooldownBase - (fastFire * cooldownUpgrade);
+
+		if (emitFlare) {
+			_weaponFlareFrame = (Random().Next() & 0xFFFF);
+			_weaponFlareTime = 6.0f;
+		}
 	}
 
 	void Player::FireWeaponRF()
@@ -2501,7 +2633,9 @@ namespace Jazz2::Actors
 			_levelHandler->AddActor(shot2);
 		}
 
-		_weaponCooldown = 100.0f - (_weaponUpgrades[(int)WeaponType::Blaster] * 1.0f);
+		_weaponCooldown = 120.0f;
+		_weaponFlareFrame = (Random().Next() & 0xFFFF);
+		_weaponFlareTime = 6.0f;
 	}
 
 	void Player::FireWeaponPepper()
@@ -2531,7 +2665,10 @@ namespace Jazz2::Actors
 		shot2->OnFire(shared_from_this(), gunspotPos, _speed, angle + Random().NextFloat(-0.2f, 0.2f), IsFacingLeft());
 		_levelHandler->AddActor(shot2);
 
-		_weaponCooldown = 36.0f - (_weaponUpgrades[(int)WeaponType::Blaster] * 1.6f);
+		std::int32_t fastFire = (_weaponUpgrades[(std::int32_t)WeaponType::Blaster] >> 1);
+		_weaponCooldown = 30.0f - (fastFire * 2.7f);
+		_weaponFlareFrame = (Random().Next() & 0xFFFF);
+		_weaponFlareTime = 6.0f;
 	}
 
 	void Player::FireWeaponTNT()
@@ -2544,7 +2681,7 @@ namespace Jazz2::Actors
 		tnt->OnFire(shared_from_this());
 		_levelHandler->AddActor(tnt);
 
-		_weaponCooldown = 30.0f;
+		_weaponCooldown = 60.0f;
 	}
 
 	bool Player::FireWeaponThunderbolt()
@@ -2569,11 +2706,13 @@ namespace Jazz2::Actors
 		_levelHandler->AddActor(shot);
 
 		_weaponCooldown = 12.0f - (_weaponUpgrades[(int)WeaponType::Blaster] * 0.1f);
+
 		if (!_inWater && (_currentAnimation->State & AnimState::Lookup) != AnimState::Lookup) {
-			AddExternalForce(IsFacingLeft() ? 0.1f : -0.1f, 0.0f);
+			AddExternalForce(IsFacingLeft() ? 2.0f : -2.0f, 0.0f);
 		}
 
 		if (_weaponSound == nullptr) {
+			PlaySfx("WeaponThunderboltStart"_s, 0.5f);
 			_weaponSound = PlaySfx("WeaponThunderbolt"_s, 1.0f);
 			if (_weaponSound != nullptr) {
 				_weaponSound->setLooping(true);
@@ -2591,11 +2730,7 @@ namespace Jazz2::Actors
 			return (weaponType != WeaponType::TNT);
 		}
 
-		uint16_t ammoDecrease = 256;
-
-		if (!_levelHandler->HandlePlayerFireWeapon(this, weaponType, ammoDecrease)) {
-			return false;
-		}
+		std::uint16_t ammoDecrease = 256;
 
 		switch (weaponType) {
 			case WeaponType::Blaster:
@@ -2604,7 +2739,7 @@ namespace Jazz2::Actors
 						if (_inWater) {
 							return false;
 						}
-						FireWeapon<Weapons::ShieldFireShot, WeaponType::Blaster>(10.0f, 0.0f);
+						FireWeapon<Weapons::ShieldFireShot, WeaponType::Blaster>(10.0f, 0.0f, true);
 						break;
 					}
 					case ShieldType::Water: {
@@ -2616,7 +2751,7 @@ namespace Jazz2::Actors
 						break;
 					}
 					default: {
-						FireWeapon<Weapons::BlasterShot, WeaponType::Blaster>(40.0f, 1.0f);
+						FireWeapon<Weapons::BlasterShot, WeaponType::Blaster>(30.0f, 2.7f, true);
 						PlaySfx("WeaponBlaster"_s);
 						break;
 					}
@@ -2624,12 +2759,12 @@ namespace Jazz2::Actors
 				ammoDecrease = 0;
 				break;
 
-			case WeaponType::Bouncer: FireWeapon<Weapons::BouncerShot, WeaponType::Bouncer>(32.0f, 0.85f); break;
+			case WeaponType::Bouncer: FireWeapon<Weapons::BouncerShot, WeaponType::Bouncer>(30.0f, 2.7f, true); break;
 				case WeaponType::Freezer:
 					// TODO: Add upgraded freezer
-					FireWeapon<Weapons::FreezerShot, WeaponType::Freezer>(46.0f, 0.8f);
+					FireWeapon<Weapons::FreezerShot, WeaponType::Freezer>(30.0f, 2.7f);
 					break;
-				case WeaponType::Seeker: FireWeapon<Weapons::SeekerShot, WeaponType::Seeker>(100.0f, 1.0f); break;
+				case WeaponType::Seeker: FireWeapon<Weapons::SeekerShot, WeaponType::Seeker>(120.0f, 0.0f, true); break;
 				case WeaponType::RF: FireWeaponRF(); break;
 
 				case WeaponType::Toaster: {
@@ -2649,13 +2784,13 @@ namespace Jazz2::Actors
 
 				case WeaponType::TNT: FireWeaponTNT(); break;
 				case WeaponType::Pepper: FireWeaponPepper(); break;
-				case WeaponType::Electro: FireWeapon<Weapons::ElectroShot, WeaponType::Electro>(32.0f, 1.2f); break;
+				case WeaponType::Electro: FireWeapon<Weapons::ElectroShot, WeaponType::Electro>(30.0f, 2.7f, true); break;
 
 				case WeaponType::Thunderbolt: {
 					if (!FireWeaponThunderbolt()) {
 						return false;
 					}
-					ammoDecrease = ((_weaponUpgrades[(int)WeaponType::Thunderbolt] & 0x1) != 0 ? 30 : 50); // Lower ammo consumption with upgrade
+					ammoDecrease = ((_weaponUpgrades[(std::int32_t)WeaponType::Thunderbolt] & 0x1) != 0 ? 30 : 50); // Lower ammo consumption with upgrade
 					break;
 				}
 
@@ -2663,7 +2798,7 @@ namespace Jazz2::Actors
 				return false;
 		}
 
-		auto& currentAmmo = _weaponAmmo[(int)weaponType];
+		auto& currentAmmo = _weaponAmmo[(std::int32_t)weaponType];
 		if (ammoDecrease > currentAmmo) {
 			ammoDecrease = currentAmmo;
 		}
@@ -2672,7 +2807,7 @@ namespace Jazz2::Actors
 		// No ammo, switch weapons
 		if (currentAmmo == 0) {
 			// Remove upgrade if no ammo left
-			_weaponUpgrades[(int)weaponType] &= ~0x01;
+			_weaponUpgrades[(std::int32_t)weaponType] &= ~0x01;
 
 			SwitchToNextWeapon();
 			PlaySfx("ChangeWeapon"_s);
@@ -2680,6 +2815,11 @@ namespace Jazz2::Actors
 		}
 
 		return (weaponType != WeaponType::TNT);
+	}
+
+	void Player::SetCurrentWeapon(WeaponType weaponType)
+	{
+		_currentWeapon = weaponType;
 	}
 
 	void Player::GetFirePointAndAngle(Vector3i& initialPos, Vector2f& gunspotPos, float& angle)
@@ -2886,6 +3026,7 @@ namespace Jazz2::Actors
 		_lives = (std::int32_t)carryOver.Lives;
 		_score = carryOver.Score;
 		_foodEaten = (std::int32_t)carryOver.FoodEaten;
+		_foodEatenCheckpoint = _foodEaten;
 		_currentWeapon = carryOver.CurrentWeapon;
 
 		std::memcpy(_weaponAmmo, carryOver.Ammo, sizeof(_weaponAmmo));
@@ -2957,11 +3098,12 @@ namespace Jazz2::Actors
 		_coins = src.ReadVariableInt32();
 		_coinsCheckpoint = _coins;
 		_foodEaten = src.ReadVariableInt32();
+		_foodEatenCheckpoint = _foodEaten;
 		_score = src.ReadVariableInt32();
 		_gems = src.ReadVariableInt32();
 		_gemsCheckpoint = _gems;
 
-		levelHandler->SetAmbientLight(_checkpointLight);
+		levelHandler->SetAmbientLight(this, _checkpointLight);
 
 		std::int32_t weaponCount = src.ReadVariableInt32();
 		RETURN_ASSERT_MSG(weaponCount == countof(_weaponAmmoCheckpoint), "Weapon count mismatch");
@@ -2971,6 +3113,11 @@ namespace Jazz2::Actors
 
 		std::memcpy(_weaponAmmo, _weaponAmmoCheckpoint, sizeof(_weaponAmmoCheckpoint));
 		std::memcpy(_weaponUpgrades, _weaponUpgradesCheckpoint, sizeof(_weaponUpgradesCheckpoint));
+
+		// Reset current weapon to Blaster if player has no ammo on checkpoint
+		if (_weaponAmmo[(std::int32_t)_currentWeapon] == 0) {
+			SetCurrentWeapon(WeaponType::Blaster);
+		}
 	}
 
 	void Player::SerializeResumableToStream(Stream& dest)
@@ -2983,7 +3130,7 @@ namespace Jazz2::Actors
 		dest.WriteValue<float>(_checkpointLight);
 		dest.WriteVariableInt32(_lives);
 		dest.WriteVariableInt32(_coinsCheckpoint);
-		dest.WriteVariableInt32(_foodEaten);
+		dest.WriteVariableInt32(_foodEatenCheckpoint);
 		dest.WriteVariableInt32(_score);
 		dest.WriteVariableInt32(_gemsCheckpoint);
 		dest.WriteVariableInt32(countof(_weaponAmmoCheckpoint));
@@ -2992,9 +3139,9 @@ namespace Jazz2::Actors
 		dest.Write(_weaponUpgradesCheckpoint, sizeof(_weaponUpgradesCheckpoint));
 	}
 
-	void Player::WarpToPosition(Vector2f pos, bool fast)
+	void Player::WarpToPosition(const Vector2f& pos, WarpFlags flags)
 	{
-		if (fast) {
+		if ((flags & WarpFlags::Fast) == WarpFlags::Fast) {
 			Vector2f posPrev = _pos;
 			bool hideTrail = (posPrev - pos).Length() > 250.0f;
 			MoveInstantly(pos, MoveType::Absolute | MoveType::Force);
@@ -3023,7 +3170,7 @@ namespace Jazz2::Actors
 
 			PlayPlayerSfx("WarpIn"_s);
 
-			SetPlayerTransition(_isFreefall ? AnimState::TransitionWarpInFreefall : AnimState::TransitionWarpIn, false, true, SpecialMoveType::None, [this, pos]() {
+			SetPlayerTransition(_isFreefall ? AnimState::TransitionWarpInFreefall : AnimState::TransitionWarpIn, false, true, SpecialMoveType::None, [this, flags, pos]() {
 				Vector2f posPrev = _pos;
 				MoveInstantly(pos, MoveType::Absolute | MoveType::Force);
 				_trailLastPos = _pos;
@@ -3032,10 +3179,20 @@ namespace Jazz2::Actors
 				_levelHandler->HandlePlayerWarped(this, posPrev, false);
 
 				_isFreefall |= CanFreefall();
-				SetPlayerTransition(_isFreefall ? AnimState::TransitionWarpOutFreefall : AnimState::TransitionWarpOut, false, true, SpecialMoveType::None, [this]() {
+				SetPlayerTransition(_isFreefall ? AnimState::TransitionWarpOutFreefall : AnimState::TransitionWarpOut, false, true, SpecialMoveType::None, [this, flags]() {
 					SetState(ActorState::IsInvulnerable, false);
 					SetState(ActorState::ApplyGravitation, true);
-					_controllable = true;
+
+					if ((flags & WarpFlags::Freeze) == WarpFlags::Freeze) {
+						_renderer.AnimPaused = true;
+						_controllable = false;
+						_controllableTimeout = 100.0f;
+						_frozenTimeLeft = 100.0f;
+					} else {
+						_controllable = true;
+						// UpdateAnimation() was probably skipped in this step, because _controllable was false, so call it here
+						UpdateAnimation(0.0f);
+					}
 				});
 			});
 		}
@@ -3168,6 +3325,11 @@ namespace Jazz2::Actors
 		}
 	}
 
+	Player::Modifier Player::GetModifier() const
+	{
+		return _activeModifier;
+	}
+
 	bool Player::SetModifier(Modifier modifier, const std::shared_ptr<ActorBase>& decor)
 	{
 		if (_activeModifier == modifier) {
@@ -3244,7 +3406,7 @@ namespace Jazz2::Actors
 		return true;
 	}
 
-	bool Player::TakeDamage(int amount, float pushForce)
+	bool Player::TakeDamage(std::int32_t amount, float pushForce)
 	{
 		if (amount <= 0 || GetState(ActorState::IsInvulnerable) || _levelExiting != LevelExitingState::None) {
 			return false;
@@ -3396,14 +3558,14 @@ namespace Jazz2::Actors
 	void Player::AddCoins(int count)
 	{
 		_coins += count;
-		_levelHandler->ShowCoins(_coins);
+		_levelHandler->ShowCoins(this, _coins);
 		PlaySfx("PickupCoin"_s);
 	}
 
 	void Player::AddGems(int count)
 	{
 		_gems += count;
-		_levelHandler->ShowGems(_gems);
+		_levelHandler->ShowGems(this, _gems);
 		PlaySfx("PickupGem"_s, 1.0f, std::min(0.7f + _gemsPitch * 0.05f, 1.3f));
 
 		_gemsTimer = 120.0f;
@@ -3437,10 +3599,10 @@ namespace Jazz2::Actors
 		_sugarRushLeft = duration;
 		_renderer.Initialize(ActorRendererType::PartialWhiteMask);
 		_weaponWheelState = WeaponWheelState::Hidden;
-		_levelHandler->ActivateSugarRush();
+		_levelHandler->ActivateSugarRush(this);
 	}
 
-	bool Player::AddAmmo(WeaponType weaponType, int16_t count)
+	bool Player::AddAmmo(WeaponType weaponType, std::int16_t count)
 	{
 		constexpr std::int16_t Multiplier = 256;
 		constexpr std::int16_t AmmoLimit = 99 * Multiplier;
@@ -3451,10 +3613,10 @@ namespace Jazz2::Actors
 
 		bool switchTo = (_weaponAmmo[(std::int32_t)weaponType] == 0);
 
-		_weaponAmmo[(std::int32_t)weaponType] = std::min((int16_t)(_weaponAmmo[(std::int32_t)weaponType] + count * Multiplier), AmmoLimit);
+		_weaponAmmo[(std::int32_t)weaponType] = (int16_t)std::min((int32_t)_weaponAmmo[(std::int32_t)weaponType] + count * Multiplier, (int32_t)AmmoLimit);
 
 		if (switchTo) {
-			_currentWeapon = weaponType;
+			SetCurrentWeapon(weaponType);
 
 			switch (_currentWeapon) {
 				case WeaponType::Blaster: PreloadMetadataAsync("Weapon/Blaster"_s); break;
@@ -3474,12 +3636,12 @@ namespace Jazz2::Actors
 		return true;
 	}
 
-	void Player::AddWeaponUpgrade(WeaponType weaponType, uint8_t upgrade)
+	void Player::AddWeaponUpgrade(WeaponType weaponType, std::uint8_t upgrade)
 	{
 		_weaponUpgrades[(std::int32_t)weaponType] |= upgrade;
 	}
 
-	bool Player::AddFastFire(int count)
+	bool Player::AddFastFire(std::int32_t count)
 	{
 		const std::int32_t FastFireLimit = 9;
 
@@ -3660,6 +3822,7 @@ namespace Jazz2::Actors
 		_checkpointPos = Vector2f(pos.X, pos.Y - 20.0f);
 		_checkpointLight = ambientLight;
 		
+		_foodEatenCheckpoint = _foodEaten;
 		_coinsCheckpoint = _coins;
 		_gemsCheckpoint = _gems;
 

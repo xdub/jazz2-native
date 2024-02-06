@@ -253,7 +253,7 @@ namespace nCine
 		const IGfxCapabilities& gfxCaps = theServiceLocator().gfxCapabilities();
 		const int maxUniformBlockSize = gfxCaps.value(IGfxCapabilities::GLIntValues::MAX_UNIFORM_BLOCK_SIZE_NORMALIZED);
 
-		char sourceString[48];
+		char sourceString[64];
 		const char *vertexStrings[3] = { nullptr, nullptr, nullptr };
 
 		for (unsigned int i = 0; i < countof(shadersToLoad); i++) {
@@ -364,7 +364,7 @@ namespace nCine
 		// Calculating a default projection matrix for all shader programs
 		const int width = theApplication().width();
 		const int height = theApplication().height();
-		defaultCamera_->setOrthoProjection(width * (-0.5f), width * (+0.5f), height * (+0.5f), height * (-0.5f));
+		defaultCamera_->setOrthoProjection(0.0f, width, 0.0f, height);
 	}
 
 	void RenderResources::dispose()

@@ -229,6 +229,7 @@
     <ClInclude Include="$(ExtensionLibraryPath)\IO\MemoryStream.h" />
     <ClInclude Include="$(ExtensionLibraryPath)\IO\Stream.h" />
     <ClInclude Include="$(ExtensionLibraryPath)\Base\Unaligned.h" />
+    <ClInclude Include="$(ExtensionLibraryPath)\Base\TypeInfo.h" />
     <ClInclude Include="Common.h" />
     <ClInclude Include="Jazz2\Actors\ActorBase.h" />
     <ClInclude Include="Jazz2\Actors\Collectibles\CarrotCollectible.h" />
@@ -294,7 +295,11 @@
     <ClInclude Include="Jazz2\Actors\Lighting\FlickerLight.h" />
     <ClInclude Include="Jazz2\Actors\Lighting\PulsatingRadialLight.h" />
     <ClInclude Include="Jazz2\Actors\Lighting\StaticRadialLight.h" />
-    <ClInclude Include="Jazz2\Actors\RemoteActor.h" />
+    <ClInclude Include="Jazz2\Actors\Multiplayer\LocalPlayerOnServer.h" />
+    <ClInclude Include="Jazz2\Actors\Multiplayer\PlayerOnServer.h" />
+    <ClInclude Include="Jazz2\Actors\Multiplayer\RemotablePlayer.h" />
+    <ClInclude Include="Jazz2\Actors\Multiplayer\RemoteActor.h" />
+    <ClInclude Include="Jazz2\Actors\Multiplayer\RemotePlayerOnServer.h" />
     <ClInclude Include="Jazz2\Actors\Solid\AmmoBarrel.h" />
     <ClInclude Include="Jazz2\Actors\Solid\AmmoCrate.h" />
     <ClInclude Include="Jazz2\Actors\Solid\BarrelContainer.h" />
@@ -349,10 +354,12 @@
     <ClInclude Include="Jazz2\Multiplayer\ConnectionResult.h" />
     <ClInclude Include="Jazz2\Multiplayer\INetworkHandler.h" />
     <ClInclude Include="Jazz2\Multiplayer\MultiLevelHandler.h" />
+    <ClInclude Include="Jazz2\Multiplayer\MultiplayerGameMode.h" />
     <ClInclude Include="Jazz2\Multiplayer\NetworkManager.h" />
     <ClInclude Include="Jazz2\Multiplayer\PacketTypes.h" />
     <ClInclude Include="Jazz2\Multiplayer\Peer.h" />
     <ClInclude Include="Jazz2\Multiplayer\Reason.h" />
+    <ClInclude Include="Jazz2\Multiplayer\ServerDiscovery.h" />
     <ClInclude Include="Jazz2\PitType.h" />
     <ClInclude Include="Jazz2\PlayerActions.h" />
     <ClInclude Include="Jazz2\PlayerType.h" />
@@ -385,9 +392,10 @@
     <ClInclude Include="Jazz2\UI\Menu\AboutSection.h" />
     <ClInclude Include="Jazz2\UI\Menu\BeginSection.h" />
     <ClInclude Include="Jazz2\UI\Menu\ControlsOptionsSection.h" />
-    <ClInclude Include="Jazz2\UI\Menu\ControlsSection.h" />
+    <ClInclude Include="Jazz2\UI\Menu\CreateServerOptionsSection.h" />
     <ClInclude Include="Jazz2\UI\Menu\CustomLevelSelectSection.h" />
     <ClInclude Include="Jazz2\UI\Menu\EpisodeSelectSection.h" />
+    <ClInclude Include="Jazz2\UI\Menu\FirstRunSection.h" />
     <ClInclude Include="Jazz2\UI\Menu\GameplayEnhancementsSection.h" />
     <ClInclude Include="Jazz2\UI\Menu\GameplayOptionsSection.h" />
     <ClInclude Include="Jazz2\UI\Menu\GraphicsOptionsSection.h" />
@@ -400,12 +408,15 @@
     <ClInclude Include="Jazz2\UI\Menu\MainMenu.h" />
     <ClInclude Include="Jazz2\UI\Menu\MenuResources.h" />
     <ClInclude Include="Jazz2\UI\Menu\MenuSection.h" />
+    <ClInclude Include="Jazz2\UI\Menu\MultiplayerGameModeSelectSection.h" />
     <ClInclude Include="Jazz2\UI\Menu\OptionsSection.h" />
     <ClInclude Include="Jazz2\UI\Menu\PauseSection.h" />
+    <ClInclude Include="Jazz2\UI\Menu\PlayCustomSection.h" />
     <ClInclude Include="Jazz2\UI\Menu\RefreshCacheSection.h" />
     <ClInclude Include="Jazz2\UI\Menu\RemapControlsSection.h" />
     <ClInclude Include="Jazz2\UI\Menu\RescaleModeSection.h" />
     <ClInclude Include="Jazz2\UI\Menu\ScrollableMenuSection.h" />
+    <ClInclude Include="Jazz2\UI\Menu\ServerSelectSection.h" />
     <ClInclude Include="Jazz2\UI\Menu\SimpleMessageSection.h" />
     <ClInclude Include="Jazz2\UI\Menu\SoundsOptionsSection.h" />
     <ClInclude Include="Jazz2\UI\Menu\StartGameOptionsSection.h" />
@@ -416,7 +427,6 @@
     <ClInclude Include="Jazz2\WeatherType.h" />
     <ClInclude Include="nCine\AppConfiguration.h" />
     <ClInclude Include="nCine\Application.h" />
-    <ClInclude Include="nCine\ArrayIndexer.h" />
     <ClInclude Include="nCine\Audio\ALAudioDevice.h" />
     <ClInclude Include="nCine\Audio\AudioBuffer.h" />
     <ClInclude Include="nCine\Audio\AudioBufferPlayer.h" />
@@ -449,6 +459,7 @@
     <ClInclude Include="nCine\Base\ParallelHashMap\phmap_config.h" />
     <ClInclude Include="nCine\Base\ParallelHashMap\phmap_fwd_decl.h" />
     <ClInclude Include="nCine\Base\ParallelHashMap\phmap_utils.h" />
+    <ClInclude Include="nCine\Base\pdqsort\pdqsort.h" />
     <ClInclude Include="nCine\Base\Random.h" />
     <ClInclude Include="nCine\Base\ReverseIterator.h" />
     <ClInclude Include="nCine\Base\StaticHashMap.h" />
@@ -535,7 +546,6 @@
     <ClInclude Include="nCine\Graphics\Viewport.h" />
     <ClInclude Include="nCine\I18n.h" />
     <ClInclude Include="nCine\IAppEventHandler.h" />
-    <ClInclude Include="nCine\IIndexer.h" />
     <ClInclude Include="nCine\Backends\GlfwInputManager.h" />
     <ClInclude Include="nCine\Input\IInputEventHandler.h" />
     <ClInclude Include="nCine\Input\IInputManager.h" />
@@ -603,6 +613,8 @@
     <ClInclude Include="$(ExtensionLibraryPath)\Containers\DateTime.h" />
     <ClInclude Include="$(ExtensionLibraryPath)\Threading\Interlocked.h" />
     <ClInclude Include="$(ExtensionLibraryPath)\IO\DeflateStream.h" />
+    <ClInclude Include="$(ExtensionLibraryPath)\Containers\SequenceHelpers.h" />
+    <ClInclude Include="$(ExtensionLibraryPath)\Containers\StringUtils.h" />
     <ClInclude Include="simdjson\simdjson.h" />
   </ItemGroup>
   <ItemGroup>
@@ -681,7 +693,11 @@
     <ClCompile Include="Jazz2\Actors\Lighting\FlickerLight.cpp" />
     <ClCompile Include="Jazz2\Actors\Lighting\PulsatingRadialLight.cpp" />
     <ClCompile Include="Jazz2\Actors\Lighting\StaticRadialLight.cpp" />
-    <ClCompile Include="Jazz2\Actors\RemoteActor.cpp" />
+    <ClCompile Include="Jazz2\Actors\Multiplayer\LocalPlayerOnServer.cpp" />
+    <ClCompile Include="Jazz2\Actors\Multiplayer\PlayerOnServer.cpp" />
+    <ClCompile Include="Jazz2\Actors\Multiplayer\RemotablePlayer.cpp" />
+    <ClCompile Include="Jazz2\Actors\Multiplayer\RemoteActor.cpp" />
+    <ClCompile Include="Jazz2\Actors\Multiplayer\RemotePlayerOnServer.cpp" />
     <ClCompile Include="Jazz2\Actors\Solid\AmmoBarrel.cpp" />
     <ClCompile Include="Jazz2\Actors\Solid\AmmoCrate.cpp" />
     <ClCompile Include="Jazz2\Actors\Solid\BarrelContainer.cpp" />
@@ -724,6 +740,7 @@
     <ClCompile Include="Jazz2\Multiplayer\ConnectionResult.cpp" />
     <ClCompile Include="Jazz2\Multiplayer\MultiLevelHandler.cpp" />
     <ClCompile Include="Jazz2\Multiplayer\NetworkManager.cpp" />
+    <ClCompile Include="Jazz2\Multiplayer\ServerDiscovery.cpp" />
     <ClCompile Include="Jazz2\PreferencesCache.cpp" />
     <ClCompile Include="Jazz2\Resources.cpp" />
     <ClCompile Include="Jazz2\Scripting\JJ2PlusDefinitions.cpp" />
@@ -747,8 +764,10 @@
     <ClCompile Include="Jazz2\UI\Menu\AboutSection.cpp" />
     <ClCompile Include="Jazz2\UI\Menu\BeginSection.cpp" />
     <ClCompile Include="Jazz2\UI\Menu\ControlsOptionsSection.cpp" />
+    <ClCompile Include="Jazz2\UI\Menu\CreateServerOptionsSection.cpp" />
     <ClCompile Include="Jazz2\UI\Menu\CustomLevelSelectSection.cpp" />
     <ClCompile Include="Jazz2\UI\Menu\EpisodeSelectSection.cpp" />
+    <ClCompile Include="Jazz2\UI\Menu\FirstRunSection.cpp" />
     <ClCompile Include="Jazz2\UI\Menu\GameplayEnhancementsSection.cpp" />
     <ClCompile Include="Jazz2\UI\Menu\GameplayOptionsSection.cpp" />
     <ClCompile Include="Jazz2\UI\Menu\GraphicsOptionsSection.cpp" />
@@ -758,11 +777,14 @@
     <ClCompile Include="Jazz2\UI\Menu\LanguageSelectSection.cpp" />
     <ClCompile Include="Jazz2\UI\Menu\LoadingSection.cpp" />
     <ClCompile Include="Jazz2\UI\Menu\MainMenu.cpp" />
+    <ClCompile Include="Jazz2\UI\Menu\MultiplayerGameModeSelectSection.cpp" />
     <ClCompile Include="Jazz2\UI\Menu\OptionsSection.cpp" />
     <ClCompile Include="Jazz2\UI\Menu\PauseSection.cpp" />
+    <ClCompile Include="Jazz2\UI\Menu\PlayCustomSection.cpp" />
     <ClCompile Include="Jazz2\UI\Menu\RefreshCacheSection.cpp" />
     <ClCompile Include="Jazz2\UI\Menu\RemapControlsSection.cpp" />
     <ClCompile Include="Jazz2\UI\Menu\RescaleModeSection.cpp" />
+    <ClCompile Include="Jazz2\UI\Menu\ServerSelectSection.cpp" />
     <ClCompile Include="Jazz2\UI\Menu\SimpleMessageSection.cpp" />
     <ClCompile Include="Jazz2\UI\Menu\SoundsOptionsSection.cpp" />
     <ClCompile Include="Jazz2\UI\Menu\StartGameOptionsSection.cpp" />
@@ -771,7 +793,6 @@
     <ClCompile Include="Jazz2\UI\UpscaleRenderPass.cpp" />
     <ClCompile Include="nCine\AppConfiguration.cpp" />
     <ClCompile Include="nCine\Application.cpp" />
-    <ClCompile Include="nCine\ArrayIndexer.cpp" />
     <ClCompile Include="nCine\Audio\ALAudioDevice.cpp" />
     <ClCompile Include="nCine\Audio\AudioBuffer.cpp" />
     <ClCompile Include="nCine\Audio\AudioBufferPlayer.cpp" />
@@ -916,6 +937,7 @@
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="$(ExtensionLibraryPath)\Containers\DateTime.cpp" />
     <ClCompile Include="$(ExtensionLibraryPath)\IO\DeflateStream.cpp" />
+    <ClCompile Include="$(ExtensionLibraryPath)\Containers\StringUtils.cpp" />
     <ClCompile Include="simdjson\simdjson.cpp" />
   </ItemGroup>
   <ItemGroup>

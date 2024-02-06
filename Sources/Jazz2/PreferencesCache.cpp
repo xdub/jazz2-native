@@ -13,6 +13,7 @@ using namespace Death::IO;
 
 namespace Jazz2
 {
+	bool PreferencesCache::FirstRun = false;
 #if defined(WITH_MULTIPLAYER)
 	String PreferencesCache::InitialState;
 #endif
@@ -23,13 +24,11 @@ namespace Jazz2
 	bool PreferencesCache::ShowPerformanceMetrics = false;
 	bool PreferencesCache::KeepAspectRatioInCinematics = false;
 	bool PreferencesCache::ShowPlayerTrails = true;
-	bool PreferencesCache::LowGraphicsQuality = false;
-#if !defined(DEATH_TARGET_ANDROID) && !defined(DEATH_TARGET_EMSCRIPTEN) && !defined(DEATH_TARGET_IOS) && !defined(DEATH_TARGET_SWITCH) && !defined(DEATH_TARGET_WINDOWS_RT)
-	bool PreferencesCache::UnalignedViewport = true;
-#else
+	bool PreferencesCache::LowWaterQuality = false;
 	bool PreferencesCache::UnalignedViewport = false;
-#endif
-	bool PreferencesCache::EnableReforged = true;
+	bool PreferencesCache::EnableReforgedGameplay = true;
+	bool PreferencesCache::EnableReforgedHUD = true;
+	bool PreferencesCache::EnableReforgedMainMenu = true;
 	bool PreferencesCache::EnableLedgeClimb = true;
 	WeaponWheelStyle PreferencesCache::WeaponWheel = WeaponWheelStyle::Enabled;
 #if !defined(DEATH_TARGET_ANDROID) && !defined(DEATH_TARGET_IOS) && !defined(DEATH_TARGET_SWITCH) && !defined(DEATH_TARGET_WINDOWS_RT)
@@ -53,7 +52,7 @@ namespace Jazz2
 	Vector2f PreferencesCache::TouchRightPadding;
 	char PreferencesCache::Language[6] { };
 	bool PreferencesCache::BypassCache = false;
-	float PreferencesCache::MasterVolume = 0.8f;
+	float PreferencesCache::MasterVolume = 0.7f;
 	float PreferencesCache::SfxVolume = 0.8f;
 	float PreferencesCache::MusicVolume = 0.4f;
 
@@ -140,33 +139,37 @@ namespace Jazz2
 				if (signature == 0x2095A59FF0BFBBEF && fileType == ContentResolver::ConfigFile && version <= FileVersion) {
 					if (version == 1) {
 						// Version 1 included compressedSize and decompressedSize, it's not needed anymore
-						int32_t compressedSize = s->ReadValue<int32_t>();
-						int32_t uncompressedSize = s->ReadValue<int32_t>();
+						/*int32_t compressedSize =*/ s->ReadValue<int32_t>();
+						/*int32_t uncompressedSize =*/ s->ReadValue<int32_t>();
 					}
 
 					DeflateStream uc(*s);
 
 					BoolOptions boolOptions = (BoolOptions)uc.ReadValue<uint64_t>();
 
-#if !defined(DEATH_TARGET_ANDROID) && !defined(DEATH_TARGET_EMSCRIPTEN) && !defined(DEATH_TARGET_IOS) && !defined(DEATH_TARGET_SWITCH)
+#if !defined(DEATH_TARGET_EMSCRIPTEN)
 					EnableFullscreen = ((boolOptions & BoolOptions::EnableFullscreen) == BoolOptions::EnableFullscreen);
 #endif
 					ShowPerformanceMetrics = ((boolOptions & BoolOptions::ShowPerformanceMetrics) == BoolOptions::ShowPerformanceMetrics);
 					KeepAspectRatioInCinematics = ((boolOptions & BoolOptions::KeepAspectRatioInCinematics) == BoolOptions::KeepAspectRatioInCinematics);
 					ShowPlayerTrails = ((boolOptions & BoolOptions::ShowPlayerTrails) == BoolOptions::ShowPlayerTrails);
-					LowGraphicsQuality = ((boolOptions & BoolOptions::LowGraphicsQuality) == BoolOptions::LowGraphicsQuality);
+					LowWaterQuality = ((boolOptions & BoolOptions::LowWaterQuality) == BoolOptions::LowWaterQuality);
 					UnalignedViewport = ((boolOptions & BoolOptions::UnalignedViewport) == BoolOptions::UnalignedViewport);
-					EnableReforged = ((boolOptions & BoolOptions::EnableReforged) == BoolOptions::EnableReforged);
+					EnableReforgedGameplay = ((boolOptions & BoolOptions::EnableReforgedGameplay) == BoolOptions::EnableReforgedGameplay);
 					EnableLedgeClimb = ((boolOptions & BoolOptions::EnableLedgeClimb) == BoolOptions::EnableLedgeClimb);
 					WeaponWheel = ((boolOptions & BoolOptions::EnableWeaponWheel) == BoolOptions::EnableWeaponWheel ? WeaponWheelStyle::Enabled : WeaponWheelStyle::Disabled);
 					EnableRgbLights = ((boolOptions & BoolOptions::EnableRgbLights) == BoolOptions::EnableRgbLights);
 					AllowUnsignedScripts = ((boolOptions & BoolOptions::AllowUnsignedScripts) == BoolOptions::AllowUnsignedScripts);
-#if defined(DEATH_TARGET_ANDROID)
 					UseNativeBackButton = ((boolOptions & BoolOptions::UseNativeBackButton) == BoolOptions::UseNativeBackButton);
-#endif
 					EnableDiscordIntegration = ((boolOptions & BoolOptions::EnableDiscordIntegration) == BoolOptions::EnableDiscordIntegration);
 					TutorialCompleted = ((boolOptions & BoolOptions::TutorialCompleted) == BoolOptions::TutorialCompleted);
 					ResumeOnStart = ((boolOptions & BoolOptions::ResumeOnStart) == BoolOptions::ResumeOnStart);
+
+					if (version >= 3) {
+						// These 2 new options needs to be enabled by default
+						EnableReforgedHUD = ((boolOptions & BoolOptions::EnableReforgedHUD) == BoolOptions::EnableReforgedHUD);
+						EnableReforgedMainMenu = ((boolOptions & BoolOptions::EnableReforgedMainMenu) == BoolOptions::EnableReforgedMainMenu);
+					}
 
 					if (WeaponWheel != WeaponWheelStyle::Disabled && (boolOptions & BoolOptions::ShowWeaponWheelAmmoCount) == BoolOptions::ShowWeaponWheelAmmoCount) {
 						WeaponWheel = WeaponWheelStyle::EnabledWithAmmoCount;
@@ -193,24 +196,38 @@ namespace Jazz2
 					TouchRightPadding.Y = std::round(uc.ReadValue<int8_t>() / (TouchPaddingMultiplier * INT8_MAX));
 
 					// Controls
-					auto mappings = UI::ControlScheme::GetMappings();
-					uint8_t controlMappingCount = uc.ReadValue<uint8_t>();
-					for (uint32_t i = 0; i < controlMappingCount; i++) {
-						KeySym key1 = (KeySym)uc.ReadValue<uint8_t>();
-						KeySym key2 = (KeySym)uc.ReadValue<uint8_t>();
-						uint8_t gamepadIndex = uc.ReadValue<uint8_t>();
-						ButtonName gamepadButton = (ButtonName)uc.ReadValue<uint8_t>();
+					if (version >= 4) {
+						auto mappings = UI::ControlScheme::GetMappings();
 
-						if (i < mappings.size()) {
-							auto& mapping = mappings[i];
-							mapping.Key1 = key1;
-							mapping.Key2 = key2;
-							mapping.GamepadIndex = (gamepadIndex == 0xff ? -1 : gamepadIndex);
-							mapping.GamepadButton = gamepadButton;
+						std::uint8_t playerCount = uc.ReadValue<std::uint8_t>();
+						std::uint8_t controlMappingCount = uc.ReadValue<std::uint8_t>();
+						for (std::uint32_t i = 0; i < playerCount; i++) {
+							for (std::uint32_t j = 0; j < controlMappingCount; j++) {
+								std:uint8_t targetCount = uc.ReadValue<std::uint8_t>();
+								if (i < UI::ControlScheme::MaxSupportedPlayers && j < (std::uint32_t)PlayerActions::Count) {
+									auto& mapping = mappings[i * (std::uint32_t)PlayerActions::Count + j];
+									mapping.Targets.clear();
+
+									for (std::uint32_t k = 0; k < targetCount; k++) {
+										UI::MappingTarget target = { uc.ReadValue<std::uint32_t>() };
+										mapping.Targets.push_back(target);
+									}
+								} else {
+									uc.Seek(targetCount * sizeof(std::uint32_t), SeekOrigin::Current);
+								}
+							}
 						}
+
+						// Reset primary Menu action, because it's hardcoded
+						auto& menuMapping = mappings[(std::uint32_t)PlayerActions::Menu];
+						if (menuMapping.Targets.empty()) {
+							mappings[(std::int32_t)PlayerActions::Menu].Targets.push_back(UI::ControlScheme::CreateTarget(KeySym::ESCAPE));
+						}
+					} else {
+						// Skip old control mapping definitions
+						uint8_t controlMappingCount = uc.ReadValue<std::uint8_t>();
+						uc.Seek(controlMappingCount * sizeof(std::uint32_t), SeekOrigin::Current);
 					}
-					// Reset primary Menu action, because it's hardcoded
-					mappings[(int32_t)PlayerActions::Menu].Key1 = KeySym::ESCAPE;
 
 					// Episode End
 					uint16_t episodeEndSize = uc.ReadValue<uint16_t>();
@@ -258,6 +275,7 @@ namespace Jazz2
 					}
 				}
 			} else {
+				FirstRun = true;
 				TryLoadPreferredLanguage();
 
 				auto configDir = fs::GetDirectoryName(_configPath);
@@ -273,6 +291,7 @@ namespace Jazz2
 			}
 		}
 
+#	if !defined(DEATH_TARGET_ANDROID) && !defined(DEATH_TARGET_IOS) && !defined(DEATH_TARGET_SWITCH)
 		// Override some settings by command-line arguments
 		for (int32_t i = 0; i < config.argc(); i++) {
 			auto arg = config.argv(i);
@@ -306,17 +325,23 @@ namespace Jazz2
 				ActiveRescaleMode = RescaleMode::None;
 			} else if (arg == "/mute"_s) {
 				MasterVolume = 0.0f;
+			} else if (arg == "/reset-controls"_s) {
+				UI::ControlScheme::Reset();
 			}
-#if defined(WITH_MULTIPLAYER)
+#	if defined(WITH_MULTIPLAYER)
 			else if (InitialState.empty() && (arg == "/server"_s || arg.hasPrefix("/connect:"_s))) {
 				InitialState = arg;
 			}
-#endif
+#	endif
 		}
+#endif
 	}
 
 	void PreferencesCache::Save()
 	{
+		// `FirstRun` is true only if config file doesn't exist yet
+		FirstRun = false;
+
 		fs::CreateDirectories(fs::GetDirectoryName(_configPath));
 
 		auto so = fs::Open(_configPath, FileAccessMode::Write);
@@ -335,9 +360,9 @@ namespace Jazz2
 		if (ShowPerformanceMetrics) boolOptions |= BoolOptions::ShowPerformanceMetrics;
 		if (KeepAspectRatioInCinematics) boolOptions |= BoolOptions::KeepAspectRatioInCinematics;
 		if (ShowPlayerTrails) boolOptions |= BoolOptions::ShowPlayerTrails;
-		if (LowGraphicsQuality) boolOptions |= BoolOptions::LowGraphicsQuality;
+		if (LowWaterQuality) boolOptions |= BoolOptions::LowWaterQuality;
 		if (UnalignedViewport) boolOptions |= BoolOptions::UnalignedViewport;
-		if (EnableReforged) boolOptions |= BoolOptions::EnableReforged;
+		if (EnableReforgedGameplay) boolOptions |= BoolOptions::EnableReforgedGameplay;
 		if (EnableLedgeClimb) boolOptions |= BoolOptions::EnableLedgeClimb;
 		if (WeaponWheel != WeaponWheelStyle::Disabled) boolOptions |= BoolOptions::EnableWeaponWheel;
 		if (WeaponWheel == WeaponWheelStyle::EnabledWithAmmoCount) boolOptions |= BoolOptions::ShowWeaponWheelAmmoCount;
@@ -348,6 +373,8 @@ namespace Jazz2
 		if (TutorialCompleted) boolOptions |= BoolOptions::TutorialCompleted;
 		if (Language[0] != '\0') boolOptions |= BoolOptions::SetLanguage;
 		if (ResumeOnStart) boolOptions |= BoolOptions::ResumeOnStart;
+		if (EnableReforgedHUD) boolOptions |= BoolOptions::EnableReforgedHUD;
+		if (EnableReforgedMainMenu) boolOptions |= BoolOptions::EnableReforgedMainMenu;
 		co.WriteValue<uint64_t>((uint64_t)boolOptions);
 
 		if (Language[0] != '\0') {
@@ -370,13 +397,16 @@ namespace Jazz2
 
 		// Controls
 		auto mappings = UI::ControlScheme::GetMappings();
-		co.WriteValue<uint8_t>((uint8_t)mappings.size());
-		for (std::size_t i = 0; i < mappings.size(); i++) {
-			auto& mapping = mappings[i];
-			co.WriteValue<uint8_t>((uint8_t)mapping.Key1);
-			co.WriteValue<uint8_t>((uint8_t)mapping.Key2);
-			co.WriteValue<uint8_t>((uint8_t)(mapping.GamepadIndex == -1 ? 0xff : mapping.GamepadIndex));
-			co.WriteValue<uint8_t>((uint8_t)mapping.GamepadButton);
+		co.WriteValue<std::uint8_t>((std::uint8_t)UI::ControlScheme::MaxSupportedPlayers);
+		co.WriteValue<std::uint8_t>((std::uint8_t)mappings.size());
+		for (std::uint32_t i = 0; i < mappings.size(); i++) {
+			const auto& mapping = mappings[i];
+
+			std::uint8_t targetCount = (std::uint8_t)mapping.Targets.size();
+			co.WriteValue<std::uint8_t>(targetCount);
+			for (std::uint32_t k = 0; k < targetCount; k++) {
+				co.WriteValue<std::uint32_t>(mapping.Targets[k].Data);
+			}
 		}
 
 		// Episode End
@@ -417,7 +447,7 @@ namespace Jazz2
 		return fs::GetDirectoryName(_configPath);
 	}
 
-	EpisodeContinuationState* PreferencesCache::GetEpisodeEnd(const StringView& episodeName, bool createIfNotFound)
+	EpisodeContinuationState* PreferencesCache::GetEpisodeEnd(const StringView episodeName, bool createIfNotFound)
 	{
 		auto it = _episodeEnd.find(String::nullTerminatedView(episodeName));
 		if (it == _episodeEnd.end()) {
@@ -431,7 +461,7 @@ namespace Jazz2
 		return &it->second;
 	}
 
-	EpisodeContinuationStateWithLevel* PreferencesCache::GetEpisodeContinue(const StringView& episodeName, bool createIfNotFound)
+	EpisodeContinuationStateWithLevel* PreferencesCache::GetEpisodeContinue(const StringView episodeName, bool createIfNotFound)
 	{
 		auto it = _episodeContinue.find(String::nullTerminatedView(episodeName));
 		if (it == _episodeContinue.end()) {
@@ -445,8 +475,12 @@ namespace Jazz2
 		return &it->second;
 	}
 
-	void PreferencesCache::RemoveEpisodeContinue(const StringView& episodeName)
+	void PreferencesCache::RemoveEpisodeContinue(const StringView episodeName)
 	{
+		if (episodeName.empty() || episodeName == "unknown"_s) {
+			return;
+		}
+
 		_episodeContinue.erase(String::nullTerminatedView(episodeName));
 	}
 

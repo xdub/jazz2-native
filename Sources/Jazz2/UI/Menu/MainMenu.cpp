@@ -3,6 +3,7 @@
 #include "../../PreferencesCache.h"
 #include "../ControlScheme.h"
 #include "BeginSection.h"
+#include "FirstRunSection.h"
 
 #if (defined(DEATH_TARGET_WINDOWS) && !defined(DEATH_TARGET_WINDOWS_RT)) || defined(DEATH_TARGET_UNIX)
 #	include "../DiscordRpcClient.h"
@@ -41,20 +42,8 @@ namespace Jazz2::UI::Menu
 		_smallFont = resolver.GetFont(FontType::Small);
 		_mediumFont = resolver.GetFont(FontType::Medium);
 
-#if defined(WITH_OPENMPT)
-		if (PreferencesCache::EnableReforged) {
-			_music = resolver.GetMusic(Random().NextBool() ? "bonus2.j2b"_s : "bonus3.j2b"_s);
-		}
-		if (_music == nullptr) {
-			_music = resolver.GetMusic("menu.j2b"_s);
-		}
-		if (_music != nullptr) {
-			_music->setLooping(true);
-			_music->setGain(PreferencesCache::MasterVolume * PreferencesCache::MusicVolume);
-			_music->setSourceRelative(true);
-			_music->play();
-		}
-#endif
+		PlayMenuMusic();
+
 		resolver.EndLoading();
 
 		// Mark Fire and Menu button as already pressed to avoid some issues
@@ -62,6 +51,13 @@ namespace Jazz2::UI::Menu
 			(1 << (int32_t)PlayerActions::Menu) | (1 << ((int32_t)PlayerActions::Menu + 16));
 
 		SwitchToSection<BeginSection>();
+
+#if !defined(DEATH_TARGET_EMSCRIPTEN)
+		bool isPlayable = ((_root->GetFlags() & IRootController::Flags::IsPlayable) == IRootController::Flags::IsPlayable);
+		if (PreferencesCache::FirstRun && isPlayable) {
+			SwitchToSection<FirstRunSection>();
+		}
+#endif
 
 		UpdateRichPresence();
 	}
@@ -201,10 +197,12 @@ namespace Jazz2::UI::Menu
 		ViewSize = _owner->_upscalePass.GetViewSize();
 
 		_owner->_activeCanvas = ActiveCanvas::Background;
-		_owner->RenderTexturedBackground(renderQueue);
+
+		if (PreferencesCache::EnableReforgedMainMenu || !_owner->RenderLegacyBackground(renderQueue)) {
+			_owner->RenderTexturedBackground(renderQueue);
+		}
 
 		Vector2i center = ViewSize / 2;
-
 		int32_t charOffset = 0;
 		int32_t charOffsetShadow = 0;
 
@@ -354,7 +352,13 @@ namespace Jazz2::UI::Menu
 		}
 	}
 
-	void MainMenu::ChangeLevel(Jazz2::LevelInitialization&& levelInit)
+	MenuSection* MainMenu::GetUnderlyingSection() const
+	{
+		std::size_t count = _sections.size();
+		return (count >= 2 ? _sections[count - 2].get() : nullptr);
+	}
+
+	void MainMenu::ChangeLevel(LevelInitialization&& levelInit)
 	{
 		_root->ChangeLevel(std::move(levelInit));
 	}
@@ -370,14 +374,14 @@ namespace Jazz2::UI::Menu
 	}
 
 #if defined(WITH_MULTIPLAYER)
-	bool MainMenu::ConnectToServer(const StringView& address, std::uint16_t port)
+	bool MainMenu::ConnectToServer(const StringView address, std::uint16_t port)
 	{
 		return _root->ConnectToServer(address, port);
 	}
 
-	bool MainMenu::CreateServer(std::uint16_t port)
+	bool MainMenu::CreateServer(LevelInitialization&& levelInit, std::uint16_t port)
 	{
-		return _root->CreateServer(port);
+		return _root->CreateServer(std::move(levelInit), port);
 	}
 #endif
 
@@ -400,6 +404,15 @@ namespace Jazz2::UI::Menu
 			_sections.clear();
 			SwitchToSection<BeginSection>();
 		}
+
+		if ((type & ChangedPreferencesType::ControlScheme) == ChangedPreferencesType::ControlScheme) {
+			// Mark all buttons as already pressed to avoid some issues
+			_pressedActions = 0xffff | (0xffff << 16);
+		}
+
+		if ((type & ChangedPreferencesType::MainMenu) == ChangedPreferencesType::MainMenu) {
+			PlayMenuMusic();
+		}
 	}
 
 	void MainMenu::DrawElement(AnimState state, int32_t frame, float x, float y, uint16_t z, Alignment align, const Colorf& color, float scaleX, float scaleY, bool additiveBlending)
@@ -416,7 +429,7 @@ namespace Jazz2::UI::Menu
 		Canvas* currentCanvas = GetActiveCanvas();
 		GenericGraphicResource* base = res->Base;
 		Vector2f size = Vector2f(base->FrameDimensions.X * scaleX, base->FrameDimensions.Y * scaleY);
-		Vector2f adjustedPos = Canvas::ApplyAlignment(align, Vector2f(x - currentCanvas->ViewSize.X * 0.5f, currentCanvas->ViewSize.Y * 0.5f - y), size);
+		Vector2f adjustedPos = Canvas::ApplyAlignment(align, Vector2f(x, y), size);
 
 		Vector2i texSize = base->TextureDiffuse->size();
 		int32_t col = frame % base->FrameConfiguration.X;
@@ -427,9 +440,6 @@ namespace Jazz2::UI::Menu
 			float(base->FrameDimensions.Y) / float(texSize.Y),
 			float(base->FrameDimensions.Y * row) / float(texSize.Y)
 		);
-
-		texCoords.W += texCoords.Z;
-		texCoords.Z *= -1;
 		
 		currentCanvas->DrawTexture(*base->TextureDiffuse.get(), adjustedPos, z, size, texCoords, color, additiveBlending);
 	}
@@ -443,7 +453,7 @@ namespace Jazz2::UI::Menu
 
 		Canvas* currentCanvas = GetActiveCanvas();
 		GenericGraphicResource* base = res->Base;
-		Vector2f adjustedPos = Canvas::ApplyAlignment(align, Vector2f(x - currentCanvas->ViewSize.X * 0.5f, currentCanvas->ViewSize.Y * 0.5f - y), size);
+		Vector2f adjustedPos = Canvas::ApplyAlignment(align, Vector2f(x, y), size);
 
 		currentCanvas->DrawTexture(*base->TextureDiffuse.get(), adjustedPos, z, size, texCoords, color, false);
 	}
@@ -451,17 +461,25 @@ namespace Jazz2::UI::Menu
 	void MainMenu::DrawSolid(float x, float y, uint16_t z, Alignment align, const Vector2f& size, const Colorf& color, bool additiveBlending)
 	{
 		Canvas* currentCanvas = GetActiveCanvas();
-		Vector2f adjustedPos = Canvas::ApplyAlignment(align, Vector2f(x - currentCanvas->ViewSize.X * 0.5f, currentCanvas->ViewSize.Y * 0.5f - y), size);
+		Vector2f adjustedPos = Canvas::ApplyAlignment(align, Vector2f(x, y), size);
 
 		currentCanvas->DrawSolid(adjustedPos, z, size, color, additiveBlending);
 	}
 
-	Vector2f MainMenu::MeasureString(const StringView& text, float scale, float charSpacing, float lineSpacing)
+	void MainMenu::DrawTexture(const Texture& texture, float x, float y, uint16_t z, Alignment align, const Vector2f& size, const Colorf& color)
+	{
+		Canvas* currentCanvas = GetActiveCanvas();
+		Vector2f adjustedPos = Canvas::ApplyAlignment(align, Vector2f(x, y), size);
+
+		currentCanvas->DrawTexture(texture, adjustedPos, z, size, Vector4f(1.0f, 0.0f, 1.0f, 0.0f), color);
+	}
+
+	Vector2f MainMenu::MeasureString(const StringView text, float scale, float charSpacing, float lineSpacing)
 	{
 		return _smallFont->MeasureString(text, scale, charSpacing, lineSpacing);
 	}
 
-	void MainMenu::DrawStringShadow(const StringView& text, int32_t& charOffset, float x, float y, uint16_t z, Alignment align, const Colorf& color, float scale,
+	void MainMenu::DrawStringShadow(const StringView text, int32_t& charOffset, float x, float y, uint16_t z, Alignment align, const Colorf& color, float scale,
 		float angleOffset, float varianceX, float varianceY, float speed, float charSpacing, float lineSpacing)
 	{
 		if (_logoTransition < 1.0f) {
@@ -480,7 +498,7 @@ namespace Jazz2::UI::Menu
 			align, color, scale, angleOffset, varianceX, varianceY, speed, charSpacing, lineSpacing);
 	}
 
-	void MainMenu::PlaySfx(const StringView& identifier, float gain)
+	void MainMenu::PlaySfx(const StringView identifier, float gain)
 	{
 		auto it = _metadata->Sounds.find(String::nullTerminatedView(identifier));
 		if (it != _metadata->Sounds.end()) {
@@ -506,107 +524,50 @@ namespace Jazz2::UI::Menu
 		return ((_pressedActions & ((1 << (int32_t)action) | (1 << (16 + (int32_t)action)))) == (1 << (int32_t)action));
 	}
 
+	void MainMenu::PlayMenuMusic()
+	{
+#if defined(WITH_OPENMPT)
+		auto& resolver = ContentResolver::Get();
+
+		if (PreferencesCache::EnableReforgedMainMenu) {
+			_music = resolver.GetMusic(Random().NextBool() ? "bonus2.j2b"_s : "bonus3.j2b"_s);
+		} else {
+			_music = nullptr;
+		}
+
+;		if (_music == nullptr) {
+			_music = resolver.GetMusic("menu.j2b"_s);
+		}
+
+		if (_music != nullptr) {
+			_music->setLooping(true);
+			_music->setGain(PreferencesCache::MasterVolume * PreferencesCache::MusicVolume);
+			_music->setSourceRelative(true);
+			_music->play();
+		}
+#endif
+	}
+
 	void MainMenu::UpdatePressedActions()
 	{
 		auto& input = theApplication().inputManager();
-		_pressedActions = ((_pressedActions & 0xffff) << 16);
+		_pressedActions = ((_pressedActions & 0xFFFF) << 16);
 
-		if (_pressedKeys[(uint32_t)ControlScheme::Key1(0, PlayerActions::Up)] || _pressedKeys[(uint32_t)ControlScheme::Key2(0, PlayerActions::Up)]) {
-			_pressedActions |= (1 << (int32_t)PlayerActions::Up);
-		}
-		if (_pressedKeys[(uint32_t)ControlScheme::Key1(0, PlayerActions::Down)] || _pressedKeys[(uint32_t)ControlScheme::Key2(0, PlayerActions::Down)]) {
-			_pressedActions |= (1 << (int32_t)PlayerActions::Down);
-		}
-		if (_pressedKeys[(uint32_t)ControlScheme::Key1(0, PlayerActions::Left)] || _pressedKeys[(uint32_t)ControlScheme::Key2(0, PlayerActions::Left)]) {
-			_pressedActions |= (1 << (int32_t)PlayerActions::Left);
-		}
-		if (_pressedKeys[(uint32_t)ControlScheme::Key1(0, PlayerActions::Right)] || _pressedKeys[(uint32_t)ControlScheme::Key2(0, PlayerActions::Right)]) {
-			_pressedActions |= (1 << (int32_t)PlayerActions::Right);
-		}
-		// Also allow Return (Enter) as confirm key
-		if (_pressedKeys[(uint32_t)KeySym::RETURN] || _pressedKeys[(uint32_t)ControlScheme::Key1(0, PlayerActions::Fire)] || _pressedKeys[(uint32_t)ControlScheme::Key2(0, PlayerActions::Fire)] ||
-			_pressedKeys[(uint32_t)ControlScheme::Key1(0, PlayerActions::Jump)] || _pressedKeys[(uint32_t)ControlScheme::Key2(0, PlayerActions::Jump)]) {
-			_pressedActions |= (1 << (int32_t)PlayerActions::Fire);
-		}
-		// Allow Android Back button as menu key
-		if (_pressedKeys[(uint32_t)ControlScheme::Key1(0, PlayerActions::Menu)] || _pressedKeys[(uint32_t)ControlScheme::Key2(0, PlayerActions::Menu)] || (PreferencesCache::UseNativeBackButton && _pressedKeys[(uint32_t)KeySym::BACK])) {
-			_pressedActions |= (1 << (int32_t)PlayerActions::Menu);
-		}
-		// Use ChangeWeapon action as Delete key
-		if (_pressedKeys[(uint32_t)KeySym::Delete]) {
-			_pressedActions |= (1 << (int32_t)PlayerActions::ChangeWeapon);
+		const JoyMappedState* joyStates[UI::ControlScheme::MaxConnectedGamepads];
+		std::int32_t joyStatesCount = 0;
+		for (std::int32_t i = 0; i < IInputManager::MaxNumJoysticks && joyStatesCount < countof(joyStates); i++) {
+			if (input.isJoyMapped(i)) {
+				joyStates[joyStatesCount++] = &input.joyMappedState(i);
+			}
 		}
 
+		bool allowGamepads = true;
 		if (!_sections.empty()) {
 			auto& lastSection = _sections.back();
-			if (!lastSection->IsGamepadNavigationEnabled()) {
-				return;
-			}
+			allowGamepads = lastSection->IsGamepadNavigationEnabled();
 		}
 
-		// Try to get 8 connected joysticks
-		const JoyMappedState* joyStates[ControlScheme::MaxConnectedGamepads];
-		int32_t jc = 0;
-		for (int32_t i = 0; i < IInputManager::MaxNumJoysticks && jc < countof(joyStates); i++) {
-			if (input.isJoyMapped(i)) {
-				joyStates[jc++] = &input.joyMappedState(i);
-			}
-		}
-
-		ButtonName jb; int32_t ji1, ji2, ji3, ji4;
-
-		jb = ControlScheme::Gamepad(0, PlayerActions::Up, ji1);
-		if (ji1 >= 0 && ji1 < jc && joyStates[ji1]->isButtonPressed(jb)) {
-			_pressedActions |= (1 << (int32_t)PlayerActions::Up);
-		}
-		jb = ControlScheme::Gamepad(0, PlayerActions::Down, ji2);
-		if (ji2 >= 0 && ji2 < jc && joyStates[ji2]->isButtonPressed(jb)) {
-			_pressedActions |= (1 << (int32_t)PlayerActions::Down);
-		}
-		jb = ControlScheme::Gamepad(0, PlayerActions::Left, ji3);
-		if (ji3 >= 0 && ji3 < jc && joyStates[ji3]->isButtonPressed(jb)) {
-			_pressedActions |= (1 << (int32_t)PlayerActions::Left);
-		}
-		jb = ControlScheme::Gamepad(0, PlayerActions::Right, ji4);
-		if (ji4 >= 0 && ji4 < jc && joyStates[ji4]->isButtonPressed(jb)) {
-			_pressedActions |= (1 << (int32_t)PlayerActions::Right);
-		}
-
-		// Use analog controls only if all movement buttons are mapped to the same joystick
-		if (ji1 == ji2 && ji2 == ji3 && ji3 == ji4 && ji1 >= 0 && ji1 < jc) {
-			float x = joyStates[ji1]->axisValue(AxisName::LX);
-			float y = joyStates[ji1]->axisValue(AxisName::LY);
-
-			if (x < -0.6f) {
-				_pressedActions |= (1 << (int32_t)PlayerActions::Left);
-			} else if (x > 0.6f) {
-				_pressedActions |= (1 << (int32_t)PlayerActions::Right);
-			}
-			if (y < -0.6f) {
-				_pressedActions |= (1 << (int32_t)PlayerActions::Up);
-			} else if (y > 0.6f) {
-				_pressedActions |= (1 << (int32_t)PlayerActions::Down);
-			}
-		}
-
-		jb = ControlScheme::Gamepad(0, PlayerActions::Jump, ji1);
-		jb = ControlScheme::Gamepad(0, PlayerActions::Fire, ji2);
-		if (ji1 == ji2) ji2 = -1;
-
-		if ((ji1 >= 0 && ji1 < jc && (joyStates[ji1]->isButtonPressed(ButtonName::A) || joyStates[ji1]->isButtonPressed(ButtonName::X))) ||
-			(ji2 >= 0 && ji2 < jc && (joyStates[ji2]->isButtonPressed(ButtonName::A) || joyStates[ji2]->isButtonPressed(ButtonName::X)))) {
-			_pressedActions |= (1 << (int32_t)PlayerActions::Fire);
-		}
-
-		if ((ji1 >= 0 && ji1 < jc && (joyStates[ji1]->isButtonPressed(ButtonName::B) || joyStates[ji1]->isButtonPressed(ButtonName::START))) ||
-			(ji2 >= 0 && ji2 < jc && (joyStates[ji2]->isButtonPressed(ButtonName::B) || joyStates[ji2]->isButtonPressed(ButtonName::START)))) {
-			_pressedActions |= (1 << (int32_t)PlayerActions::Menu);
-		}
-
-		jb = ControlScheme::Gamepad(0, PlayerActions::ChangeWeapon, ji1);
-		if (ji1 >= 0 && ji1 < jc && joyStates[ji1]->isButtonPressed(ButtonName::Y)) {
-			_pressedActions |= (1 << (int32_t)PlayerActions::ChangeWeapon);
-		}
+		_pressedActions |= ControlScheme::FetchNativation(0, _pressedKeys, ArrayView(joyStates, joyStatesCount), allowGamepads);
 	}
 
 	void MainMenu::UpdateRichPresence()
@@ -625,12 +586,12 @@ namespace Jazz2::UI::Menu
 
 	void MainMenu::UpdateDebris(float timeMult)
 	{
-		if (_preset == Preset::Xmas) {
+		if (_preset == Preset::Xmas && PreferencesCache::EnableReforgedMainMenu) {
 			int32_t weatherIntensity = Random().Fast(0, (int32_t)(3 * timeMult) + 1);
 			for (int32_t i = 0; i < weatherIntensity; i++) {
 				Vector2i viewSize = _canvasOverlay->ViewSize;
-				Vector2f debrisPos = Vector2f(Random().FastFloat(viewSize.X * -0.8f, viewSize.X * 0.8f),
-					Random().NextFloat(viewSize.Y * 0.5f, viewSize.Y * 1.0f));
+				Vector2f debrisPos = Vector2f(Random().FastFloat(viewSize.X * -0.3f, viewSize.X * 1.3f),
+					Random().NextFloat(viewSize.Y * -0.5f, viewSize.Y * 0.5f));
 
 				auto* res = _metadata->FindAnimation((AnimState)1); // Snow
 				if (res != nullptr) {
@@ -645,14 +606,14 @@ namespace Jazz2::UI::Menu
 					debris.Pos = debrisPos;
 					debris.Depth = MainLayer - 100 + 200 * scale;
 					debris.Size = Vector2f(resBase->FrameDimensions.X, resBase->FrameDimensions.Y);
-					debris.Speed = Vector2f(speedX, -speedY);
+					debris.Speed = Vector2f(speedX, speedY);
 					debris.Acceleration = Vector2f(accel, std::abs(accel));
 
 					debris.Scale = scale;
 					debris.ScaleSpeed = 0.0f;
 					debris.Angle = Random().FastFloat(0.0f, fTwoPi);
-					debris.AngleSpeed = speedX * 0.02f,
-						debris.Alpha = 1.0f;
+					debris.AngleSpeed = speedX * 0.02f;
+					debris.Alpha = 1.0f;
 					debris.AlphaSpeed = 0.0f;
 
 					debris.Time = 160.0f;
@@ -713,7 +674,7 @@ namespace Jazz2::UI::Menu
 				command->material().reserveUniformsDataMemory();
 				command->geometry().setDrawParameters(GL_TRIANGLE_STRIP, 0, 4);
 				// Required to reset render command properly
-				command->setTransformation(command->transformation());
+				//command->setTransformation(command->transformation());
 
 				GLUniformCache* textureUniform = command->material().uniform(Material::TextureUniformName);
 				if (textureUniform && textureUniform->intValue(0) != 0) {
@@ -731,6 +692,7 @@ namespace Jazz2::UI::Menu
 			Matrix4x4f worldMatrix = Matrix4x4f::Translation(debris.Pos.X, debris.Pos.Y, 0.0f);
 			worldMatrix.RotateZ(debris.Angle);
 			worldMatrix.Scale(debris.Scale, debris.Scale, 1.0f);
+			worldMatrix.Translate(debris.Size.X * -0.5f, debris.Size.Y * -0.5f, 0.0f);
 			command->setTransformation(worldMatrix);
 			command->setLayer(debris.Depth);
 			command->material().setTexture(*debris.DiffuseTexture);
@@ -749,7 +711,7 @@ namespace Jazz2::UI::Menu
 		struct tm* local = localtime(&t);
 		int32_t month = local->tm_mon;
 #endif
-		bool hasXmas = (PreferencesCache::EnableReforged && (month == 11 || month == 0) && TryLoadBackgroundPreset(Preset::Xmas));
+		bool hasXmas = ((month == 11 || month == 0) && TryLoadBackgroundPreset(Preset::Xmas));
 		if (!hasXmas &&
 			!TryLoadBackgroundPreset(Preset::Default) &&
 			!TryLoadBackgroundPreset(Preset::Carrotus) &&
@@ -852,6 +814,154 @@ namespace Jazz2::UI::Menu
 		renderQueue.addCommand(command);
 	}
 
+	bool MainMenu::RenderLegacyBackground(RenderQueue& renderQueue)
+	{
+		auto* res16 = _metadata->FindAnimation(Menu16);
+		auto* res32 = _metadata->FindAnimation(Menu32);
+		auto* res128 = _metadata->FindAnimation(Menu128);
+		if (res16 == nullptr || res32 == nullptr || res128 == nullptr) {
+			return false;
+		}
+
+		float animTime = _canvasBackground->AnimTime;
+		Vector2f center = (_canvasBackground->ViewSize / 2).As<float>();
+
+		// 16
+		{
+			GenericGraphicResource* base = res16->Base;
+			base->TextureDiffuse->setMinFiltering(SamplerFilter::Nearest);
+			base->TextureDiffuse->setMagFiltering(SamplerFilter::Nearest);
+			base->TextureDiffuse->setWrap(SamplerWrapping::Repeat);
+
+			constexpr float repeats = 96.0f;
+			float scale = (0.6f + 0.04f * sinf(animTime * 0.2f)) * repeats;
+			Vector2f size = base->FrameDimensions.As<float>() * scale;
+
+			auto command = _canvasBackground->RentRenderCommand();
+			if (command->material().setShaderProgramType(Material::ShaderProgramType::SPRITE)) {
+				command->material().reserveUniformsDataMemory();
+				command->geometry().setDrawParameters(GL_TRIANGLE_STRIP, 0, 4);
+				// Required to reset render command properly
+				//command->setTransformation(command->transformation());
+
+				GLUniformCache* textureUniform = command->material().uniform(Material::TextureUniformName);
+				if (textureUniform && textureUniform->intValue(0) != 0) {
+					textureUniform->setIntValue(0); // GL_TEXTURE0
+				}
+			}
+
+			command->material().setBlendingFactors(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+			auto instanceBlock = command->material().uniformBlock(Material::InstanceBlockName);
+			instanceBlock->uniform(Material::TexRectUniformName)->setFloatValue(repeats, 0.0f, repeats, 0.0f);
+			instanceBlock->uniform(Material::SpriteSizeUniformName)->setFloatVector(size.Data());
+			instanceBlock->uniform(Material::ColorUniformName)->setFloatVector(Colorf::White.Data());
+
+			Matrix4x4f worldMatrix = Matrix4x4f::Translation(center.X, center.Y, 0.0f);
+			worldMatrix.RotateZ(animTime * -0.2f);
+			worldMatrix.Translate(size.X * -0.5f, size.Y * -0.5f, 0.0f);
+			command->setTransformation(worldMatrix);
+			command->setLayer(100);
+			command->material().setTexture(*base->TextureDiffuse.get());
+
+			renderQueue.addCommand(command);
+		}
+		
+		// 32
+		{
+			GenericGraphicResource* base = res32->Base;
+			base->TextureDiffuse->setMinFiltering(SamplerFilter::Nearest);
+			base->TextureDiffuse->setMagFiltering(SamplerFilter::Nearest);
+			base->TextureDiffuse->setWrap(SamplerWrapping::Repeat);
+
+			constexpr float repeats = 56.0f;
+			float scale = (0.6f + 0.04f * sinf(animTime * 0.2f)) * repeats;
+			Vector2f size = base->FrameDimensions.As<float>() * scale;
+
+			Vector2f centerBg = center;
+			centerBg.X += 96.0f * sinf(animTime * 0.37f);
+			centerBg.Y += 96.0f * cosf(animTime * 0.31f);
+
+			auto command = _canvasBackground->RentRenderCommand();
+			if (command->material().setShaderProgramType(Material::ShaderProgramType::SPRITE)) {
+				command->material().reserveUniformsDataMemory();
+				command->geometry().setDrawParameters(GL_TRIANGLE_STRIP, 0, 4);
+				// Required to reset render command properly
+				//command->setTransformation(command->transformation());
+
+				GLUniformCache* textureUniform = command->material().uniform(Material::TextureUniformName);
+				if (textureUniform && textureUniform->intValue(0) != 0) {
+					textureUniform->setIntValue(0); // GL_TEXTURE0
+				}
+			}
+
+			command->material().setBlendingFactors(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+			auto instanceBlock = command->material().uniformBlock(Material::InstanceBlockName);
+			instanceBlock->uniform(Material::TexRectUniformName)->setFloatValue(repeats, 0.0f, repeats, 0.0f);
+			instanceBlock->uniform(Material::SpriteSizeUniformName)->setFloatVector(size.Data());
+			instanceBlock->uniform(Material::ColorUniformName)->setFloatVector(Colorf::White.Data());
+
+			Matrix4x4f worldMatrix = Matrix4x4f::Translation(centerBg.X, centerBg.Y, 0.0f);
+			worldMatrix.RotateZ(animTime * 0.4f);
+			worldMatrix.Translate(size.X * -0.5f, size.Y * -0.5f, 0.0f);
+			command->setTransformation(worldMatrix);
+			command->setLayer(110);
+			command->material().setTexture(*base->TextureDiffuse.get());
+
+			renderQueue.addCommand(command);
+		}
+		
+		// 128
+		{
+			GenericGraphicResource* base = res128->Base;
+			base->TextureDiffuse->setMinFiltering(SamplerFilter::Nearest);
+			base->TextureDiffuse->setMagFiltering(SamplerFilter::Nearest);
+			base->TextureDiffuse->setWrap(SamplerWrapping::Repeat);
+
+			constexpr float repeats = 20.0f;
+			float scale = (0.6f + 0.2f * sinf(animTime * 0.4f)) * repeats;
+			Vector2f size = base->FrameDimensions.As<float>() * scale;
+
+			Vector2f centerBg = center;
+			centerBg.X += 64.0f * sinf(animTime * 0.25f);
+			centerBg.Y += 64.0f * cosf(animTime * 0.32f);
+
+			auto command = _canvasBackground->RentRenderCommand();
+			if (command->material().setShaderProgramType(Material::ShaderProgramType::SPRITE)) {
+				command->material().reserveUniformsDataMemory();
+				command->geometry().setDrawParameters(GL_TRIANGLE_STRIP, 0, 4);
+				// Required to reset render command properly
+				//command->setTransformation(command->transformation());
+
+				GLUniformCache* textureUniform = command->material().uniform(Material::TextureUniformName);
+				if (textureUniform && textureUniform->intValue(0) != 0) {
+					textureUniform->setIntValue(0); // GL_TEXTURE0
+				}
+			}
+
+			command->material().setBlendingFactors(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+			auto instanceBlock = command->material().uniformBlock(Material::InstanceBlockName);
+			instanceBlock->uniform(Material::TexRectUniformName)->setFloatValue(repeats, 0.0f, repeats, 0.0f);
+			instanceBlock->uniform(Material::SpriteSizeUniformName)->setFloatVector(size.Data());
+			instanceBlock->uniform(Material::ColorUniformName)->setFloatVector(Colorf::White.Data());
+
+			Matrix4x4f worldMatrix = Matrix4x4f::Translation(centerBg.X, centerBg.Y, 0.0f);
+			worldMatrix.RotateZ(animTime * 0.3f);
+			worldMatrix.Translate(size.X * -0.5f, size.Y * -0.5f, 0.0f);
+			command->setTransformation(worldMatrix);
+			command->setLayer(120);
+			command->material().setTexture(*base->TextureDiffuse.get());
+
+			renderQueue.addCommand(command);
+		}
+
+		DrawElement(MenuGlow, 0, center.X, 70.0f, 130, Alignment::Center, Colorf(1.0f, 1.0f, 1.0f, 0.14f), 16.0f, 10.0f, true);
+
+		return true;
+	}
+
 	void MainMenu::TexturedBackgroundPass::Initialize()
 	{
 		bool notInitialized = (_view == nullptr);
@@ -905,7 +1015,6 @@ namespace Jazz2::UI::Menu
 	{
 		TileMapLayer& layer = _owner->_texturedBackgroundLayer;
 		Vector2i layoutSize = layer.LayoutSize;
-		Vector2i targetSize = _target->size();
 
 		int32_t renderCommandIndex = 0;
 		bool isAnimated = false;
@@ -926,8 +1035,8 @@ namespace Jazz2::UI::Menu
 				instanceBlock->uniform(Material::TexRectUniformName)->setFloatValue(texScaleX, texBiasX, texScaleY, texBiasY);
 				instanceBlock->uniform(Material::SpriteSizeUniformName)->setFloatValue(TileSet::DefaultTileSize, TileSet::DefaultTileSize);
 				instanceBlock->uniform(Material::ColorUniformName)->setFloatVector(Colorf::White.Data());
-
-				command->setTransformation(Matrix4x4f::Translation(x * TileSet::DefaultTileSize + (TileSet::DefaultTileSize / 2), y * TileSet::DefaultTileSize + (TileSet::DefaultTileSize / 2), 0.0f));
+				
+				command->setTransformation(Matrix4x4f::Translation(x * TileSet::DefaultTileSize, y * TileSet::DefaultTileSize, 0.0f));
 				command->material().setTexture(*_owner->_tileSet->TextureDiffuse);
 
 				renderQueue.addCommand(command);

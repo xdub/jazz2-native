@@ -8,6 +8,7 @@
 #include "../../nCine/Base/BitArray.h"
 #include "../../nCine/Graphics/Camera.h"
 #include "../../nCine/Graphics/Shader.h"
+#include "../../nCine/Audio/AudioBufferPlayer.h"
 #include "../../nCine/Audio/AudioStreamPlayer.h"
 #include "../../nCine/Input/InputEvents.h"
 
@@ -26,8 +27,10 @@ namespace Jazz2::UI
 		static constexpr int DefaultWidth = 720;
 		static constexpr int DefaultHeight = 405;
 
-		Cinematics(IRootController* root, const String& path, const std::function<bool(IRootController*, bool)>& callback);
-		Cinematics(IRootController* root, const String& path, std::function<bool(IRootController*, bool)>&& callback);
+		static constexpr std::uint8_t SfxListVersion = 1;
+
+		Cinematics(IRootController* root, const StringView path, const std::function<bool(IRootController*, bool)>& callback);
+		Cinematics(IRootController* root, const StringView path, std::function<bool(IRootController*, bool)>&& callback);
 		~Cinematics() override;
 
 		void OnBeginFrame() override;
@@ -56,13 +59,31 @@ namespace Jazz2::UI
 			RenderCommand _renderCommand;
 		};
 
+		struct SfxItem {
+			std::unique_ptr<AudioBuffer> Buffer;
+
+			SfxItem();
+			SfxItem(const StringView path);
+		};
+
+		struct SfxPlaylistItem {
+			std::uint32_t Frame;
+			std::uint16_t Sample;
+			float Gain;
+			float Panning;
+			std::unique_ptr<AudioBufferPlayer> CurrentPlayer;
+		};
+
 		IRootController* _root;
 		UI::UpscaleRenderPass _upscalePass;
 		std::unique_ptr<CinematicsCanvas> _canvas;
 		std::unique_ptr<AudioStreamPlayer> _music;
+		SmallVector<SfxItem> _sfxSamples;
+		SmallVector<SfxPlaylistItem> _sfxPlaylist;
 		std::function<bool(IRootController*, bool)> _callback;
 		uint32_t _width, _height;
 		float _frameDelay, _frameProgress;
+		int _frameIndex;
 		int _framesLeft;
 		std::unique_ptr<Texture> _texture;
 		std::unique_ptr<uint8_t[]> _buffer;
@@ -75,8 +96,9 @@ namespace Jazz2::UI
 		BitArray _pressedKeys;
 		uint32_t _pressedActions;
 
-		void Initialize(const String& path);
-		bool LoadCinematicsFromFile(const String& path);
+		void Initialize(const StringView path);
+		bool LoadCinematicsFromFile(const StringView path);
+		bool LoadSfxList(const StringView path);
 		void PrepareNextFrame();
 		void Read(int streamIndex, void* buffer, uint32_t bytes);
 		void UpdatePressedActions();

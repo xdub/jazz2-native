@@ -11,6 +11,7 @@ set(HEADERS
 	${NCINE_SOURCE_DIR}/Shared/IntrinsicsSse4.h
 	${NCINE_SOURCE_DIR}/Shared/IntrinsicsSsse3.h
 	${NCINE_SOURCE_DIR}/Shared/Utf8.h
+	${NCINE_SOURCE_DIR}/Shared/Base/TypeInfo.h
 	${NCINE_SOURCE_DIR}/Shared/Base/Unaligned.h
 	${NCINE_SOURCE_DIR}/Shared/Containers/Array.h
 	${NCINE_SOURCE_DIR}/Shared/Containers/ArrayView.h
@@ -18,10 +19,12 @@ set(HEADERS
 	${NCINE_SOURCE_DIR}/Shared/Containers/GrowableArray.h
 	${NCINE_SOURCE_DIR}/Shared/Containers/Pair.h
 	${NCINE_SOURCE_DIR}/Shared/Containers/Reference.h
+	${NCINE_SOURCE_DIR}/Shared/Containers/SequenceHelpers.h
 	${NCINE_SOURCE_DIR}/Shared/Containers/SmallVector.h
 	${NCINE_SOURCE_DIR}/Shared/Containers/StaticArray.h
 	${NCINE_SOURCE_DIR}/Shared/Containers/String.h
 	${NCINE_SOURCE_DIR}/Shared/Containers/StringStlView.h
+	${NCINE_SOURCE_DIR}/Shared/Containers/StringUtils.h
 	${NCINE_SOURCE_DIR}/Shared/Containers/StringView.h
 	${NCINE_SOURCE_DIR}/Shared/Containers/Tags.h
 	${NCINE_SOURCE_DIR}/Shared/IO/AndroidAssetStream.h
@@ -37,12 +40,10 @@ set(HEADERS
 list(APPEND HEADERS
 	${NCINE_SOURCE_DIR}/nCine/AppConfiguration.h
 	${NCINE_SOURCE_DIR}/nCine/Application.h
-	${NCINE_SOURCE_DIR}/nCine/ArrayIndexer.h
 	${NCINE_SOURCE_DIR}/nCine/CommonConstants.h
 	${NCINE_SOURCE_DIR}/nCine/CommonHeaders.h
 	${NCINE_SOURCE_DIR}/nCine/I18n.h
 	${NCINE_SOURCE_DIR}/nCine/IAppEventHandler.h
-	${NCINE_SOURCE_DIR}/nCine/IIndexer.h
 	${NCINE_SOURCE_DIR}/nCine/ServiceLocator.h
 	${NCINE_SOURCE_DIR}/nCine/Audio/IAudioDevice.h
 	${NCINE_SOURCE_DIR}/nCine/Audio/IAudioLoader.h
@@ -336,6 +337,7 @@ list(APPEND HEADERS
 	${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/ControlsOptionsSection.h
 	${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/CustomLevelSelectSection.h
 	${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/EpisodeSelectSection.h
+	${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/FirstRunSection.h
 	${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/GameplayEnhancementsSection.h
 	${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/GameplayOptionsSection.h
 	${NCINE_SOURCE_DIR}/Jazz2/UI/Menu/GraphicsOptionsSection.h

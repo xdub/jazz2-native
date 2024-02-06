@@ -9,7 +9,7 @@
 namespace nCine
 {
 	/// A four component vector based on templates
-	template <class T>
+	template<class T>
 	class Vector4
 	{
 	public:
@@ -19,8 +19,16 @@ namespace nCine
 			: X(0), Y(0), Z(0), W(0) {}
 		explicit Vector4(T s) noexcept
 			: X(s), Y(s), Z(s), W(s) {}
-		Vector4(T xx, T yy, T zz, T ww) noexcept
-			: X(xx), Y(yy), Z(zz), W(ww) {}
+		Vector4(T x, T y, T z, T w) noexcept
+			: X(x), Y(y), Z(z), W(w) {}
+		Vector4(const Vector2<T>& other, T z, T w) noexcept
+			: X(other.X), Y(other.Y), Z(z), W(w) {}
+		Vector4(Vector2<T>&& other, T z, T w) noexcept
+			: X(other.X), Y(other.Y), Z(z), W(w) {}
+		Vector4(const Vector3<T>& other, T w) noexcept
+			: X(other.X), Y(other.Y), Z(other.Z), W(w) {}
+		Vector4(Vector3<T>&& other, T w) noexcept
+			: X(other.X), Y(other.Y), Z(other.Z), W(w) {}
 		Vector4(const Vector4& other) noexcept
 			: X(other.X), Y(other.Y), Z(other.Z), W(other.W) {}
 		Vector4(Vector4&& other) noexcept
@@ -28,7 +36,7 @@ namespace nCine
 		Vector4& operator=(const Vector4& other) noexcept;
 		Vector4& operator=(Vector4&& other) noexcept;
 
-		void Set(T xx, T yy, T zz, T ww);
+		void Set(T x, T y, T z, T w);
 
 		T* Data();
 		const T* Data() const;
@@ -60,7 +68,7 @@ namespace nCine
 		Vector4 operator*(T s) const;
 		Vector4 operator/(T s) const;
 
-		template <class S>
+		template<class S>
 		friend Vector4<S> operator*(S s, const Vector4<S>& v);
 
 		T Length() const;
@@ -68,11 +76,16 @@ namespace nCine
 		Vector4 Normalized() const;
 		Vector4& Normalize();
 
+		template<class S>
+		Vector4<S> As() {
+			return Vector4<S>(static_cast<S>(X), static_cast<S>(Y), static_cast<S>(Z), static_cast<S>(W));
+		}
+
 		Vector2<T> ToVector2() const;
 		Vector3<T> ToVector3() const;
 
-		template <class S>
-		friend S Dot(const Vector4<S>& v1, const Vector4<S>& v2);
+		static T Dot(const Vector4& v1, const Vector4& v2);
+		static Vector4 Lerp(const Vector4& a, const Vector4& b, float t);
 
 		/// A vector with all zero elements
 		static const Vector4 Zero;
@@ -89,7 +102,7 @@ namespace nCine
 	using Vector4f = Vector4<float>;
 	using Vector4i = Vector4<int>;
 
-	template <class T>
+	template<class T>
 	inline Vector4<T>& Vector4<T>::operator=(const Vector4<T>& other) noexcept
 	{
 		X = other.X;
@@ -100,7 +113,7 @@ namespace nCine
 		return *this;
 	}
 
-	template <class T>
+	template<class T>
 	inline Vector4<T>& Vector4<T>::operator=(Vector4<T>&& other) noexcept
 	{
 		X = other.X;
@@ -111,60 +124,60 @@ namespace nCine
 		return *this;
 	}
 
-	template <class T>
-	inline void Vector4<T>::Set(T xx, T yy, T zz, T ww)
+	template<class T>
+	inline void Vector4<T>::Set(T x, T y, T z, T w)
 	{
-		X = xx;
-		Y = yy;
-		Z = zz;
-		W = ww;
+		X = x;
+		Y = y;
+		Z = z;
+		W = w;
 	}
 
-	template <class T>
+	template<class T>
 	inline T* Vector4<T>::Data()
 	{
 		return &X;
 	}
 
-	template <class T>
+	template<class T>
 	inline const T* Vector4<T>::Data() const
 	{
 		return &X;
 	}
 
-	template <class T>
+	template<class T>
 	inline T& Vector4<T>::operator[](unsigned int index)
 	{
 		ASSERT(index < 4);
 		return (&X)[index];
 	}
 
-	template <class T>
+	template<class T>
 	inline const T& Vector4<T>::operator[](unsigned int index) const
 	{
 		ASSERT(index < 4);
 		return (&X)[index];
 	}
 
-	template <class T>
+	template<class T>
 	inline bool Vector4<T>::operator==(const Vector4& v) const
 	{
 		return (X == v.X && Y == v.Y && Z == v.Z && W == v.W);
 	}
 
-	template <class T>
+	template<class T>
 	inline bool Vector4<T>::operator!=(const Vector4& v) const
 	{
 		return (X != v.X || Y != v.Y || Z != v.Z || W != v.W);
 	}
 
-	template <class T>
+	template<class T>
 	inline Vector4<T> Vector4<T>::operator-() const
 	{
 		return Vector4(-X, -Y, -Z, -W);
 	}
 
-	template <class T>
+	template<class T>
 	inline Vector4<T>& Vector4<T>::operator+=(const Vector4& v)
 	{
 		X += v.X;
@@ -175,7 +188,7 @@ namespace nCine
 		return *this;
 	}
 
-	template <class T>
+	template<class T>
 	inline Vector4<T>& Vector4<T>::operator-=(const Vector4& v)
 	{
 		X -= v.X;
@@ -186,7 +199,7 @@ namespace nCine
 		return *this;
 	}
 
-	template <class T>
+	template<class T>
 	inline Vector4<T>& Vector4<T>::operator*=(const Vector4& v)
 	{
 		X *= v.X;
@@ -197,7 +210,7 @@ namespace nCine
 		return *this;
 	}
 
-	template <class T>
+	template<class T>
 	inline Vector4<T>& Vector4<T>::operator/=(const Vector4& v)
 	{
 		X /= v.X;
@@ -208,7 +221,7 @@ namespace nCine
 		return *this;
 	}
 
-	template <class T>
+	template<class T>
 	inline Vector4<T>& Vector4<T>::operator+=(T s)
 	{
 		X += s;
@@ -219,7 +232,7 @@ namespace nCine
 		return *this;
 	}
 
-	template <class T>
+	template<class T>
 	inline Vector4<T>& Vector4<T>::operator-=(T s)
 	{
 		X -= s;
@@ -230,7 +243,7 @@ namespace nCine
 		return *this;
 	}
 
-	template <class T>
+	template<class T>
 	inline Vector4<T>& Vector4<T>::operator*=(T s)
 	{
 		X *= s;
@@ -241,7 +254,7 @@ namespace nCine
 		return *this;
 	}
 
-	template <class T>
+	template<class T>
 	inline Vector4<T>& Vector4<T>::operator/=(T s)
 	{
 		X /= s;
@@ -252,7 +265,7 @@ namespace nCine
 		return *this;
 	}
 
-	template <class T>
+	template<class T>
 	inline Vector4<T> Vector4<T>::operator+(const Vector4& v) const
 	{
 		return Vector4(X + v.X,
@@ -261,7 +274,7 @@ namespace nCine
 					   W + v.W);
 	}
 
-	template <class T>
+	template<class T>
 	inline Vector4<T> Vector4<T>::operator-(const Vector4& v) const
 	{
 		return Vector4(X - v.X,
@@ -270,7 +283,7 @@ namespace nCine
 					   W - v.W);
 	}
 
-	template <class T>
+	template<class T>
 	inline Vector4<T> Vector4<T>::operator*(const Vector4& v) const
 	{
 		return Vector4(X * v.X,
@@ -279,7 +292,7 @@ namespace nCine
 					   W * v.W);
 	}
 
-	template <class T>
+	template<class T>
 	inline Vector4<T> Vector4<T>::operator/(const Vector4& v) const
 	{
 		return Vector4(X / v.X,
@@ -288,7 +301,7 @@ namespace nCine
 					   W / v.W);
 	}
 
-	template <class T>
+	template<class T>
 	inline Vector4<T> Vector4<T>::operator+(T s) const
 	{
 		return Vector4(X + s,
@@ -297,7 +310,7 @@ namespace nCine
 					   W + s);
 	}
 
-	template <class T>
+	template<class T>
 	inline Vector4<T> Vector4<T>::operator-(T s) const
 	{
 		return Vector4(X - s,
@@ -306,7 +319,7 @@ namespace nCine
 					   W - s);
 	}
 
-	template <class T>
+	template<class T>
 	inline Vector4<T> Vector4<T>::operator*(T s) const
 	{
 		return Vector4(X * s,
@@ -315,7 +328,7 @@ namespace nCine
 					   W * s);
 	}
 
-	template <class T>
+	template<class T>
 	inline Vector4<T> Vector4<T>::operator/(T s) const
 	{
 		return Vector4(X / s,
@@ -324,7 +337,7 @@ namespace nCine
 					   W / s);
 	}
 
-	template <class S>
+	template<class S>
 	inline Vector4<S> operator*(S s, const Vector4<S>& v)
 	{
 		return Vector4<S>(s * v.X,
@@ -333,26 +346,26 @@ namespace nCine
 						  s * v.W);
 	}
 
-	template <class T>
+	template<class T>
 	inline T Vector4<T>::Length() const
 	{
 		return (T)sqrt(X * X + Y * Y + Z * Z + W * W);
 	}
 
-	template <class T>
+	template<class T>
 	inline T Vector4<T>::SqrLength() const
 	{
 		return X * X + Y * Y + Z * Z + W * W;
 	}
 
-	template <class T>
+	template<class T>
 	inline Vector4<T> Vector4<T>::Normalized() const
 	{
 		const T len = Length();
 		return Vector4(X / len, Y / len, Z / len, W / len);
 	}
 
-	template <class T>
+	template<class T>
 	inline Vector4<T>& Vector4<T>::Normalize()
 	{
 		const T len = Length();
@@ -365,36 +378,39 @@ namespace nCine
 		return *this;
 	}
 
-	template <class T>
+	template<class T>
 	inline Vector2<T> Vector4<T>::ToVector2() const
 	{
 		return Vector2<T>(X, Y);
 	}
 
-	template <class T>
+	template<class T>
 	inline Vector3<T> Vector4<T>::ToVector3() const
 	{
 		return Vector3<T>(X, Y, Z);
 	}
 
-	template <class S>
-	inline S Dot(const Vector4<S>& v1, const Vector4<S>& v2)
+	template<class T>
+	inline T Vector4<T>::Dot(const Vector4<T>& v1, const Vector4<T>& v2)
 	{
-		return static_cast<S>(v1.X * v2.X +
-							  v1.Y * v2.Y +
-							  v1.Z * v2.Z +
-							  v1.W * v2.W);
+		return static_cast<T>(v1.X * v2.X + v1.Y * v2.Y + v1.Z * v2.Z + v1.W * v2.W);
 	}
 
-	template <class T>
+	template<class T>
+	inline Vector4<T> Vector4<T>::Lerp(const Vector4<T>& a, const Vector4<T>& b, float t)
+	{
+		return Vector4<T>(t * (b.X - a.X) + a.X, t * (b.Y - a.Y) + a.Y, t * (b.Z - a.Z) + a.Z, t * (b.W - a.W) + a.W);
+	}
+
+	template<class T>
 	const Vector4<T> Vector4<T>::Zero(0, 0, 0, 0);
-	template <class T>
+	template<class T>
 	const Vector4<T> Vector4<T>::XAxis(1, 0, 0, 0);
-	template <class T>
+	template<class T>
 	const Vector4<T> Vector4<T>::YAxis(0, 1, 0, 0);
-	template <class T>
+	template<class T>
 	const Vector4<T> Vector4<T>::ZAxis(0, 0, 1, 0);
-	template <class T>
+	template<class T>
 	const Vector4<T> Vector4<T>::WAxis(0, 0, 0, 1);
 
 }

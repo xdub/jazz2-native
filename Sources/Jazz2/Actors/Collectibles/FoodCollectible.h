@@ -45,6 +45,8 @@ namespace Jazz2::Actors::Collectibles
 
 	class FoodCollectible : public CollectibleBase
 	{
+		DEATH_RUNTIME_OBJECT(CollectibleBase);
+
 	public:
 		FoodCollectible();
 

@@ -6,6 +6,8 @@ namespace Jazz2::Actors::Solid
 {
 	class GemCrate : public GenericContainer
 	{
+		DEATH_RUNTIME_OBJECT(GenericContainer);
+
 	public:
 		GemCrate();
 

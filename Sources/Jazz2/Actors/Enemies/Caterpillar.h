@@ -6,6 +6,8 @@ namespace Jazz2::Actors::Enemies
 {
 	class Caterpillar : public EnemyBase
 	{
+		DEATH_RUNTIME_OBJECT(EnemyBase);
+
 	public:
 		Caterpillar();
 
@@ -24,6 +26,8 @@ namespace Jazz2::Actors::Enemies
 
 		class Smoke : public EnemyBase
 		{
+			DEATH_RUNTIME_OBJECT(EnemyBase);
+
 		public:
 			bool OnHandleCollision(std::shared_ptr<ActorBase> other) override;
 

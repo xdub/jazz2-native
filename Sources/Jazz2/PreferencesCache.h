@@ -79,6 +79,7 @@ namespace Jazz2
 		static constexpr std::int32_t UnlimitedFps = 0;
 		static constexpr std::int32_t UseVsync = -1;
 
+		static bool FirstRun;
 #if defined(WITH_MULTIPLAYER)
 		static String InitialState;
 #endif
@@ -91,11 +92,13 @@ namespace Jazz2
 		static bool ShowPerformanceMetrics;
 		static bool KeepAspectRatioInCinematics;
 		static bool ShowPlayerTrails;
-		static bool LowGraphicsQuality;
+		static bool LowWaterQuality;
 		static bool UnalignedViewport;
 
 		// Gameplay
-		static bool EnableReforged;
+		static bool EnableReforgedGameplay;
+		static bool EnableReforgedHUD;
+		static bool EnableReforgedMainMenu;
 		static bool EnableLedgeClimb;
 		static WeaponWheelStyle WeaponWheel;
 		static bool EnableRgbLights;
@@ -121,9 +124,9 @@ namespace Jazz2
 		static void Save();
 		static StringView GetDirectory();
 
-		static EpisodeContinuationState* GetEpisodeEnd(const StringView& episodeName, bool createIfNotFound = false);
-		static EpisodeContinuationStateWithLevel* GetEpisodeContinue(const StringView& episodeName, bool createIfNotFound = false);
-		static void RemoveEpisodeContinue(const StringView& episodeName);
+		static EpisodeContinuationState* GetEpisodeEnd(const StringView episodeName, bool createIfNotFound = false);
+		static EpisodeContinuationStateWithLevel* GetEpisodeContinue(const StringView episodeName, bool createIfNotFound = false);
+		static void RemoveEpisodeContinue(const StringView episodeName);
 
 	private:
 		enum class BoolOptions : uint64_t {
@@ -133,10 +136,10 @@ namespace Jazz2
 			ShowPerformanceMetrics = 0x02,
 			KeepAspectRatioInCinematics = 0x04,
 			ShowPlayerTrails = 0x08,
-			LowGraphicsQuality = 0x10,
+			LowWaterQuality = 0x10,
 			UnalignedViewport = 0x20,
 
-			EnableReforged = 0x100,
+			EnableReforgedGameplay = 0x100,
 			EnableLedgeClimb = 0x200,
 			EnableWeaponWheel = 0x400,
 			EnableRgbLights = 0x800,
@@ -147,12 +150,15 @@ namespace Jazz2
 
 			TutorialCompleted = 0x10000,
 			SetLanguage = 0x20000,
-			ResumeOnStart = 0x40000
+			ResumeOnStart = 0x40000,
+
+			EnableReforgedHUD = 0x100000,
+			EnableReforgedMainMenu = 0x200000
 		};
 
 		DEFINE_PRIVATE_ENUM_OPERATORS(BoolOptions);
 
-		static constexpr std::uint8_t FileVersion = 2;
+		static constexpr std::uint8_t FileVersion = 4;
 
 		static constexpr float TouchPaddingMultiplier = 0.003f;
 
