@@ -68,7 +68,7 @@ jobs:
         
         rm -f ./Content/Translations/*.po
         
-        emcmake cmake -B ./_build/ -D CMAKE_BUILD_TYPE=${{ matrix.BuildType }} -D NCINE_PREFERRED_BACKEND=${{ matrix.Backend }} -D SHAREWARE_DEMO_ONLY=$sharewareDemo
+        emcmake cmake -B ./_build/ -D CMAKE_BUILD_TYPE=${{ matrix.BuildType }} -D NCINE_PREFERRED_BACKEND=${{ matrix.Backend }} -D SHAREWARE_DEMO_ONLY=$sharewareDemo -D WITH_MULTIPLAYER=ON
 
     - name: 'Build'
       run: |

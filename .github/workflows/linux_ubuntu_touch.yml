@@ -53,7 +53,7 @@ jobs:
           git config --global --add safe.directory '*'
           cd /_current/
           rm -f ./Content/Translations/*.po
-          cmake -B ./_build/ -D CMAKE_BUILD_TYPE=${{ matrix.BuildType }} -D NCINE_STRIP_BINARIES=ON -D NCINE_PREFERRED_BACKEND=${{ matrix.Backend }} -D NCINE_DOWNLOAD_DEPENDENCIES=OFF -D NCINE_LINUX_PACKAGE=jazz2 -D NCINE_PACKAGED_CONTENT_PATH=ON
+          cmake -B ./_build/ -D CMAKE_BUILD_TYPE=${{ matrix.BuildType }} -D NCINE_STRIP_BINARIES=ON -D NCINE_PREFERRED_BACKEND=${{ matrix.Backend }} -D NCINE_DOWNLOAD_DEPENDENCIES=OFF -D NCINE_LINUX_PACKAGE=jazz2 -D NCINE_PACKAGED_CONTENT_PATH=ON -D WITH_MULTIPLAYER=ON
           echo "::endgroup::"
           echo "::group::Build"
           make -j $(nproc) -C ./_build/

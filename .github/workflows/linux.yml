@@ -68,7 +68,7 @@ jobs:
         
         rm -f ./Content/Translations/*.po
         
-        cmake -B ./_build/ -D CMAKE_BUILD_TYPE=${{ matrix.BuildType }} -D NCINE_STRIP_BINARIES=ON -D NCINE_PREFERRED_BACKEND=${{ matrix.Backend }} -D NCINE_ASSEMBLE_DEB=ON -D NCINE_ASSEMBLE_RPM=ON -D NCINE_WITH_GLEW=OFF
+        cmake -B ./_build/ -D CMAKE_BUILD_TYPE=${{ matrix.BuildType }} -D NCINE_STRIP_BINARIES=ON -D NCINE_PREFERRED_BACKEND=${{ matrix.Backend }} -D NCINE_ASSEMBLE_DEB=ON -D NCINE_ASSEMBLE_RPM=ON -D NCINE_WITH_GLEW=OFF -D WITH_MULTIPLAYER=ON
 
     - name: 'Build'
       run: |
@@ -133,7 +133,7 @@ jobs:
         
         rm -f ./Content/Translations/*.po
         
-        cmake -B ./_build/ -D CMAKE_BUILD_TYPE=${{ matrix.BuildType }} -D NCINE_STRIP_BINARIES=ON -D NCINE_PREFERRED_BACKEND=${{ matrix.Backend }} -D NCINE_WITH_GLEW=OFF -D NCINE_LINUX_PACKAGE=jazz2 -D NCINE_PACKAGED_CONTENT_PATH=ON -D CMAKE_INSTALL_PREFIX=/usr
+        cmake -B ./_build/ -D CMAKE_BUILD_TYPE=${{ matrix.BuildType }} -D NCINE_STRIP_BINARIES=ON -D NCINE_PREFERRED_BACKEND=${{ matrix.Backend }} -D NCINE_WITH_GLEW=OFF -D NCINE_LINUX_PACKAGE=jazz2 -D NCINE_PACKAGED_CONTENT_PATH=ON -D CMAKE_INSTALL_PREFIX=/usr -D WITH_MULTIPLAYER=ON
 
     - name: 'Build'
       run: |
@@ -193,7 +193,7 @@ jobs:
         export CC=gcc
         export CXX=g++
         
-        cmake -B ./_build/ -D CMAKE_BUILD_TYPE=Release -D NCINE_WITH_GLEW=OFF
+        cmake -B ./_build/ -D CMAKE_BUILD_TYPE=Release -D NCINE_WITH_GLEW=OFF -D WITH_MULTIPLAYER=ON
         make -j $(nproc) -C ./_build/
         
     - name: 'Perform CodeQL Analysis'
