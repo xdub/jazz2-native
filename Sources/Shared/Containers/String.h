@@ -27,7 +27,6 @@
 
 #include <cstddef>
 #include <type_traits>
-#include <string>
 
 namespace Death { namespace Containers {
 //###==##====#=====--==~--~=~- --- -- -  -  -   -
@@ -43,21 +42,6 @@ namespace Death { namespace Containers {
 		};
 
 		template<class> struct StringConverter;
-
-		template<> struct StringConverter<std::string> {
-			static String from(const std::string& other);
-			static std::string to(const String& other);
-		};
-
-		template<> struct StringViewConverter<const char, std::string> {
-			static StringView from(const std::string& other);
-			static std::string to(StringView other);
-		};
-
-		template<> struct StringViewConverter<char, std::string> {
-			static MutableStringView from(std::string& other);
-			static std::string to(MutableStringView other);
-		};
 	}
 
 	/**
@@ -249,7 +233,7 @@ namespace Death { namespace Containers {
 		 * Calculates the size using @ref std::strlen() and calls
 		 * @ref String(char*, std::size_t, Deleter).
 		 */
-		// Gets ambigous when calling String{ptr, 0}. FFS, zero as null pointerwas deprecated in C++11 already, why is this still a problem?!
+		/* Gets ambigous when calling String{ptr, 0}. FFS, zero as null pointerwas deprecated in C++11 already, why is this still a problem?! */
 		template<class T> String(typename std::enable_if<std::is_convertible<T, Deleter>::value && !std::is_convertible<T, std::size_t>::value, char*>::type data, T deleter) noexcept : String{deleter, nullptr, data} {}
 
 		/**
@@ -270,7 +254,7 @@ namespace Death { namespace Containers {
 		 * Calculates the size using @ref std::strlen() and calls
 		 * @ref String(const char*, std::size_t, Deleter).
 		 */
-		// Gets ambigous when calling String{ptr, 0}. FFS, zero as null pointer was deprecated in C++11 already, why is this still a problem?!
+		/* Gets ambigous when calling String{ptr, 0}. FFS, zero as null pointer was deprecated in C++11 already, why is this still a problem?! */
 		template<class T, class = typename std::enable_if<std::is_convertible<T, Deleter>::value && !std::is_convertible<T, std::size_t>::value, const char*>::type> String(const char* data, T deleter) noexcept : String{deleter, nullptr, const_cast<char*>(data)} {}
 
 		/**
@@ -287,7 +271,7 @@ namespace Death { namespace Containers {
 		 * Since the @ref String class provides a guarantee of null-terminated
 		 * strings, @p data *can't* be @cpp nullptr @ce.
 		 */
-		// Gets ambigous when calling String{nullptr, 0}. FFS, zero as null pointer was deprecated in C++11 already, why is this still a problem?!
+		/* Gets ambigous when calling String{nullptr, 0}. FFS, zero as null pointer was deprecated in C++11 already, why is this still a problem?! */
 		template<class T> String(typename std::enable_if<std::is_convertible<T, Deleter>::value && !std::is_convertible<T, std::size_t>::value, std::nullptr_t>::type, T) noexcept = delete;
 
 		/**
@@ -316,9 +300,9 @@ namespace Death { namespace Containers {
 		/**
 		 * @brief Construct a view on an external type / from an external representation
 		 */
-		// There's no restriction that would disallow creating StringView from e.g. std::string<T>&& because that would break uses like
-		// `consume(foo());`, where `consume()` expects a view but `foo()` returns a std::vector. Besides that, to simplify the implementation,
-		// there's no const-adding conversion. Instead, the implementer is supposed to add an ArrayViewConverter variant for that.
+		/* There's no restriction that would disallow creating StringView from e.g. std::string<T>&& because that would break uses like
+		   `consume(foo());`, where `consume()` expects a view but `foo()` returns a std::vector. Besides that, to simplify the implementation,
+		   there's no const-adding conversion. Instead, the implementer is supposed to add an ArrayViewConverter variant for that. */
 		template<class T, class = decltype(Implementation::StringConverter<typename std::decay<T&&>::type>::from(std::declval<T&&>()))> /*implicit*/ String(T&& other) noexcept : String{Implementation::StringConverter<typename std::decay<T&&>::type>::from(std::forward<T>(other))} {}
 
 		/**
@@ -328,13 +312,23 @@ namespace Death { namespace Containers {
 		 */
 		~String();
 
-		/** @brief Copy constructor */
+		/**
+		 * @brief Copy constructor
+		 *
+		 * If @p other is a SSO instance, the copy is as well, otherwise a copy is allocated using the default @cpp operator new[] @ce.
+		 * The actual string size isn't taken into account. See @ref Containers-String-usage-sso for more information.
+		 */
 		String(const String& other);
 
 		/** @brief Move constructor */
 		String(String&& other) noexcept;
 
-		/** @brief Copy assignment */
+		/**
+		 * @brief Copy assignment
+		 *
+		 * If @p other is a SSO instance, the copy is as well, otherwise a copy is allocated using the default @cpp operator new[] @ce.
+		 * The actual string size isn't taken into account. See @ref Containers-String-usage-sso for more information.
+		 */
 		String& operator=(const String& other);
 
 		/** @brief Move assignment */
@@ -371,12 +365,12 @@ namespace Death { namespace Containers {
 		 * that with custom deleters the array is not guaranteed to be actually
 		 * mutable.
 		 */
-		/*implicit*/ operator Array<char>()&&;
+		/*implicit*/ operator Array<char>() &&;
 
 		/**
 		 * @brief Convert the string to external representation
 		 */
-		// To simplify the implementation, there's no const-adding conversion. Instead, the implementer is supposed to add an StringViewConverter variant for that.
+		/* To simplify the implementation, there's no const-adding conversion. Instead, the implementer is supposed to add an StringViewConverter variant for that. */
 		template<class T, class = decltype(Implementation::StringConverter<T>::to(std::declval<String>()))> /*implicit*/ operator T() const {
 			return Implementation::StringConverter<T>::to(*this);
 		}
@@ -889,6 +883,7 @@ namespace Death { namespace Containers {
 
 		void construct(NoInitT, std::size_t size);
 		void construct(const char* data, std::size_t size);
+		void copyConstruct(const String& other);
 		void destruct();
 		Pair<const char*, std::size_t> dataInternal() const;
 
@@ -977,4 +972,5 @@ namespace Death { namespace Containers {
 			Large _large;
 		};
 	};
+
 }}

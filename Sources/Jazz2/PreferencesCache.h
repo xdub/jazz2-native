@@ -24,13 +24,19 @@ namespace Jazz2
 
 	DEFINE_ENUM_OPERATORS(RescaleMode);
 
-	enum class WeaponWheelStyle {
+	enum class WeaponWheelStyle : std::uint8_t {
 		Disabled,
 		Enabled,
 		EnabledWithAmmoCount
 	};
 
-	enum class UnlockableEpisodes : uint32_t {
+	enum class GamepadType : std::uint8_t {
+		Xbox,
+		PlayStation,
+		Switch
+	};
+
+	enum class UnlockableEpisodes : std::uint32_t {
 		None = 0x00,
 
 		FormerlyAPrince = 0x01,
@@ -43,7 +49,7 @@ namespace Jazz2
 
 	DEFINE_ENUM_OPERATORS(UnlockableEpisodes);
 
-	enum class EpisodeContinuationFlags : uint8_t {
+	enum class EpisodeContinuationFlags : std::uint8_t {
 		None = 0x00,
 
 		IsCompleted = 0x01,
@@ -99,10 +105,16 @@ namespace Jazz2
 		static bool EnableReforgedGameplay;
 		static bool EnableReforgedHUD;
 		static bool EnableReforgedMainMenu;
+#if defined(DEATH_TARGET_ANDROID)
+		// Used to swap Android activity icons on exit/suspend
+		static bool EnableReforgedMainMenuInitial;
+#endif
 		static bool EnableLedgeClimb;
 		static WeaponWheelStyle WeaponWheel;
 		static bool EnableRgbLights;
 		static bool AllowUnsignedScripts;
+		static bool ToggleRunAction;
+		static GamepadType GamepadButtonLabels;
 		static bool UseNativeBackButton;
 		static bool EnableDiscordIntegration;
 		static bool TutorialCompleted;
@@ -153,12 +165,13 @@ namespace Jazz2
 			ResumeOnStart = 0x40000,
 
 			EnableReforgedHUD = 0x100000,
-			EnableReforgedMainMenu = 0x200000
+			EnableReforgedMainMenu = 0x200000,
+			ToggleRunAction = 0x400000
 		};
 
 		DEFINE_PRIVATE_ENUM_OPERATORS(BoolOptions);
 
-		static constexpr std::uint8_t FileVersion = 4;
+		static constexpr std::uint8_t FileVersion = 5;
 
 		static constexpr float TouchPaddingMultiplier = 0.003f;
 

@@ -27,17 +27,21 @@ namespace Death { namespace IO {
 	public:
 		DeflateStream();
 		DeflateStream(Stream& inputStream, std::int32_t inputSize = -1, bool rawInflate = true);
-
 		~DeflateStream();
+
+		DeflateStream(const DeflateStream&) = delete;
+		DeflateStream(DeflateStream&& other) noexcept;
+		DeflateStream& operator=(const DeflateStream&) = delete;
+		DeflateStream& operator=(DeflateStream&& other) noexcept;
 
 		void Open(Stream& inputStream, std::int32_t inputSize = -1, bool rawInflate = true);
 
 		void Close() override;
-		std::int32_t Seek(std::int32_t offset, SeekOrigin origin) override;
-		std::int32_t GetPosition() const override;
+		std::int64_t Seek(std::int64_t offset, SeekOrigin origin) override;
+		std::int64_t GetPosition() const override;
 		std::int32_t Read(void* buffer, std::int32_t bytes) override;
 		std::int32_t Write(const void* buffer, std::int32_t bytes) override;
-		bool IsValid() const override;
+		bool IsValid() override;
 
 		bool CeaseReading();
 
@@ -59,6 +63,7 @@ namespace Death { namespace IO {
 		bool _rawInflate;
 		unsigned char _buffer[BufferSize];
 
+		void InitializeInternal();
 		std::int32_t ReadInternal(void* ptr, std::int32_t size);
 	};
 
@@ -71,14 +76,17 @@ namespace Death { namespace IO {
 		DeflateWriter(Stream& outputStream, std::int32_t compressionLevel = 9, bool rawInflate = true);
 		~DeflateWriter();
 
+		DeflateWriter(const DeflateWriter&) = delete;
+		DeflateWriter& operator=(const DeflateWriter&) = delete;
+
 		void Close() override;
-		std::int32_t Seek(std::int32_t offset, SeekOrigin origin) override;
-		std::int32_t GetPosition() const override;
+		std::int64_t Seek(std::int64_t offset, SeekOrigin origin) override;
+		std::int64_t GetPosition() const override;
 		std::int32_t Read(void* buffer, std::int32_t bytes) override;
 		std::int32_t Write(const void* buffer, std::int32_t bytes) override;
-		bool IsValid() const override;
+		bool IsValid() override;
 
-		static std::int32_t GetMaxDeflatedSize(std::int32_t uncompressedSize);
+		static std::int64_t GetMaxDeflatedSize(std::int64_t uncompressedSize);
 
 	protected:
 		enum class State : std::uint8_t {

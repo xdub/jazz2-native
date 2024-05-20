@@ -1,4 +1,5 @@
 #include "DeflateStream.h"
+#include "../Asserts.h"
 
 #if !defined(WITH_ZLIB)
 #	pragma message("Death::IO::DeflateStream requires `zlib` library")
@@ -15,6 +16,7 @@
 #endif
 
 #include <algorithm>
+#include <cstring>
 
 namespace Death { namespace IO {
 //###==##====#=====--==~--~=~- --- -- -  -  -   -
@@ -22,6 +24,7 @@ namespace Death { namespace IO {
 	DeflateStream::DeflateStream()
 		: _inputStream(nullptr), _inputSize(-1), _state(State::Unknown)
 	{
+		_size = ErrorInvalidStream;
 	}
 
 	DeflateStream::DeflateStream(Stream& inputStream, std::int32_t inputSize, bool rawInflate)
@@ -32,36 +35,74 @@ namespace Death { namespace IO {
 
 	DeflateStream::~DeflateStream()
 	{
-		Close();
+		DeflateStream::Close();
 	}
 
-	std::int32_t DeflateStream::Seek(std::int32_t offset, SeekOrigin origin)
+	DeflateStream::DeflateStream(DeflateStream&& other) noexcept
+	{
+		_inputStream = other._inputStream;
+		_strm = other._strm;
+		_inputSize = other._inputSize;
+		_state = other._state;
+		_rawInflate = other._rawInflate;
+		std::memcpy(_buffer, other._buffer, sizeof(_buffer));
+
+		// Original instance will be disabled
+		if (other._state == State::Created || other._state == State::Initialized) {
+			other._state = State::Failed;
+		}
+	}
+
+	DeflateStream& DeflateStream::operator=(DeflateStream&& other) noexcept
+	{
+		Close();
+
+		_inputStream = other._inputStream;
+		_strm = other._strm;
+		_inputSize = other._inputSize;
+		_state = other._state;
+		_rawInflate = other._rawInflate;
+		std::memcpy(_buffer, other._buffer, sizeof(_buffer));
+
+		// Original instance will be disabled
+		if (other._state == State::Created || other._state == State::Initialized) {
+			other._state = State::Failed;
+		}
+
+		return *this;
+	}
+
+	std::int64_t DeflateStream::Seek(std::int64_t offset, SeekOrigin origin)
 	{
 		switch (origin) {
 			case SeekOrigin::Current: {
-				DEATH_ASSERT(offset >= 0, -1, "Cannot seek to negative values");
+				DEATH_ASSERT(offset >= 0, ErrorInvalidParameter, "Cannot seek to negative values");
 
-				char buf[4096];
+				char buffer[4096];
 				while (offset > 0) {
-					std::int32_t size = (offset > sizeof(buf) ? sizeof(buf) : offset);
-					Read(buf, size);
-					offset -= size;
+					std::int32_t size = (offset > sizeof(buffer) ? sizeof(buffer) : static_cast<std::int32_t>(offset));
+					std::int32_t bytesRead = Read(buffer, size);
+					if (bytesRead <= 0) {
+						return bytesRead;
+					}
+					offset -= bytesRead;
 				}
-				return static_cast<std::int32_t>(_strm.total_out);
+
+				return static_cast<std::int64_t>(_strm.total_out);
 			}
 		}
 
-		return NotSeekable;
+		return ErrorInvalidParameter;
 	}
 
-	std::int32_t DeflateStream::GetPosition() const
+	std::int64_t DeflateStream::GetPosition() const
 	{
-		return static_cast<std::int32_t>(_strm.total_out);
+		return static_cast<std::int64_t>(_strm.total_out);
 	}
 
 	std::int32_t DeflateStream::Read(void* buffer, std::int32_t bytes)
 	{
-		std::uint8_t* typedBuffer = (std::uint8_t*)buffer;
+		std::uint8_t* typedBuffer = static_cast<std::uint8_t*>(buffer);
 		std::int32_t bytesRead = ReadInternal(typedBuffer, bytes);
 		std::int32_t bytesReadTotal = bytesRead;
 		while (bytesRead > 0 && bytesRead < bytes) {
@@ -78,11 +119,14 @@ namespace Death { namespace IO {
 	std::int32_t DeflateStream::Write(const void* buffer, std::int32_t bytes)
 	{
 		// Not supported
-		return -1;
+		return ErrorInvalidStream;
 	}
 
-	bool DeflateStream::IsValid() const
+	bool DeflateStream::IsValid()
 	{
+		if (_state == State::Created) {
+			InitializeInternal();
+		}
 		return (_state == State::Initialized || _state == State::Finished);
 	}
 
@@ -94,7 +138,7 @@ namespace Death { namespace IO {
 		_inputSize = inputSize;
 		_state = State::Created;
 		_rawInflate = rawInflate;
-		_size = INT32_MAX;
+		_size = ErrorNotSeekable;
 
 		_strm.zalloc = Z_NULL;
 		_strm.zfree = Z_NULL;
@@ -109,23 +153,32 @@ namespace Death { namespace IO {
 		CeaseReading();
 		_inputStream = nullptr;
 		_state = State::Unknown;
-		_size = 0;
+		_size = ErrorInvalidStream;
+	}
+
+	void DeflateStream::InitializeInternal()
+	{
+		std::int32_t error = (_rawInflate ? inflateInit2(&_strm, -MAX_WBITS) : inflateInit(&_strm));
+		if (error != Z_OK) {
+			_state = State::Failed;
+			LOGE("Failed to initialize compressed stream with error: %i", error);
+			return;
+		}
+
+		_state = State::Initialized;
 	}
 
 	std::int32_t DeflateStream::ReadInternal(void* ptr, std::int32_t size)
 	{
-		if (size == 0 || _state == State::Unknown || _state >= State::Finished) {
+		if (size == 0) {
 			return 0;
 		}
 
 		if (_state == State::Created) {
-			std::int32_t error = (_rawInflate ? inflateInit2(&_strm, -MAX_WBITS) : inflateInit(&_strm));
-			if (error != Z_OK) {
-				_state = State::Failed;
-				LOGE("Failed to initialize compressed stream with error: %i", error);
-				return -1;
-			}
-			_state = State::Initialized;
+			InitializeInternal();
+		}
+		if (_state == State::Unknown || _state >= State::Finished) {
+			return ErrorInvalidStream;
 		}
 
 		if (_strm.avail_in == 0) {
@@ -145,7 +198,7 @@ namespace Death { namespace IO {
 			_strm.avail_in = static_cast<std::uint32_t>(bytesRead);
 		}
 
-		_strm.next_out = (unsigned char*)ptr;
+		_strm.next_out = static_cast<unsigned char*>(ptr);
 		_strm.avail_out = size;
 
 		std::int32_t res = inflate(&_strm, Z_SYNC_FLUSH);
@@ -170,7 +223,7 @@ namespace Death { namespace IO {
 			return true;
 		}
 
-		_inputStream->Seek(_inputSize >= 0 ? _inputSize : -std::int32_t(_strm.avail_in), SeekOrigin::Current);
+		_inputStream->Seek(_inputSize >= 0 ? _inputSize : -static_cast<std::int32_t>(_strm.avail_in), SeekOrigin::Current);
 
 		std::int32_t error = inflateEnd((z_stream*)&_strm);
 		if (error != Z_OK) {
@@ -185,6 +238,8 @@ namespace Death { namespace IO {
 	DeflateWriter::DeflateWriter(Stream& outputStream, std::int32_t compressionLevel, bool rawInflate)
 		: _outputStream(&outputStream), _state(State::Created)
 	{
+		_size = ErrorNotSeekable;
+
 		_strm.zalloc = Z_NULL;
 		_strm.zfree = Z_NULL;
 		_strm.opaque = Z_NULL;
@@ -200,7 +255,7 @@ namespace Death { namespace IO {
 
 	DeflateWriter::~DeflateWriter()
 	{
-		Close();
+		DeflateWriter::Close();
 	}
 
 	void DeflateWriter::Close()
@@ -221,32 +276,33 @@ namespace Death { namespace IO {
 		_state = State::Finished;
 	}
 
-	std::int32_t DeflateWriter::Seek(std::int32_t offset, SeekOrigin origin)
+	std::int64_t DeflateWriter::Seek(std::int64_t offset, SeekOrigin origin)
 	{
-		return NotSeekable;
+		return ErrorNotSeekable;
 	}
 
-	std::int32_t DeflateWriter::GetPosition() const
+	std::int64_t DeflateWriter::GetPosition() const
 	{
-		return NotSeekable;
+		return ErrorNotSeekable;
 	}
 
 	std::int32_t DeflateWriter::Read(void* buffer, std::int32_t bytes)
 	{
-		return 0;
+		// Not supported
+		return ErrorInvalidStream;
 	}
 
 	std::int32_t DeflateWriter::Write(const void* buffer, std::int32_t bytes)
 	{
 		if (_state != State::Created && _state != State::Initialized) {
-			return 0;
+			return ErrorInvalidStream;
 		}
 
 		_state = State::Initialized;
 		return WriteInternal(buffer, bytes, false);
 	}
 
-	bool DeflateWriter::IsValid() const
+	bool DeflateWriter::IsValid()
 	{
 		return(_state != State::Failed && _outputStream->IsValid());
 	}
@@ -259,11 +315,11 @@ namespace Death { namespace IO {
 		while (_strm.avail_in > 0 || finish) {
 			std::int32_t error;
 			do {
-				_strm.next_out = (unsigned char*)_buffer;
+				_strm.next_out = static_cast<unsigned char*>(_buffer);
 				_strm.avail_out = sizeof(_buffer);
 				error = deflate(&_strm, finish ? Z_FINISH : Z_NO_FLUSH);
 
-				std::int32_t bytesWritten = sizeof(_buffer) - (std::int32_t)_strm.avail_out;
+				std::int32_t bytesWritten = sizeof(_buffer) - static_cast<std::int32_t>(_strm.avail_out);
 				if (bytesWritten > 0) {
 					_outputStream->Write(_buffer, bytesWritten);
 				}
@@ -281,12 +337,13 @@ namespace Death { namespace IO {
 		return bytes - (std::int32_t)_strm.avail_in;
 	}
 
-	std::int32_t DeflateWriter::GetMaxDeflatedSize(int32_t uncompressedSize)
+	std::int64_t DeflateWriter::GetMaxDeflatedSize(std::int64_t uncompressedSize)
 	{
-		constexpr std::int32_t MinBlockSize = 5000;
-		std::int32_t max_blocks = std::max((uncompressedSize + MinBlockSize - 1) / MinBlockSize, 1);
-		return uncompressedSize + (5 * max_blocks) + 1 + 8;
+		constexpr std::int64_t MinBlockSize = 5000;
+		std::int64_t maxBlocks = std::max((uncompressedSize + MinBlockSize - 1) / MinBlockSize, std::int64_t(1));
+		return uncompressedSize + (5 * maxBlocks) + 1 + 8;
 	}
+
 }}
 
 #endif

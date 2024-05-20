@@ -255,8 +255,10 @@ namespace Jazz2::UI
 						}
 					}
 
+					Colorf color = (button.Action == PlayerActions::Run && player->_isRunPressed ? Colorf(0.6f, 0.6f, 0.6f) : Colorf::White);
+
 					DrawTexture(*button.Graphics->Base->TextureDiffuse, Vector2f(std::round(x - button.Width * 0.5f), std::round(y - button.Height * 0.5f)),
-						TouchButtonsLayer, Vector2f(button.Width, button.Height), Vector4f(1.0f, 0.0f, 1.0f, 0.0f), Colorf::White);
+						TouchButtonsLayer, Vector2f(button.Width, button.Height), Vector4f(1.0f, 0.0f, 1.0f, 0.0f), color);
 				}
 			}
 		}
@@ -872,21 +874,17 @@ namespace Jazz2::UI
 
 		GenericGraphicResource* base = res->Base;
 		Vector2f size = Vector2f(base->FrameDimensions.X * clipX, base->FrameDimensions.Y * clipY);
-		Vector2f adjustedPos = ApplyAlignment(align, Vector2f(x - (1.0f - clipX) * 0.5f * base->FrameDimensions.X,
-			y - (1.0f - clipY) * 0.5f * base->FrameDimensions.Y), size);
+		Vector2f adjustedPos = ApplyAlignment(align, Vector2f(x, y), base->FrameDimensions.As<float>());
 
 		Vector2i texSize = base->TextureDiffuse->size();
 		int32_t col = frame % base->FrameConfiguration.X;
 		int32_t row = frame / base->FrameConfiguration.X;
 		Vector4f texCoords = Vector4f(
-			float(base->FrameDimensions.X) / float(texSize.X),
+			std::floor(float(base->FrameDimensions.X) * clipX) / float(texSize.X),
 			float(base->FrameDimensions.X * col) / float(texSize.X),
-			float(base->FrameDimensions.Y) / float(texSize.Y),
+			std::floor(float(base->FrameDimensions.Y) * clipY) / float(texSize.Y),
 			float(base->FrameDimensions.Y * row) / float(texSize.Y)
 		);
-
-		texCoords.X *= clipX;
-		texCoords.Z *= clipY;
 
 		DrawTexture(*base->TextureDiffuse.get(), adjustedPos, z, size, texCoords, color);
 	}

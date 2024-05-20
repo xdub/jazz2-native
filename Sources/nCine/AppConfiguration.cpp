@@ -1,8 +1,9 @@
 #include "AppConfiguration.h"
 #include "../Common.h"
 
-#include <Utf8.h>
+#include <Containers/StringConcatenable.h>
 #include <IO/FileSystem.h>
+#include <Utf8.h>
 
 using namespace Death::Containers::Literals;
 using namespace Death::IO;
@@ -14,6 +15,7 @@ namespace nCine
 		frameTimerLogInterval(5.0f),
 		resolution(0, 0),
 		fullscreen(false),
+		//windowPosition(WindowPositionIgnore, WindowPositionIgnore),
 		resizable(true),
 		windowScaling(true),
 		frameLimit(0),
@@ -58,7 +60,7 @@ namespace nCine
 		argv_(nullptr)
 	{
 #if defined(DEATH_TARGET_ANDROID)
-		dataPath() = "asset::"_s;
+		dataPath() = "asset:/"_s;
 #elif defined(DEATH_TARGET_EMSCRIPTEN)
 		dataPath() = fs::PathSeparator;
 		// Always disable mapping on Emscripten as it is not supported by WebGL 2

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Stream.h"
+#include "../Containers/String.h"
 
 namespace Death { namespace IO {
 //###==##====#=====--==~--~=~- --- -- -  -  -   -
@@ -11,16 +12,23 @@ namespace Death { namespace IO {
 	class FileStream : public Stream
 	{
 	public:
-		explicit FileStream(const Containers::String& path, FileAccessMode mode);
+		FileStream(const Containers::StringView path, FileAccessMode mode);
+		FileStream(Containers::String&& path, FileAccessMode mode);
 		~FileStream() override;
 
+		FileStream(const FileStream&) = delete;
+		FileStream& operator=(const FileStream&) = delete;
+
 		void Close() override;
-		std::int32_t Seek(std::int32_t offset, SeekOrigin origin) override;
-		std::int32_t GetPosition() const override;
+		std::int64_t Seek(std::int64_t offset, SeekOrigin origin) override;
+		std::int64_t GetPosition() const override;
 		std::int32_t Read(void* buffer, std::int32_t bytes) override;
 		std::int32_t Write(const void* buffer, std::int32_t bytes) override;
 
-		bool IsValid() const override;
+		bool IsValid() override;
+
+		/** @brief Returns file path */
+		Containers::StringView GetPath() const;
 
 		void SetCloseOnDestruction(bool shouldCloseOnDestruction) override {
 			_shouldCloseOnDestruction = shouldCloseOnDestruction;
@@ -39,9 +47,7 @@ namespace Death { namespace IO {
 #endif
 
 	private:
-		FileStream(const FileStream&) = delete;
-		FileStream& operator=(const FileStream&) = delete;
-
+		Containers::String _path;
 #if defined(DEATH_USE_FILE_DESCRIPTORS)
 		std::int32_t _fileDescriptor;
 #else

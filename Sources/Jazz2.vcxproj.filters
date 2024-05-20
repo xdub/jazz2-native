@@ -223,6 +223,9 @@
     <Filter Include="Header Files\nCine\Base\pdqsort">
       <UniqueIdentifier>{a72d645b-36b7-485e-b3f6-5ec77cbd0ee2}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\backward">
+      <UniqueIdentifier>{78d8395e-85f4-4b64-a565-54001b8dde6e}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Resources.h">
@@ -1464,6 +1467,18 @@
     <ClInclude Include="nCine\Base\pdqsort\pdqsort.h">
       <Filter>Header Files\nCine\Base\pdqsort</Filter>
     </ClInclude>
+    <ClInclude Include="$(ExtensionLibraryPath)\Containers\StringConcatenable.h">
+      <Filter>Header Files\Shared\Containers</Filter>
+    </ClInclude>
+    <ClInclude Include="$(ExtensionLibraryPath)\Containers\StringStl.h">
+      <Filter>Header Files\Shared\Containers</Filter>
+    </ClInclude>
+    <ClInclude Include="backward\backward.h">
+      <Filter>Header Files\backward</Filter>
+    </ClInclude>
+    <ClInclude Include="$(ExtensionLibraryPath)\IO\PakFile.h">
+      <Filter>Header Files\Shared\IO</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Main.cpp">
@@ -2428,6 +2443,9 @@
     </ClCompile>
     <ClCompile Include="Jazz2\UI\Menu\FirstRunSection.cpp">
       <Filter>Source Files\Jazz2\UI\Menu</Filter>
+    </ClCompile>
+    <ClCompile Include="$(ExtensionLibraryPath)\IO\PakFile.cpp">
+      <Filter>Source Files\Shared\IO</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

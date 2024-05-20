@@ -10,6 +10,7 @@ extern "C"
 
 #if defined(DEATH_TARGET_WINDOWS) && !defined(CMAKE_BUILD)
 #	pragma comment(lib, "opengl32.lib")
+#	pragma comment(lib, "winmm.lib")
 #	if defined(_M_X64)
 #		if defined(WITH_GLEW)
 #			pragma comment(lib, "../Libs/Windows/x64/glew32.lib")
@@ -81,6 +82,15 @@ extern "C"
 
 #if defined(WITH_RENDERDOC)
 #	include "Graphics/RenderDocCapture.h"
+#endif
+
+#if defined(WITH_BACKWARD)
+#	if !defined(CMAKE_BUILD)
+#		include "../backward/backward.h"
+#	else
+#		include <backward.h>
+#	endif
+backward::SignalHandling sh;
 #endif
 
 using namespace Death::Containers::Literals;
@@ -441,6 +451,24 @@ namespace nCine
 				appEventHandler_->OnResizeWindow(width, height);
 			}
 		}
+	}
+
+	void Application::preInitCommon(std::unique_ptr<IAppEventHandler> appEventHandler)
+	{
+#if defined(WITH_BACKWARD)
+#	if defined(DEATH_TARGET_ANDROID)
+		// Try to save crash info to log file
+		sh.destination() = __logFile->GetHandle();
+#	elif defined(DEATH_TARGET_APPLE) || defined(DEATH_TARGET_EMSCRIPTEN) || defined(DEATH_TARGET_UNIX) || defined(DEATH_TARGET_WINDOWS)
+		if (__hasVirtualTerminal) {
+			sh.color_mode() = backward::ColorMode::always;
+		}
+#	endif
+#endif
+
+		appEventHandler_ = std::move(appEventHandler);
+		appEventHandler_->OnPreInit(appCfg_);
+		LOGI("IAppEventHandler::OnPreInit() invoked");
 	}
 
 	void Application::initCommon()

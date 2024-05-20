@@ -23,6 +23,8 @@ set(HEADERS
 	${NCINE_SOURCE_DIR}/Shared/Containers/SmallVector.h
 	${NCINE_SOURCE_DIR}/Shared/Containers/StaticArray.h
 	${NCINE_SOURCE_DIR}/Shared/Containers/String.h
+	${NCINE_SOURCE_DIR}/Shared/Containers/StringConcatenable.h
+	${NCINE_SOURCE_DIR}/Shared/Containers/StringStl.h
 	${NCINE_SOURCE_DIR}/Shared/Containers/StringStlView.h
 	${NCINE_SOURCE_DIR}/Shared/Containers/StringUtils.h
 	${NCINE_SOURCE_DIR}/Shared/Containers/StringView.h
@@ -33,6 +35,7 @@ set(HEADERS
 	${NCINE_SOURCE_DIR}/Shared/IO/FileSystem.h
 	${NCINE_SOURCE_DIR}/Shared/IO/HttpRequest.h
 	${NCINE_SOURCE_DIR}/Shared/IO/MemoryStream.h
+	${NCINE_SOURCE_DIR}/Shared/IO/PakFile.h
 	${NCINE_SOURCE_DIR}/Shared/IO/Stream.h
 	${NCINE_SOURCE_DIR}/Shared/Threading/Interlocked.h
 )

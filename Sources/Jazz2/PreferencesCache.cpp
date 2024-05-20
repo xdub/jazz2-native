@@ -3,6 +3,7 @@
 #include "LevelHandler.h"
 #include "UI/ControlScheme.h"
 
+#include <Containers/StringConcatenable.h>
 #include <Environment.h>
 #include <IO/DeflateStream.h>
 #include <IO/FileSystem.h>
@@ -29,6 +30,10 @@ namespace Jazz2
 	bool PreferencesCache::EnableReforgedGameplay = true;
 	bool PreferencesCache::EnableReforgedHUD = true;
 	bool PreferencesCache::EnableReforgedMainMenu = true;
+#if defined(DEATH_TARGET_ANDROID)
+	// Used to swap Android activity icons on exit/suspend
+	bool PreferencesCache::EnableReforgedMainMenuInitial = true;
+#endif
 	bool PreferencesCache::EnableLedgeClimb = true;
 	WeaponWheelStyle PreferencesCache::WeaponWheel = WeaponWheelStyle::Enabled;
 #if !defined(DEATH_TARGET_ANDROID) && !defined(DEATH_TARGET_IOS) && !defined(DEATH_TARGET_SWITCH) && !defined(DEATH_TARGET_WINDOWS_RT)
@@ -37,6 +42,8 @@ namespace Jazz2
 	bool PreferencesCache::EnableRgbLights = false;
 #endif
 	bool PreferencesCache::AllowUnsignedScripts = true;
+	bool PreferencesCache::ToggleRunAction = false;
+	GamepadType PreferencesCache::GamepadButtonLabels = GamepadType::Xbox;
 #if defined(DEATH_TARGET_ANDROID)
 	bool PreferencesCache::UseNativeBackButton = true;
 #else
@@ -79,7 +86,7 @@ namespace Jazz2
 		bool overrideConfigPath = false;
 
 #	if !defined(DEATH_TARGET_ANDROID) && !defined(DEATH_TARGET_IOS) && !defined(DEATH_TARGET_SWITCH)
-		for (int32_t i = 0; i < config.argc(); i++) {
+		for (std::int32_t i = 0; i < config.argc(); i++) {
 			auto arg = config.argv(i);
 			if (arg == "/config"_s) {
 				if (i + 1 < config.argc()) {
@@ -160,6 +167,7 @@ namespace Jazz2
 					WeaponWheel = ((boolOptions & BoolOptions::EnableWeaponWheel) == BoolOptions::EnableWeaponWheel ? WeaponWheelStyle::Enabled : WeaponWheelStyle::Disabled);
 					EnableRgbLights = ((boolOptions & BoolOptions::EnableRgbLights) == BoolOptions::EnableRgbLights);
 					AllowUnsignedScripts = ((boolOptions & BoolOptions::AllowUnsignedScripts) == BoolOptions::AllowUnsignedScripts);
+					ToggleRunAction = ((boolOptions & BoolOptions::ToggleRunAction) == BoolOptions::ToggleRunAction);
 					UseNativeBackButton = ((boolOptions & BoolOptions::UseNativeBackButton) == BoolOptions::UseNativeBackButton);
 					EnableDiscordIntegration = ((boolOptions & BoolOptions::EnableDiscordIntegration) == BoolOptions::EnableDiscordIntegration);
 					TutorialCompleted = ((boolOptions & BoolOptions::TutorialCompleted) == BoolOptions::TutorialCompleted);
@@ -169,6 +177,9 @@ namespace Jazz2
 						// These 2 new options needs to be enabled by default
 						EnableReforgedHUD = ((boolOptions & BoolOptions::EnableReforgedHUD) == BoolOptions::EnableReforgedHUD);
 						EnableReforgedMainMenu = ((boolOptions & BoolOptions::EnableReforgedMainMenu) == BoolOptions::EnableReforgedMainMenu);
+#if defined(DEATH_TARGET_ANDROID)
+						EnableReforgedMainMenuInitial = EnableReforgedMainMenu;
+#endif
 					}
 
 					if (WeaponWheel != WeaponWheelStyle::Disabled && (boolOptions & BoolOptions::ShowWeaponWheelAmmoCount) == BoolOptions::ShowWeaponWheelAmmoCount) {
@@ -195,6 +206,10 @@ namespace Jazz2
 					TouchRightPadding.X = std::round(uc.ReadValue<int8_t>() / (TouchPaddingMultiplier * INT8_MAX));
 					TouchRightPadding.Y = std::round(uc.ReadValue<int8_t>() / (TouchPaddingMultiplier * INT8_MAX));
 
+					if (version >= 5) {
+						GamepadButtonLabels = (GamepadType)uc.ReadValue<uint8_t>();
+					}
+
 					// Controls
 					if (version >= 4) {
 						auto mappings = UI::ControlScheme::GetMappings();
@@ -203,7 +218,7 @@ namespace Jazz2
 						std::uint8_t controlMappingCount = uc.ReadValue<std::uint8_t>();
 						for (std::uint32_t i = 0; i < playerCount; i++) {
 							for (std::uint32_t j = 0; j < controlMappingCount; j++) {
-								std:uint8_t targetCount = uc.ReadValue<std::uint8_t>();
+								std::uint8_t targetCount = uc.ReadValue<std::uint8_t>();
 								if (i < UI::ControlScheme::MaxSupportedPlayers && j < (std::uint32_t)PlayerActions::Count) {
 									auto& mapping = mappings[i * (std::uint32_t)PlayerActions::Count + j];
 									mapping.Targets.clear();
@@ -293,7 +308,7 @@ namespace Jazz2
 
 #	if !defined(DEATH_TARGET_ANDROID) && !defined(DEATH_TARGET_IOS) && !defined(DEATH_TARGET_SWITCH)
 		// Override some settings by command-line arguments
-		for (int32_t i = 0; i < config.argc(); i++) {
+		for (std::int32_t i = 0; i < config.argc(); i++) {
 			auto arg = config.argv(i);
 			if (arg == "/bypass-cache"_s) {
 				BypassCache = true;
@@ -368,6 +383,7 @@ namespace Jazz2
 		if (WeaponWheel == WeaponWheelStyle::EnabledWithAmmoCount) boolOptions |= BoolOptions::ShowWeaponWheelAmmoCount;
 		if (EnableRgbLights) boolOptions |= BoolOptions::EnableRgbLights;
 		if (AllowUnsignedScripts) boolOptions |= BoolOptions::AllowUnsignedScripts;
+		if (ToggleRunAction) boolOptions |= BoolOptions::ToggleRunAction;
 		if (UseNativeBackButton) boolOptions |= BoolOptions::UseNativeBackButton;
 		if (EnableDiscordIntegration) boolOptions |= BoolOptions::EnableDiscordIntegration;
 		if (TutorialCompleted) boolOptions |= BoolOptions::TutorialCompleted;
@@ -394,6 +410,8 @@ namespace Jazz2
 		co.WriteValue<int8_t>((int8_t)(TouchLeftPadding.Y * INT8_MAX * TouchPaddingMultiplier));
 		co.WriteValue<int8_t>((int8_t)(TouchRightPadding.X * INT8_MAX * TouchPaddingMultiplier));
 		co.WriteValue<int8_t>((int8_t)(TouchRightPadding.Y * INT8_MAX * TouchPaddingMultiplier));
+
+		co.WriteValue<uint8_t>((uint8_t)GamepadButtonLabels);
 
 		// Controls
 		auto mappings = UI::ControlScheme::GetMappings();
@@ -495,8 +513,8 @@ namespace Jazz2
 				if (language == "en"_s) {
 					break;
 				}
-				if (i18n.LoadFromFile(fs::CombinePath({ resolver.GetContentPath(), "Translations"_s, language + ".mo"_s })) ||
-					i18n.LoadFromFile(fs::CombinePath({ resolver.GetCachePath(), "Translations"_s, language + ".mo"_s }))) {
+				if (i18n.LoadFromFile(fs::CombinePath({ resolver.GetContentPath(), "Translations"_s, String(language + ".mo"_s) })) ||
+					i18n.LoadFromFile(fs::CombinePath({ resolver.GetCachePath(), "Translations"_s, String(language + ".mo"_s) }))) {
 					std::memcpy(PreferencesCache::Language, language.data(), language.size());
 					std::memset(PreferencesCache::Language + language.size(), 0, sizeof(PreferencesCache::Language) - language.size());
 					break;
@@ -508,8 +526,8 @@ namespace Jazz2
 				if (baseLanguage == "en"_s) {
 					break;
 				}
-				if (i18n.LoadFromFile(fs::CombinePath({ resolver.GetContentPath(), "Translations"_s, baseLanguage + ".mo"_s })) ||
-					i18n.LoadFromFile(fs::CombinePath({ resolver.GetCachePath(), "Translations"_s, baseLanguage + ".mo"_s }))) {
+				if (i18n.LoadFromFile(fs::CombinePath({ resolver.GetContentPath(), "Translations"_s, String(baseLanguage + ".mo"_s) })) ||
+					i18n.LoadFromFile(fs::CombinePath({ resolver.GetCachePath(), "Translations"_s, String(baseLanguage + ".mo"_s) }))) {
 					std::memcpy(PreferencesCache::Language, baseLanguage.data(), baseLanguage.size());
 					std::memset(PreferencesCache::Language + baseLanguage.size(), 0, sizeof(PreferencesCache::Language) - baseLanguage.size());
 					break;

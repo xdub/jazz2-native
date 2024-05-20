@@ -80,46 +80,77 @@ namespace Death { namespace IO {
 
 		DEFINE_PRIVATE_ENUM_OPERATORS(EnumerationOptions);
 
-		/** @brief The class that handles directory traversal */
+		/** @brief The class that handles directory traversal, should be used as iterator */
 		class Directory
 		{
 		public:
+			class Proxy
+			{
+				friend class Directory;
+
+			public:
+				Containers::StringView operator*() const & noexcept;
+
+			private:
+				explicit Proxy(const Containers::StringView path);
+
+				Containers::String _path;
+			};
+
+			// Iterator defines
+			using iterator_category = std::input_iterator_tag;
+			using difference_type = std::ptrdiff_t;
+			//using reference = const Containers::StringView&;
+			using value_type = Containers::StringView;
+
+			Directory() noexcept;
 			Directory(const Containers::StringView path, EnumerationOptions options = EnumerationOptions::None);
 			~Directory();
 
-			/** @brief Opens a directory for traversal */
-			bool Open(const Containers::StringView path, EnumerationOptions options = EnumerationOptions::None);
-			/** @brief Closes an opened directory */
-			void Close();
-			/** @brief Returns the name of the next file inside the directory or `nullptr` */
-			const char* GetNext();
+			Directory(const Directory& other);
+			Directory& operator=(const Directory& other);
+			Directory(Directory&& other) noexcept;
+			Directory& operator=(Directory&& other) noexcept;
+
+			Containers::StringView operator*() const & noexcept;
+			Directory& operator++();
+
+			Proxy operator++(int) {
+				Proxy p{**this};
+				++*this;
+				return p;
+			}
+
+			bool operator==(const Directory& other) const;
+			bool operator!=(const Directory& other) const;
+
+			Directory begin() noexcept {
+				return *this;
+			}
+
+			Directory end() noexcept {
+				return Directory();
+			}
 
 		private:
-			EnumerationOptions _options;
-
-			char _path[MaxPathLength];
-			char* _fileNamePart;
-#if defined(DEATH_TARGET_WINDOWS)
-			bool _firstFile;
-			void* _hFindFile;
-#else
-#	if defined(DEATH_TARGET_ANDROID)
-			AAssetDir* _assetDir;
-#	endif
-			DIR* _dirStream;
-#endif
+			class Impl;
+			std::shared_ptr<Impl> _impl;
 		};
 
 #if defined(DEATH_TARGET_WINDOWS) || defined(DEATH_TARGET_SWITCH)
-		// Windows is already case in-sensitive
+		// Windows is already case in-sensitive by default
 		DEATH_ALWAYS_INLINE static const Containers::StringView FindPathCaseInsensitive(const Containers::StringView path) {
+			return path;
+		}
+
+		DEATH_ALWAYS_INLINE static Containers::String FindPathCaseInsensitive(Containers::String&& path) {
 			return path;
 		}
 #else
 		static Containers::String FindPathCaseInsensitive(const Containers::StringView path);
 #endif
 
-		/** @brief Combines together two path components */
+		/** @brief Combines together specified path components */
 		static Containers::String CombinePath(const Containers::StringView first, const Containers::StringView second);
 		static Containers::String CombinePath(const Containers::ArrayView<const Containers::StringView> paths);
 		static Containers::String CombinePath(const std::initializer_list<Containers::StringView> paths);
@@ -143,6 +174,8 @@ namespace Death { namespace IO {
 
 		/** @brief Returns an absolute path from a relative one */
 		static Containers::String GetAbsolutePath(const Containers::StringView path);
+		/** @brief Returns true if the specified path is not empty and is absolute */
+		static bool IsAbsolutePath(const Containers::StringView path);
 
 		/** @brief Returns the path of executable */
 		static Containers::String GetExecutablePath();
@@ -187,6 +220,10 @@ namespace Death { namespace IO {
 		static bool IsHidden(const Containers::StringView path);
 		/** @brief Makes a file or directory hidden or not */
 		static bool SetHidden(const Containers::StringView path, bool hidden);
+		/** @brief Returns true if the file or directory is read-only */
+		static bool IsReadOnly(const Containers::StringView path);
+		/** @brief Makes a file or directory read-only or not */
+		static bool SetReadOnly(const Containers::StringView path, bool readonly);
 
 		/** @brief Creates a new directory */
 		static bool CreateDirectories(const Containers::StringView path);
@@ -196,6 +233,8 @@ namespace Death { namespace IO {
 		static bool RemoveFile(const Containers::StringView path);
 		/** @brief Renames or moves a file or a directory */
 		static bool Move(const Containers::StringView oldPath, const Containers::StringView newPath);
+		/** @brief Moves a file or a directory to trash */
+		static bool MoveToTrash(const Containers::StringView path);
 		/** @brief Copies a file */
 		static bool Copy(const Containers::StringView oldPath, const Containers::StringView newPath, bool overwrite = true);
 

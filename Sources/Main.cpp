@@ -14,6 +14,7 @@
 
 #include "nCine/IAppEventHandler.h"
 #include "nCine/tracy.h"
+#include "nCine/Base/Timer.h"
 #include "nCine/Graphics/BinaryShaderCache.h"
 #include "nCine/Graphics/RenderResources.h"
 #include "nCine/Input/IInputEventHandler.h"
@@ -58,10 +59,12 @@ using namespace Jazz2::Multiplayer;
 #	include <cstdlib> // for `__argc` and `__argv`
 #endif
 
+#include <Containers/StringConcatenable.h>
 #include <Cpu.h>
 #include <Environment.h>
 #include <IO/DeflateStream.h>
 #include <IO/FileSystem.h>
+#include <IO/PakFile.h>
 
 #if !defined(DEATH_DEBUG)
 #	include <IO/HttpRequest.h>
@@ -125,8 +128,8 @@ public:
 		return _flags;
 	}
 
-	const char* GetNewestVersion() const override {
-		return (_newestVersion[0] != '\0' ? _newestVersion : nullptr);
+	StringView GetNewestVersion() const override {
+		return _newestVersion;
 	}
 
 #if !defined(DEATH_TARGET_EMSCRIPTEN)
@@ -136,7 +139,7 @@ public:
 #endif
 
 private:
-	Flags _flags;
+	Flags _flags = Flags::None;
 	std::unique_ptr<IStateHandler> _currentHandler;
 	SmallVector<std::function<void()>> _pendingCallbacks;
 	char _newestVersion[20];
@@ -152,15 +155,39 @@ private:
 #endif
 	bool SetLevelHandler(const LevelInitialization& levelInit);
 	void RemoveResumableStateIfAny();
+#if defined(DEATH_TARGET_ANDROID)
+	void ApplyActivityIcon();
+#endif
 	static void WriteCacheDescriptor(const StringView path, std::uint64_t currentVersion, std::int64_t animsModified);
 	static void SaveEpisodeEnd(const LevelInitialization& levelInit);
 	static void SaveEpisodeContinue(const LevelInitialization& levelInit);
 	static bool TryParseAddressAndPort(const StringView input, String& address, std::uint16_t& port);
+	static void ExtractPakFile(const StringView pakFile, const StringView targetPath);
 };
 
 void GameEventHandler::OnPreInit(AppConfiguration& config)
 {
 	ZoneScopedC(0x888888);
+
+#if defined(DEATH_TARGET_APPLE) || defined(DEATH_TARGET_UNIX) || (defined(DEATH_TARGET_WINDOWS) && !defined(DEATH_TARGET_WINDOWS_RT))
+	// Allow `/extract-pak` only on PC platforms
+	if (config.argc() >= 3) {
+		for (std::int32_t i = 0; i < config.argc() - 2; i++) {
+			auto arg = config.argv(i);
+			if (arg == "/extract-pak"_s) {
+				auto pakFile = config.argv(i + 1);
+				if (fs::FileExists(pakFile)) {
+					ExtractPakFile(pakFile, config.argv(i + 2));
+				} else {
+					LOGE("\"%s\" not found", pakFile.data());
+				}
+
+				theApplication().quit();
+				return;
+			}
+		}
+	}
+#endif
 
 	PreferencesCache::Initialize(config);
 
@@ -193,7 +220,7 @@ void GameEventHandler::OnInit()
 	//theApplication().debugOverlaySettings().showInterface = true;
 #endif
 
-	_flags = Flags::None;
+	_flags |= Flags::IsInitialized;
 
 	std::memset(_newestVersion, 0, sizeof(_newestVersion));
 
@@ -267,6 +294,8 @@ void GameEventHandler::OnInit()
 		Thread::SetCurrentName("Parallel initialization");
 
 		auto handler = static_cast<GameEventHandler*>(arg);
+		ASSERT(handler != nullptr);
+
 		handler->InitializeBase();
 #	if defined(DEATH_TARGET_EMSCRIPTEN)
 		// All required files are already included in Emscripten version, so nothing is verified
@@ -417,12 +446,18 @@ void GameEventHandler::OnShutdown()
 {
 	ZoneScopedC(0x888888);
 
+#if defined(DEATH_TARGET_ANDROID)
+	ApplyActivityIcon();
+#endif
+
 	_currentHandler = nullptr;
 #if defined(WITH_MULTIPLAYER)
 	_networkManager = nullptr;
 #endif
 
-	ContentResolver::Get().Release();
+	if ((_flags & Flags::IsInitialized) == Flags::IsInitialized) {
+		ContentResolver::Get().Release();
+	}
 }
 
 void GameEventHandler::OnSuspend()
@@ -432,6 +467,10 @@ void GameEventHandler::OnSuspend()
 		PreferencesCache::ResumeOnStart = true;
 		PreferencesCache::Save();
 	}
+#endif
+
+#if defined(DEATH_TARGET_ANDROID)
+	ApplyActivityIcon();
 #endif
 }
 
@@ -602,6 +641,8 @@ void GameEventHandler::ResumeSavedState()
 	InvokeAsync([this]() {
 		ZoneScopedNC("GameEventHandler::ResumeSavedState", 0x888888);
 
+		LOGI("Resuming saved state...");
+
 		auto configDir = PreferencesCache::GetDirectory();
 		auto s = fs::Open(fs::CombinePath(configDir, StateFileName), FileAccessMode::Read);
 		if (s->IsValid()) {
@@ -663,6 +704,28 @@ void GameEventHandler::RemoveResumableStateIfAny()
 		fs::RemoveFile(path);
 	}
 }
+
+#if defined(DEATH_TARGET_ANDROID)
+void GameEventHandler::ApplyActivityIcon()
+{
+	if (PreferencesCache::EnableReforgedMainMenuInitial == PreferencesCache::EnableReforgedMainMenu) {
+		return;
+	}
+
+	PreferencesCache::EnableReforgedMainMenuInitial = PreferencesCache::EnableReforgedMainMenu;
+
+	// These calls will kill the app in a second, so it should be called only on exit
+	if (PreferencesCache::EnableReforgedMainMenu) {
+		LOGI("Changed activity icon to \"Reforged\"");
+		AndroidJniWrap_Activity::setActivityEnabled(".MainActivityReforged"_s, true);
+		AndroidJniWrap_Activity::setActivityEnabled(".MainActivityLegacy"_s, false);
+	} else {
+		LOGI("Changed activity icon to \"Legacy\"");
+		AndroidJniWrap_Activity::setActivityEnabled(".MainActivityLegacy"_s, true);
+		AndroidJniWrap_Activity::setActivityEnabled(".MainActivityReforged"_s, false);
+	}
+}
+#endif
 
 #if defined(WITH_MULTIPLAYER)
 bool GameEventHandler::ConnectToServer(const StringView address, std::uint16_t port)
@@ -839,8 +902,8 @@ void GameEventHandler::InitializeBase()
 	if (PreferencesCache::Language[0] != '\0') {
 		auto& resolver = ContentResolver::Get();
 		auto& i18n = I18n::Get();
-		if (!i18n.LoadFromFile(fs::CombinePath({ resolver.GetContentPath(), "Translations"_s, StringView(PreferencesCache::Language) + ".mo"_s }))) {
-			i18n.LoadFromFile(fs::CombinePath({ resolver.GetCachePath(), "Translations"_s, StringView(PreferencesCache::Language) + ".mo"_s }));
+		if (!i18n.LoadFromFile(fs::CombinePath({ resolver.GetContentPath(), "Translations"_s, String(PreferencesCache::Language + ".mo"_s) }))) {
+			i18n.LoadFromFile(fs::CombinePath({ resolver.GetCachePath(), "Translations"_s, String(PreferencesCache::Language + ".mo"_s) }));
 		}
 	}
 }
@@ -868,7 +931,7 @@ void GameEventHandler::RefreshCache()
 	constexpr std::uint64_t currentVersion = parseVersion({ NCINE_VERSION, countof(NCINE_VERSION) - 1 });
 
 	auto& resolver = ContentResolver::Get();
-	auto cachePath = fs::CombinePath({ resolver.GetCachePath(), "Animations"_s, "cache.index"_s });
+	auto cachePath = fs::CombinePath(resolver.GetCachePath(), "Source.idx"_s);
 
 	// Check cache state
 	{
@@ -945,18 +1008,37 @@ RecreateCache:
 		}
 	}
 
+	// Delete cache from previous versions
 	String animationsPath = fs::CombinePath(resolver.GetCachePath(), "Animations"_s);
 	fs::RemoveDirectoryRecursive(animationsPath);
-	Compatibility::JJ2Version version = Compatibility::JJ2Anims::Convert(animsPath, animationsPath);
-	if (version == Compatibility::JJ2Version::Unknown) {
-		LOGE("Provided Jazz Jackrabbit 2 version is not supported. Make sure supported Jazz Jackrabbit 2 version is present in \"%s\" directory.", resolver.GetSourcePath().data());
-		_flags |= Flags::IsVerified;
-		return;
-	}
 
-	Compatibility::JJ2Data data;
-	if (data.Open(fs::CombinePath(resolver.GetSourcePath(), "Data.j2d"_s), false)) {
-		data.Convert(resolver.GetCachePath(), version);
+	// Create .pak file
+	{
+		std::int32_t t = 1;
+		std::unique_ptr<PakWriter> pakWriter = std::make_unique<PakWriter>(fs::CombinePath(resolver.GetCachePath(), "Source.pak"_s));
+		while (!pakWriter->IsValid()) {
+			if (t > 5) {
+				LOGE("Cannot open \"…%sCache%sSource.pak\" file for writing! Please check if this file is accessible and try again.", fs::PathSeparator, fs::PathSeparator);
+				_flags |= Flags::IsVerified;
+				return;
+			}
+
+			pakWriter = nullptr;
+			Timer::sleep(t * 100);
+			pakWriter = std::make_unique<PakWriter>(fs::CombinePath(resolver.GetCachePath(), "Source.pak"_s));
+		}
+
+		Compatibility::JJ2Version version = Compatibility::JJ2Anims::Convert(animsPath, *pakWriter);
+		if (version == Compatibility::JJ2Version::Unknown) {
+			LOGE("Provided Jazz Jackrabbit 2 version is not supported. Make sure supported Jazz Jackrabbit 2 version is present in \"%s\" directory.", resolver.GetSourcePath().data());
+			_flags |= Flags::IsVerified;
+			return;
+		}
+
+		Compatibility::JJ2Data data;
+		if (data.Open(fs::CombinePath(resolver.GetSourcePath(), "Data.j2d"_s), false)) {
+			data.Convert(*pakWriter, version);
+		}
 	}
 
 	RefreshCacheLevels();
@@ -967,6 +1049,8 @@ RecreateCache:
 
 	std::uint32_t filesRemoved = RenderResources::binaryShaderCache().prune();
 	LOGI("Pruning binary shader cache (removed %u files)...", filesRemoved);
+
+	resolver.RemountPaks();
 
 	_flags |= Flags::IsVerified | Flags::IsPlayable;
 }
@@ -1127,13 +1211,7 @@ void GameEventHandler::RefreshCacheLevels()
 
 	HashMap<String, bool> usedTilesets;
 
-	fs::Directory dir(fs::FindPathCaseInsensitive(resolver.GetSourcePath()), fs::EnumerationOptions::SkipDirectories);
-	while (true) {
-		StringView item = dir.GetNext();
-		if (item == nullptr) {
-			break;
-		}
-
+	for (auto item : fs::Directory(fs::FindPathCaseInsensitive(resolver.GetSourcePath()), fs::EnumerationOptions::SkipDirectories)) {
 		auto extension = fs::GetExtension(item);
 		if (extension == "j2e"_s || extension == "j2pe"_s) {
 			// Episode
@@ -1143,7 +1221,7 @@ void GameEventHandler::RefreshCacheLevels()
 					continue;
 				}
 
-				String fullPath = fs::CombinePath(episodesPath, (episode.Name == "xmas98"_s ? "xmas99"_s : StringView(episode.Name)) + ".j2e"_s);
+				String fullPath = fs::CombinePath(episodesPath, String((episode.Name == "xmas98"_s ? "xmas99"_s : StringView(episode.Name)) + ".j2e"_s));
 				episode.Convert(fullPath, LevelTokenConversion, EpisodeNameConversion, EpisodePrevNext);
 			}
 		} else if (extension == "j2l"_s) {
@@ -1156,12 +1234,12 @@ void GameEventHandler::RefreshCacheLevels()
 					auto it = knownLevels.find(level.LevelName);
 					if (it != knownLevels.end()) {
 						if (it->second.second().empty()) {
-							fullPath = fs::CombinePath({ episodesPath, it->second.first(), level.LevelName + ".j2l"_s });
+							fullPath = fs::CombinePath({ episodesPath, it->second.first(), String(level.LevelName + ".j2l"_s) });
 						} else {
-							fullPath = fs::CombinePath({ episodesPath, it->second.first(), it->second.second() + "_"_s + level.LevelName + ".j2l"_s });
+							fullPath = fs::CombinePath({ episodesPath, it->second.first(), String(it->second.second() + '_' + level.LevelName + ".j2l"_s) });
 						}
 					} else {
-						fullPath = fs::CombinePath({ episodesPath, "unknown"_s, level.LevelName + ".j2l"_s });
+						fullPath = fs::CombinePath({ episodesPath, "unknown"_s, String(level.LevelName + ".j2l"_s) });
 					}
 
 					fs::CreateDirectories(fs::GetDirectoryName(fullPath));
@@ -1178,7 +1256,7 @@ void GameEventHandler::RefreshCacheLevels()
 					auto adjustedPath = fs::FindPathCaseInsensitive(scriptPath);
 					if (fs::IsReadableFile(adjustedPath)) {
 						foundDot = fullPath.findLastOr('.', fullPath.end());
-						fs::Copy(adjustedPath, fullPath.prefix(foundDot.begin()) + ".j2as"_s);
+						fs::Copy(adjustedPath, String(fullPath.prefix(foundDot.begin()) + ".j2as"_s));
 					}
 				}
 			}
@@ -1203,12 +1281,12 @@ void GameEventHandler::RefreshCacheLevels()
 	fs::CreateDirectories(tilesetsPath);
 
 	for (auto& pair : usedTilesets) {
-		String tilesetPath = fs::CombinePath(resolver.GetSourcePath(), pair.first + ".j2t"_s);
+		String tilesetPath = fs::CombinePath(resolver.GetSourcePath(), String(pair.first + ".j2t"_s));
 		auto adjustedPath = fs::FindPathCaseInsensitive(tilesetPath);
 		if (fs::IsReadableFile(adjustedPath)) {
 			Compatibility::JJ2Tileset tileset;
 			if (tileset.Open(adjustedPath, false)) {
-				tileset.Convert(fs::CombinePath({ tilesetsPath, pair.first + ".j2t"_s }));
+				tileset.Convert(fs::CombinePath({ tilesetsPath, String(pair.first + ".j2t"_s) }));
 			}
 		}
 	}
@@ -1540,6 +1618,44 @@ bool GameEventHandler::TryParseAddressAndPort(const StringView input, String& ad
 	return true;
 }
 
+void GameEventHandler::ExtractPakFile(const StringView pakFile, const StringView targetPath)
+{
+	PakFile pak(pakFile);
+	if (!pak.IsValid()) {
+		LOGE("Invalid .pak file specified");
+		return;
+	}
+
+	LOGI("Extracting files from \"%s\" to \"%s\"...", pakFile.data(), targetPath.data());
+
+	SmallVector<String> queue;
+	queue.emplace_back();	// Root
+
+	std::int32_t successCount = 0, errorCount = 0;
+	for (std::size_t i = 0; i < queue.size(); i++) {
+		for (auto childItem : PakFile::Directory(pak, queue[i])) {
+			auto sourceFile = pak.OpenFile(childItem);
+			if (sourceFile != nullptr) {
+				auto targetFilePath = fs::CombinePath(targetPath, childItem);
+				fs::CreateDirectories(fs::GetDirectoryName(targetFilePath));
+				auto targetFile = fs::Open(targetFilePath, FileAccessMode::Write);
+				if (targetFile->IsValid()) {
+					sourceFile->CopyTo(*targetFile);
+					successCount++;
+				} else {
+					LOGE("Failed to create target file \"%s\"", targetFilePath.data());
+					errorCount++;
+				}
+			} else {
+				// Probably directory
+				queue.emplace_back(childItem);
+			}
+		}
+	}
+
+	LOGI("%i files extracted successfully, %i files failed with error", successCount, errorCount);
+}
+
 #if defined(DEATH_TARGET_ANDROID)
 std::unique_ptr<IAppEventHandler> CreateAppEventHandler()
 {
@@ -1584,7 +1700,7 @@ int PrintVersion(bool logoVisible)
 			padding[j] = ' ';
 		}
 		padding[paddingLength] = '\0';
-		fprintf(stdout, "%s%s%s%s%s\n", padding, Reset, Faint, Copyright, Reset);
+		fprintf(stdout, "%s%s%s%s%s\n\n", padding, Reset, Faint, Copyright, Reset);
 	} else {
 		fputs(NCINE_APP_NAME " " NCINE_VERSION "\n", stdout);
 	}

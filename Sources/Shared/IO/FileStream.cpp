@@ -10,31 +10,40 @@
 #		include <fcntl.h>
 #	endif
 #else
+#	include <cerrno>
 #	include <sys/stat.h>	// For open()
 #	include <fcntl.h>		// For open()
 #	include <unistd.h>		// For close()
 #endif
 
+// `_nolock` functions are not supported by VC-LTL, `_unlocked` functions are not supported on Android and Apple
+#if (defined(DEATH_TARGET_WINDOWS) && !defined(_Build_By_LTL)) || (!defined(DEATH_TARGET_WINDOWS) && !defined(DEATH_TARGET_ANDROID) && !defined(DEATH_TARGET_APPLE))
+#	define DEATH_USE_NOLOCK_IN_FILE
+#endif
+
 namespace Death { namespace IO {
 //###==##====#=====--==~--~=~- --- -- -  -  -   -
 
-	FileStream::FileStream(const Containers::String& path, FileAccessMode mode)
-		: _shouldCloseOnDestruction(true),
+	FileStream::FileStream(const Containers::StringView path, FileAccessMode mode)
+		: FileStream(Containers::String{path}, mode)
+	{
+	}
+
+	FileStream::FileStream(Containers::String&& path, FileAccessMode mode)
+		: _shouldCloseOnDestruction(true), _path(std::move(path)),
 #if defined(DEATH_USE_FILE_DESCRIPTORS)
-			_fileDescriptor(-1)
+		_fileDescriptor(-1)
 #else
-			_handle(nullptr)
+		_handle(nullptr)
 #endif
 	{
-		_type = Type::File;
-		_path = path;
 		Open(mode);
 	}
 
 	FileStream::~FileStream()
 	{
 		if (_shouldCloseOnDestruction) {
-			Close();
+			FileStream::Close();
 		}
 	}
 
@@ -63,31 +72,57 @@ namespace Death { namespace IO {
 #endif
 	}
 
-	std::int32_t FileStream::Seek(std::int32_t offset, SeekOrigin origin)
+	std::int64_t FileStream::Seek(std::int64_t offset, SeekOrigin origin)
 	{
-		std::int32_t seekValue = -1;
+		std::int64_t newPos = ErrorInvalidStream;
 #if defined(DEATH_USE_FILE_DESCRIPTORS)
 		if (_fileDescriptor >= 0) {
-			seekValue = ::lseek(_fileDescriptor, offset, static_cast<std::int32_t>(origin));
+			newPos = ::lseek(_fileDescriptor, offset, static_cast<std::int32_t>(origin));
 		}
 #else
 		if (_handle != nullptr) {
-			seekValue = ::fseek(_handle, offset, static_cast<std::int32_t>(origin));
+			// ::fseek return 0 on success
+#	if defined(DEATH_TARGET_WINDOWS)
+#		if defined(DEATH_USE_NOLOCK_IN_FILE)
+			if (::_fseeki64_nolock(_handle, offset, static_cast<std::int32_t>(origin)) == 0) {
+				newPos = ::_ftelli64_nolock(_handle);
+			}
+#		else
+			if (::_fseeki64(_handle, offset, static_cast<std::int32_t>(origin)) == 0) {
+				newPos = ::_ftelli64(_handle);
+			}
+#		endif
+#	else
+			if (::fseeko(_handle, offset, static_cast<std::int32_t>(origin)) == 0) {
+				newPos = ::ftello(_handle);
+			}
+#	endif
+			else {
+				newPos = ErrorInvalidParameter;
+			}
 		}
 #endif
-		return seekValue;
+		return newPos;
 	}
 
-	std::int32_t FileStream::GetPosition() const
+	std::int64_t FileStream::GetPosition() const
 	{
-		std::int32_t pos = -1;
+		std::int64_t pos = ErrorInvalidStream;
 #if defined(DEATH_USE_FILE_DESCRIPTORS)
 		if (_fileDescriptor >= 0) {
 			pos = ::lseek(_fileDescriptor, 0L, SEEK_CUR);
 		}
 #else
 		if (_handle != nullptr) {
-			pos = ::ftell(_handle);
+#	if defined(DEATH_TARGET_WINDOWS)
+#		if defined(DEATH_USE_NOLOCK_IN_FILE)
+			pos = ::_ftelli64_nolock(_handle);
+#		else
+			pos = ::_ftelli64(_handle);
+#		endif
+#	else
+			pos = ::ftello(_handle);
+#	endif
 		}
 #endif
 		return pos;
@@ -104,7 +139,17 @@ namespace Death { namespace IO {
 		}
 #else
 		if (_handle != nullptr) {
+#	if defined(DEATH_TARGET_WINDOWS)
+#		if defined(DEATH_USE_NOLOCK_IN_FILE)
+			bytesRead = static_cast<std::int32_t>(::_fread_nolock(buffer, 1, bytes, _handle));
+#		else
 			bytesRead = static_cast<std::int32_t>(::fread(buffer, 1, bytes, _handle));
+#		endif
+#	elif defined(DEATH_USE_NOLOCK_IN_FILE)
+			bytesRead = static_cast<std::int32_t>(::fread_unlocked(buffer, 1, bytes, _handle));
+#	else
+			bytesRead = static_cast<std::int32_t>(::fread(buffer, 1, bytes, _handle));
+#	endif
 		}
 #endif
 		return bytesRead;
@@ -121,13 +166,23 @@ namespace Death { namespace IO {
 		}
 #else
 		if (_handle != nullptr) {
+#	if defined(DEATH_TARGET_WINDOWS)
+#		if defined(DEATH_USE_NOLOCK_IN_FILE)
+			bytesWritten = static_cast<std::int32_t>(::_fwrite_nolock(buffer, 1, bytes, _handle));
+#		else
 			bytesWritten = static_cast<std::int32_t>(::fwrite(buffer, 1, bytes, _handle));
+#		endif
+#	elif defined(DEATH_USE_NOLOCK_IN_FILE)
+			bytesWritten = static_cast<std::int32_t>(::fwrite_unlocked(buffer, 1, bytes, _handle));
+#	else
+			bytesWritten = static_cast<std::int32_t>(::fwrite(buffer, 1, bytes, _handle));
+#	endif
 		}
 #endif
 		return bytesWritten;
 	}
 
-	bool FileStream::IsValid() const
+	bool FileStream::IsValid()
 	{
 #if defined(DEATH_USE_FILE_DESCRIPTORS)
 		return (_fileDescriptor >= 0);
@@ -136,11 +191,16 @@ namespace Death { namespace IO {
 #endif
 	}
 
+	Containers::StringView FileStream::GetPath() const
+	{
+		return _path;
+	}
+
 	void FileStream::Open(FileAccessMode mode)
 	{
 #if defined(DEATH_USE_FILE_DESCRIPTORS)
 		std::int32_t openFlag;
-		switch (mode) {
+		switch (mode & ~FileAccessMode::Exclusive) {
 			case FileAccessMode::Read:
 				openFlag = O_RDONLY;
 				break;
@@ -161,45 +221,49 @@ namespace Death { namespace IO {
 			return;
 		}
 
-		switch (mode) {
+		switch (mode & ~FileAccessMode::Exclusive) {
 			default: LOGI("File \"%s\" opened", _path.data()); break;
 			case FileAccessMode::Write: LOGI("File \"%s\" opened for write", _path.data()); break;
 			case FileAccessMode::Read | FileAccessMode::Write: LOGI("File \"%s\" opened for read+write", _path.data()); break;
 		}
 
-		// Calculating file size
-		_size = ::lseek(_fileDescriptor, 0L, SEEK_END);
-		::lseek(_fileDescriptor, 0L, SEEK_SET);
+		// Try to get file size
+		_size = ::lseek(_fileDescriptor, 0, SEEK_END);
+		::lseek(_fileDescriptor, 0, SEEK_SET);
 #else
 #	if defined(DEATH_TARGET_WINDOWS_RT)
 		DWORD desireAccess, creationDisposition;
 		std::int32_t openFlag;
 		const char* modeInternal;
-		switch (mode) {
+		DWORD shareMode;
+		switch (mode & ~FileAccessMode::Exclusive) {
 			case FileAccessMode::Read:
 				desireAccess = GENERIC_READ;
 				creationDisposition = OPEN_EXISTING;
 				openFlag = _O_RDONLY | _O_BINARY;
 				modeInternal = "rb";
+				shareMode = ((mode & FileAccessMode::Exclusive) == FileAccessMode::Exclusive ? 0 : FILE_SHARE_READ | FILE_SHARE_WRITE);
 				break;
 			case FileAccessMode::Write:
 				desireAccess = GENERIC_WRITE;
 				creationDisposition = CREATE_ALWAYS;
 				openFlag = _O_WRONLY | _O_BINARY;
 				modeInternal = "wb";
+				shareMode = ((mode & FileAccessMode::Exclusive) == FileAccessMode::Exclusive ? 0 : FILE_SHARE_READ);
 				break;
 			case FileAccessMode::Read | FileAccessMode::Write:
 				desireAccess = GENERIC_READ | GENERIC_WRITE;
 				creationDisposition = OPEN_ALWAYS;
 				openFlag = _O_RDWR | _O_BINARY;
 				modeInternal = "r+b";
+				shareMode = ((mode & FileAccessMode::Exclusive) == FileAccessMode::Exclusive ? 0 : FILE_SHARE_READ);
 				break;
 			default:
 				LOGE("Cannot open file \"%s\" - wrong open mode", _path.data());
 				return;
 		}
 
-		HANDLE hFile = ::CreateFile2FromAppW(Utf8::ToUtf16(_path), desireAccess, FILE_SHARE_READ, creationDisposition, nullptr);
+		HANDLE hFile = ::CreateFile2FromAppW(Utf8::ToUtf16(_path), desireAccess, shareMode, creationDisposition, nullptr);
 		if (hFile == nullptr || hFile == INVALID_HANDLE_VALUE) {
 			DWORD error = ::GetLastError();
 			LOGE("Cannot open file \"%s\" - failed with error 0x%08X", _path.data(), error);
@@ -215,10 +279,10 @@ namespace Death { namespace IO {
 #	elif defined(DEATH_TARGET_WINDOWS) && !defined(DEATH_TARGET_MINGW)
 		const wchar_t* modeInternal;
 		std::int32_t shareMode;
-		switch (mode) {
-			case FileAccessMode::Read: modeInternal = L"rb"; shareMode = _SH_DENYNO; break;
-			case FileAccessMode::Write: modeInternal = L"wb"; shareMode = _SH_DENYWR; break;
-			case FileAccessMode::Read | FileAccessMode::Write: modeInternal = L"r+b"; shareMode = _SH_DENYWR; break;
+		switch (mode & ~FileAccessMode::Exclusive) {
+			case FileAccessMode::Read: modeInternal = L"rb"; shareMode = ((mode & FileAccessMode::Exclusive) == FileAccessMode::Exclusive ? _SH_DENYRW : _SH_DENYNO); break;
+			case FileAccessMode::Write: modeInternal = L"wb"; shareMode = ((mode & FileAccessMode::Exclusive) == FileAccessMode::Exclusive ? _SH_DENYRW : _SH_DENYWR); break;
+			case FileAccessMode::Read | FileAccessMode::Write: modeInternal = L"r+b"; shareMode = ((mode & FileAccessMode::Exclusive) == FileAccessMode::Exclusive ? _SH_DENYRW : _SH_DENYWR); break;
 			default:
 				LOGE("Cannot open file \"%s\" - wrong open mode", _path.data());
 				return;
@@ -232,7 +296,7 @@ namespace Death { namespace IO {
 		}
 #	else
 		const char* modeInternal;
-		switch (mode) {
+		switch (mode & ~FileAccessMode::Exclusive) {
 			case FileAccessMode::Read: modeInternal = "rb"; break;
 			case FileAccessMode::Write: modeInternal = "wb"; break;
 			case FileAccessMode::Read | FileAccessMode::Write: modeInternal = "r+b"; break;
@@ -248,16 +312,29 @@ namespace Death { namespace IO {
 		}
 #	endif
 
-		switch (mode) {
+		switch (mode & ~FileAccessMode::Exclusive) {
 			default: LOGI("File \"%s\" opened", _path.data()); break;
 			case FileAccessMode::Write: LOGI("File \"%s\" opened for write", _path.data()); break;
 			case FileAccessMode::Read | FileAccessMode::Write: LOGI("File \"%s\" opened for read+write", _path.data()); break;
 		}
 
-		// Calculating file size
-		::fseek(_handle, 0L, SEEK_END);
-		_size = static_cast<std::int32_t>(::ftell(_handle));
-		::fseek(_handle, 0L, SEEK_SET);
+		// Try to get file size
+#	if defined(DEATH_TARGET_WINDOWS)
+#		if defined(DEATH_USE_NOLOCK_IN_FILE)
+		::_fseeki64_nolock(_handle, 0, SEEK_END);
+		_size = ::_ftelli64_nolock(_handle);
+		::_fseeki64_nolock(_handle, 0, SEEK_SET);
+#		else
+		::_fseeki64(_handle, 0, SEEK_END);
+		_size = ::_ftelli64(_handle);
+		::_fseeki64(_handle, 0, SEEK_SET);
+#		endif
+#	else
+		::fseeko(_handle, 0, SEEK_END);
+		_size = ::ftello(_handle);
+		::fseeko(_handle, 0, SEEK_SET);
+#	endif
 #endif
 	}
+
 }}

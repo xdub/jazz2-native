@@ -6,6 +6,7 @@
 #include "../Environment.h"
 #include "../Utf8.h"
 #include "../Containers/GrowableArray.h"
+#include "../Containers/StringConcatenable.h"
 
 #if defined(DEATH_TARGET_WINDOWS)
 #	include <fileapi.h>
@@ -310,7 +311,7 @@ namespace Death { namespace IO {
 #	if defined(DEATH_TARGET_UNIX)
 		static bool RedirectFileDescriptorToNull(std::int32_t fd)
 		{
-			if (fd == -1) {
+			if (fd < 0) {
 				return false;
 			}
 
@@ -386,158 +387,162 @@ namespace Death { namespace IO {
 
 	String FileSystem::_savePath;
 
-	FileSystem::Directory::Directory(const StringView path, EnumerationOptions options)
-		: _fileNamePart(nullptr)
+	class FileSystem::Directory::Impl
+	{
+		friend class Directory;
+
+	public:
+		Impl(const StringView path, EnumerationOptions options)
+			: _fileNamePart(nullptr)
 #if defined(DEATH_TARGET_WINDOWS)
-			, _firstFile(true), _hFindFile(NULL)
+				, _hFindFile(NULL)
 #else
 #	if defined(DEATH_TARGET_ANDROID)
-			, _assetDir(nullptr)
+				, _assetDir(nullptr)
 #	endif
-			, _dirStream(nullptr)
+				, _dirStream(nullptr)
 #endif
-	{
-		Open(path, options);
-	}
+		{
+			Open(path, options);
+		}
 
-	FileSystem::Directory::~Directory()
-	{
-		Close();
-	}
+		~Impl()
+		{
+			Close();
+		}
 
-	bool FileSystem::Directory::Open(const StringView path, EnumerationOptions options)
-	{
-		Close();
+		Impl(const Impl&) = delete;
+		Impl& operator=(const Impl&) = delete;
 
-		_options = options;
+		bool Open(const StringView path, EnumerationOptions options)
+		{
+			Close();
+
+			_options = options;
+			_path[0] = '\0';
 #if defined(DEATH_TARGET_WINDOWS)
-		_path[0] = '\0';
-		if (!path.empty() && DirectoryExists(path)) {
-			_firstFile = true;
-
-			// Prepare full path to found files
-			{
-				String absPath = GetAbsolutePath(path);
-				std::size_t pathLength = absPath.size();
-				std::memcpy(_path, absPath.data(), pathLength);
-				if (_path[pathLength - 1] == '/' || _path[pathLength - 1] == '\\') {
-					_path[pathLength - 1] = '\\';
-					_path[pathLength] = '\0';
-					_fileNamePart = _path + pathLength;
-				} else {
-					_path[pathLength] = '\\';
-					_path[pathLength + 1] = '\0';
-					_fileNamePart = _path + pathLength + 1;
-				}
-			}
-
-			Array<wchar_t> buffer = Utf8::ToUtf16(_path, static_cast<std::int32_t>(_fileNamePart - _path));
-			if (buffer.size() + 2 <= MaxPathLength) {
-				auto bufferExtended = Array<wchar_t>(NoInit, buffer.size() + 2);
-				std::memcpy(bufferExtended.data(), buffer.data(), buffer.size() * sizeof(wchar_t));
-
-				// Adding a wildcard to list all files in the directory
-				bufferExtended[buffer.size()] = L'*';
-				bufferExtended[buffer.size() + 1] = L'\0';
-
-				WIN32_FIND_DATA data;
-#	if defined(DEATH_TARGET_WINDOWS_RT)
-				_hFindFile = ::FindFirstFileExFromAppW(bufferExtended, FindExInfoBasic, &data, FindExSearchNameMatch, nullptr, 0);
-#	else
-				_hFindFile = ::FindFirstFileExW(bufferExtended, Environment::IsWindows7() ? FindExInfoBasic : FindExInfoStandard, &data, FindExSearchNameMatch, nullptr, 0);
-#	endif
-				if (_hFindFile != NULL && _hFindFile != INVALID_HANDLE_VALUE) {
-					if ((data.cFileName[0] == L'.' && (data.cFileName[1] == L'\0' || (data.cFileName[1] == L'.' && data.cFileName[2] == L'\0'))) ||
-						((_options & EnumerationOptions::SkipDirectories) == EnumerationOptions::SkipDirectories && (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == FILE_ATTRIBUTE_DIRECTORY) ||
-						((_options & EnumerationOptions::SkipFiles) == EnumerationOptions::SkipFiles && (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != FILE_ATTRIBUTE_DIRECTORY)) {
-						_firstFile = false;
+			if (!path.empty() && DirectoryExists(path)) {
+				// Prepare full path to found files
+				{
+					String absPath = GetAbsolutePath(path);
+					std::size_t pathLength = absPath.size();
+					std::memcpy(_path, absPath.data(), pathLength);
+					if (_path[pathLength - 1] == '/' || _path[pathLength - 1] == '\\') {
+						_path[pathLength - 1] = '\\';
+						_path[pathLength] = '\0';
+						_fileNamePart = _path + pathLength;
 					} else {
-						strncpy_s(_fileNamePart, sizeof(_path) - (_fileNamePart - _path), Utf8::FromUtf16(data.cFileName).data(), MaxPathLength - 1);
+						_path[pathLength] = '\\';
+						_path[pathLength + 1] = '\0';
+						_fileNamePart = _path + pathLength + 1;
 					}
 				}
-			}
-		}
-		return (_hFindFile != NULL && _hFindFile != INVALID_HANDLE_VALUE);
-#else
-		auto nullTerminatedPath = String::nullTerminatedView(path);
-		if (!nullTerminatedPath.empty()) {
-#	if defined(DEATH_TARGET_ANDROID)
-			const char* assetPath = AndroidAssetStream::TryGetAssetPath(nullTerminatedPath.data());
-			if (assetPath != nullptr) {
-				// It probably supports only files
-				if ((_options & EnumerationOptions::SkipFiles) != EnumerationOptions::SkipFiles) {
-					_assetDir = AndroidAssetStream::OpenDirectory(assetPath);
-					if (_assetDir != nullptr) {
-						std::size_t pathLength = path.size();
-						std::memcpy(_path, path.data(), pathLength);
-						if (_path[pathLength - 1] == '/' || _path[pathLength - 1] == '\\') {
-							_path[pathLength - 1] = '/';
-							_path[pathLength] = '\0';
-							_fileNamePart = _path + pathLength;
+
+				Array<wchar_t> buffer = Utf8::ToUtf16(_path, static_cast<std::int32_t>(_fileNamePart - _path));
+				if (buffer.size() + 2 <= MaxPathLength) {
+					auto bufferExtended = Array<wchar_t>(NoInit, buffer.size() + 2);
+					std::memcpy(bufferExtended.data(), buffer.data(), buffer.size() * sizeof(wchar_t));
+
+					// Adding a wildcard to list all files in the directory
+					bufferExtended[buffer.size()] = L'*';
+					bufferExtended[buffer.size() + 1] = L'\0';
+
+					WIN32_FIND_DATA data;
+#	if defined(DEATH_TARGET_WINDOWS_RT)
+					_hFindFile = ::FindFirstFileExFromAppW(bufferExtended, FindExInfoBasic, &data, FindExSearchNameMatch, nullptr, 0);
+#	else
+					_hFindFile = ::FindFirstFileExW(bufferExtended, Environment::IsWindows7() ? FindExInfoBasic : FindExInfoStandard, &data, FindExSearchNameMatch, nullptr, 0);
+#	endif
+					if (_hFindFile != NULL && _hFindFile != INVALID_HANDLE_VALUE) {
+						if ((data.cFileName[0] == L'.' && (data.cFileName[1] == L'\0' || (data.cFileName[1] == L'.' && data.cFileName[2] == L'\0'))) ||
+							((_options & EnumerationOptions::SkipDirectories) == EnumerationOptions::SkipDirectories && (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == FILE_ATTRIBUTE_DIRECTORY) ||
+							((_options & EnumerationOptions::SkipFiles) == EnumerationOptions::SkipFiles && (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != FILE_ATTRIBUTE_DIRECTORY)) {
+							// Skip this file
+							Increment();
 						} else {
-							_path[pathLength] = '/';
-							_path[pathLength + 1] = '\0';
-							_fileNamePart = _path + pathLength + 1;
+							strncpy_s(_fileNamePart, sizeof(_path) - (_fileNamePart - _path), Utf8::FromUtf16(data.cFileName).data(), MaxPathLength - 1);
 						}
-						return true;
 					}
 				}
-				return false;
 			}
-#	endif
-			_dirStream = ::opendir(nullTerminatedPath.data());
-			if (_dirStream != nullptr) {
-				String absPath = GetAbsolutePath(path);
-				std::size_t pathLength = absPath.size();
-				std::memcpy(_path, absPath.data(), pathLength);
-				if (_path[pathLength - 1] == '/' || _path[pathLength - 1] == '\\') {
-					_path[pathLength - 1] = '/';
-					_path[pathLength] = '\0';
-					_fileNamePart = _path + pathLength;
-				} else {
-					_path[pathLength] = '/';
-					_path[pathLength + 1] = '\0';
-					_fileNamePart = _path + pathLength + 1;
+			return (_hFindFile != NULL && _hFindFile != INVALID_HANDLE_VALUE);
+#else
+			auto nullTerminatedPath = String::nullTerminatedView(path);
+			if (!nullTerminatedPath.empty()) {
+#	if defined(DEATH_TARGET_ANDROID)
+				const char* assetPath = AndroidAssetStream::TryGetAssetPath(nullTerminatedPath.data());
+				if (assetPath != nullptr) {
+					// It probably supports only files
+					if ((_options & EnumerationOptions::SkipFiles) != EnumerationOptions::SkipFiles) {
+						_assetDir = AndroidAssetStream::OpenDirectory(assetPath);
+						if (_assetDir != nullptr) {
+							std::size_t pathLength = path.size();
+							std::memcpy(_path, path.data(), pathLength);
+							if (_path[pathLength - 1] == '/' || _path[pathLength - 1] == '\\') {
+								_path[pathLength - 1] = '/';
+								_path[pathLength] = '\0';
+								_fileNamePart = _path + pathLength;
+							} else {
+								_path[pathLength] = '/';
+								_path[pathLength + 1] = '\0';
+								_fileNamePart = _path + pathLength + 1;
+							}
+							return true;
+						}
+					}
+					return false;
 				}
-				return true;
+#	endif
+				_dirStream = ::opendir(nullTerminatedPath.data());
+				if (_dirStream != nullptr) {
+					String absPath = GetAbsolutePath(path);
+					std::size_t pathLength = absPath.size();
+					std::memcpy(_path, absPath.data(), pathLength);
+					if (_path[pathLength - 1] == '/' || _path[pathLength - 1] == '\\') {
+						_path[pathLength - 1] = '/';
+						_path[pathLength] = '\0';
+						_fileNamePart = _path + pathLength;
+					} else {
+						_path[pathLength] = '/';
+						_path[pathLength + 1] = '\0';
+						_fileNamePart = _path + pathLength + 1;
+					}
+					return true;
+				}
 			}
-		}
-		return false;
+			return false;
 #endif
-	}
-
-	void FileSystem::Directory::Close()
-	{
-#if defined(DEATH_TARGET_WINDOWS)
-		if (_hFindFile != NULL && _hFindFile != INVALID_HANDLE_VALUE) {
-			::FindClose(_hFindFile);
-			_hFindFile = NULL;
 		}
+
+		void Close()
+		{
+#if defined(DEATH_TARGET_WINDOWS)
+			if (_hFindFile != NULL && _hFindFile != INVALID_HANDLE_VALUE) {
+				::FindClose(_hFindFile);
+				_hFindFile = NULL;
+			}
 #else
 #	if defined(DEATH_TARGET_ANDROID)
-		if (_assetDir != nullptr) {
-			AndroidAssetStream::CloseDirectory(_assetDir);
-			_assetDir = nullptr;
-		} else
+			if (_assetDir != nullptr) {
+				AndroidAssetStream::CloseDirectory(_assetDir);
+				_assetDir = nullptr;
+			} else
 #	endif
-		if (_dirStream != nullptr) {
-			::closedir(_dirStream);
-			_dirStream = nullptr;
-		}
+			if (_dirStream != nullptr) {
+				::closedir(_dirStream);
+				_dirStream = nullptr;
+			}
 #endif
-	}
-
-	const char* FileSystem::Directory::GetNext()
-	{
-#if defined(DEATH_TARGET_WINDOWS)
-		if (_hFindFile == NULL || _hFindFile == INVALID_HANDLE_VALUE) {
-			return nullptr;
 		}
 
-		if (_firstFile) {
-			_firstFile = false;
-			return _path;
-		} else {
+		void Increment()
+		{
+#if defined(DEATH_TARGET_WINDOWS)
+			if (_hFindFile == NULL || _hFindFile == INVALID_HANDLE_VALUE) {
+				_path[0] = '\0';
+				return;
+			}
+
 		Retry:
 			WIN32_FIND_DATA data;
 			if (::FindNextFileW(_hFindFile, &data)) {
@@ -548,57 +553,144 @@ namespace Death { namespace IO {
 				} else {
 					strncpy_s(_fileNamePart, sizeof(_path) - (_fileNamePart - _path), Utf8::FromUtf16(data.cFileName).data(), MaxPathLength - 1);
 				}
-				return _path;
+			} else {
+				_path[0] = '\0';
 			}
-			return nullptr;
-		}
 #else
 #	if defined(DEATH_TARGET_ANDROID)
-		// It does not return directory names
-		if (_assetDir != nullptr) {
-			const char* assetName = AndroidAssetStream::GetNextFileName(_assetDir);
-			if (assetName == nullptr) {
-				return nullptr;
+			// It does not return directory names
+			if (_assetDir != nullptr) {
+				const char* assetName = AndroidAssetStream::GetNextFileName(_assetDir);
+				if (assetName == nullptr) {
+					_path[0] = '\0';
+					return;
+				}
+				strcpy(_fileNamePart, assetName);
+				return;
 			}
-			strcpy(_fileNamePart, assetName);
-			return _path;
-		}
 #	endif
-		if (_dirStream == nullptr) {
-			return nullptr;
-		}
-
-		struct dirent* entry;
-	Retry:
-		entry = ::readdir(_dirStream);
-		if (entry) {
-			if (entry->d_name[0] == L'.' && (entry->d_name[1] == L'\0' || (entry->d_name[1] == L'.' && entry->d_name[2] == L'\0'))) {
-				goto Retry;
+			if (_dirStream == nullptr) {
+				_path[0] = '\0';
+				return;
 			}
 
-			if ((_options & EnumerationOptions::SkipDirectories) == EnumerationOptions::SkipDirectories && entry->d_type == DT_DIR)
-				goto Retry;
+			struct dirent* entry;
+		Retry:
+			entry = ::readdir(_dirStream);
+			if (entry != nullptr) {
+				if (entry->d_name[0] == L'.' && (entry->d_name[1] == L'\0' || (entry->d_name[1] == L'.' && entry->d_name[2] == L'\0'))) {
+					goto Retry;
+				}
+
+				if ((_options & EnumerationOptions::SkipDirectories) == EnumerationOptions::SkipDirectories && entry->d_type == DT_DIR)
+					goto Retry;
 #	if !defined(DEATH_TARGET_EMSCRIPTEN)
-			if ((_options & EnumerationOptions::SkipFiles) == EnumerationOptions::SkipFiles && entry->d_type == DT_REG)
-				goto Retry;
-			if ((_options & EnumerationOptions::SkipSpecial) == EnumerationOptions::SkipSpecial && entry->d_type != DT_DIR && entry->d_type != DT_REG && entry->d_type != DT_LNK)
-				goto Retry;
+				if ((_options & EnumerationOptions::SkipFiles) == EnumerationOptions::SkipFiles && entry->d_type == DT_REG)
+					goto Retry;
+				if ((_options & EnumerationOptions::SkipSpecial) == EnumerationOptions::SkipSpecial && entry->d_type != DT_DIR && entry->d_type != DT_REG && entry->d_type != DT_LNK)
+					goto Retry;
 #	else
-			// Emscripten doesn't set DT_REG for files, so we treat everything that's not a DT_DIR as a file. SkipSpecial has no effect here.
-			if ((_options & EnumerationOptions::SkipFiles) == EnumerationOptions::SkipFiles && entry->d_type != DT_DIR)
-				goto Retry;
+				// Emscripten doesn't set DT_REG for files, so we treat everything that's not a DT_DIR as a file. SkipSpecial has no effect here.
+				if ((_options & EnumerationOptions::SkipFiles) == EnumerationOptions::SkipFiles && entry->d_type != DT_DIR)
+					goto Retry;
 #	endif
-			std::size_t charsLeft = sizeof(_path) - (_fileNamePart - _path) - 1;
-			std::size_t fileLength = strlen(entry->d_name);
-			if (fileLength > charsLeft) {
-				return nullptr;
+				std::size_t charsLeft = sizeof(_path) - (_fileNamePart - _path) - 1;
+				std::size_t fileLength = strlen(entry->d_name);
+				if (fileLength > charsLeft) {
+					// Path is too long, skip this file
+					goto Retry;
+				}
+				strcpy(_fileNamePart, entry->d_name);
+			} else {
+				_path[0] = '\0';
 			}
-			strcpy(_fileNamePart, entry->d_name);
-			return _path;
-		} else {
-			return nullptr;
-		}
 #endif
+		}
+
+	private:
+
+		EnumerationOptions _options;
+		char _path[MaxPathLength];
+		char* _fileNamePart;
+#if defined(DEATH_TARGET_WINDOWS)
+		void* _hFindFile;
+#else
+#	if defined(DEATH_TARGET_ANDROID)
+		AAssetDir* _assetDir;
+#	endif
+		DIR* _dirStream;
+#endif
+	};
+
+	FileSystem::Directory::Directory() noexcept
+	{
+	}
+
+	FileSystem::Directory::Directory(const StringView path, EnumerationOptions options)
+		: _impl(std::make_shared<Impl>(path, options))
+	{
+	}
+
+	FileSystem::Directory::~Directory()
+	{
+	}
+
+	FileSystem::Directory::Directory(const Directory& other)
+		: _impl(other._impl)
+	{
+	}
+
+	FileSystem::Directory::Directory(Directory&& other) noexcept
+		: _impl(std::move(other._impl))
+	{
+	}
+
+	FileSystem::Directory& FileSystem::Directory::operator=(const Directory& other)
+	{
+		_impl = other._impl;
+		return *this;
+	}
+
+	FileSystem::Directory& FileSystem::Directory::operator=(Directory&& other) noexcept
+	{
+		_impl = std::move(other._impl);
+		return *this;
+	}
+
+	StringView FileSystem::Directory::operator*() const & noexcept
+	{
+		return _impl->_path;
+	}
+
+	FileSystem::Directory& FileSystem::Directory::operator++()
+	{
+		_impl->Increment();
+		return *this;
+	}
+
+	bool FileSystem::Directory::operator==(const Directory& other) const
+	{
+		bool isEnd1 = (_impl == nullptr || _impl->_path[0] == '\0');
+		bool isEnd2 = (other._impl == nullptr || other._impl->_path[0] == '\0');
+		if (isEnd1 || isEnd2) {
+			return (isEnd1 && isEnd2);
+		}
+		return (_impl == other._impl);
+	}
+
+	bool FileSystem::Directory::operator!=(const Directory& other) const
+	{
+		return !(*this == other);
+	}
+
+	FileSystem::Directory::Proxy::Proxy(const Containers::StringView path)
+		: _path(path)
+	{
+	}
+
+	StringView FileSystem::Directory::Proxy::operator*() const & noexcept
+	{
+		return _path;
 	}
 
 #if !defined(DEATH_TARGET_WINDOWS) && !defined(DEATH_TARGET_SWITCH)
@@ -729,7 +821,7 @@ namespace Death { namespace IO {
 			}
 		}
 
-		String result(NoInit, resultSize);
+		String result{NoInit, resultSize};
 		resultSize = 0;
 		for (std::size_t i = startIdx; i < count; i++) {
 			std::size_t pathSize = paths[i].size();
@@ -1006,6 +1098,11 @@ namespace Death { namespace IO {
 #endif
 	}
 
+	bool FileSystem::IsAbsolutePath(const StringView path)
+	{
+		return GetPathRootLength(path) > 0;
+	}
+
 	String FileSystem::GetExecutablePath()
 	{
 #if defined(DEATH_TARGET_EMSCRIPTEN)
@@ -1112,23 +1209,23 @@ namespace Death { namespace IO {
 #if defined(DEATH_TARGET_ANDROID)
 	String FileSystem::GetExternalStorage()
 	{
-		const char* extStorage = ::getenv("EXTERNAL_STORAGE");
-		if (extStorage == nullptr || extStorage[0] == '\0') {
-			return "/sdcard"_s;
+		StringView extStorage = ::getenv("EXTERNAL_STORAGE");
+		if (!extStorage.empty()) {
+			return extStorage;
 		}
-		return extStorage;
+		return "/sdcard"_s;
 	}
 #elif defined(DEATH_TARGET_UNIX)
 	String FileSystem::GetLocalStorage()
 	{
-		const char* localStorage = ::getenv("XDG_DATA_HOME");
-		if (localStorage != nullptr && localStorage[0] != '\0') {
+		StringView localStorage = ::getenv("XDG_DATA_HOME");
+		if (IsAbsolutePath(localStorage)) {
 			return localStorage;
 		}
 
 		// Not delegating into GetHomeDirectory() as the (admittedly rare) error message would have a confusing source
-		const char* home = ::getenv("HOME");
-		if (home != nullptr && home[0] != '\0') {
+		StringView home = ::getenv("HOME");
+		if (!home.empty()) {
 			return CombinePath(home, ".local/share/"_s);
 		}
 
@@ -1381,6 +1478,10 @@ namespace Death { namespace IO {
 #elif defined(DEATH_TARGET_WINDOWS)
 		const DWORD attrs = ::GetFileAttributesW(Utf8::ToUtf16(path));
 		return (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_HIDDEN) == FILE_ATTRIBUTE_HIDDEN);
+#elif defined(DEATH_TARGET_APPLE) || defined(__FreeBSD__)
+		auto nullTerminatedPath = String::nullTerminatedView(path);
+		struct stat sb;
+		return (::stat(nullTerminatedPath.data(), &sb) == 0 && (sb.st_flags & UF_HIDDEN) == UF_HIDDEN);
 #else
 		auto nullTerminatedPath = String::nullTerminatedView(path);
 #	if defined(DEATH_TARGET_ANDROID)
@@ -1405,17 +1506,15 @@ namespace Death { namespace IO {
 		Array<wchar_t> nullTerminatedPath = Utf8::ToUtf16(path);
 		WIN32_FILE_ATTRIBUTE_DATA lpFileInfo;
 		if (!::GetFileAttributesExFromAppW(nullTerminatedPath, GetFileExInfoStandard, &lpFileInfo)) {
-			return true;
+			return false;
 		}
 
-		if (hidden && (lpFileInfo.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN) != FILE_ATTRIBUTE_HIDDEN) {
-			// Adding the hidden flag
-			lpFileInfo.dwFileAttributes |= FILE_ATTRIBUTE_HIDDEN;
-			return ::SetFileAttributes(nullTerminatedPath, lpFileInfo.dwFileAttributes);
-		} else if (!hidden && (lpFileInfo.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN) == FILE_ATTRIBUTE_HIDDEN) {
-			// Removing the hidden flag
-			lpFileInfo.dwFileAttributes &= ~FILE_ATTRIBUTE_HIDDEN;
-			return ::SetFileAttributes(nullTerminatedPath, lpFileInfo.dwFileAttributes);
+		if (hidden == ((lpFileInfo.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN) == FILE_ATTRIBUTE_HIDDEN)) {
+			return true;
+		} else if (hidden) {
+			return ::SetFileAttributes(nullTerminatedPath, lpFileInfo.dwFileAttributes | FILE_ATTRIBUTE_HIDDEN);
+		} else {
+			return ::SetFileAttributes(nullTerminatedPath, lpFileInfo.dwFileAttributes & ~FILE_ATTRIBUTE_HIDDEN);
 		}
 #elif defined(DEATH_TARGET_WINDOWS)
 		Array<wchar_t> nullTerminatedPath = Utf8::ToUtf16(path);
@@ -1424,14 +1523,26 @@ namespace Death { namespace IO {
 			return false;
 		}
 
-		if (hidden && (attrs & FILE_ATTRIBUTE_HIDDEN) != FILE_ATTRIBUTE_HIDDEN) {
-			// Adding the hidden flag
-			attrs |= FILE_ATTRIBUTE_HIDDEN;
-			return ::SetFileAttributesW(nullTerminatedPath, attrs);
-		} else if (!hidden && (attrs & FILE_ATTRIBUTE_HIDDEN) == FILE_ATTRIBUTE_HIDDEN) {
-			// Removing the hidden flag
-			attrs &= ~FILE_ATTRIBUTE_HIDDEN;
-			return ::SetFileAttributesW(nullTerminatedPath, attrs);
+		if (hidden == ((attrs & FILE_ATTRIBUTE_HIDDEN) == FILE_ATTRIBUTE_HIDDEN)) {
+			return true;
+		} else if (hidden) {
+			return ::SetFileAttributesW(nullTerminatedPath, attrs | FILE_ATTRIBUTE_HIDDEN);
+		} else {
+			return ::SetFileAttributesW(nullTerminatedPath, attrs & ~FILE_ATTRIBUTE_HIDDEN);
+		}
+#elif defined(DEATH_TARGET_APPLE) || defined(__FreeBSD__)
+		auto nullTerminatedPath = String::nullTerminatedView(path);
+		struct stat sb;
+		if (::stat(nullTerminatedPath.data(), &sb) != 0) {
+			return false;
+		}
+
+		if (hidden == ((sb.st_flags & UF_HIDDEN) == UF_HIDDEN)) {
+			return true;
+		} else if (hidden) {
+			return ::chflags(nullTerminatedPath.data(), sb.st_flags | UF_HIDDEN) == 0;
+		} else {
+			return ::chflags(nullTerminatedPath.data(), sb.st_flags & ~UF_HIDDEN) == 0;
 		}
 #else
 		auto nullTerminatedPath = String::nullTerminatedView(path);
@@ -1446,7 +1557,7 @@ namespace Death { namespace IO {
 		buffer[pathLength] = '\0';
 		const char* baseName = ::basename(buffer);
 		if (hidden && baseName != nullptr && baseName[0] != '.') {
-			String newPath = CombinePath(GetDirectoryName(nullTerminatedPath), "."_s + baseName);
+			String newPath = CombinePath(GetDirectoryName(nullTerminatedPath), String("."_s + baseName));
 			return (::rename(nullTerminatedPath.data(), newPath.data()) == 0);
 		} else if (!hidden && baseName != nullptr && baseName[0] == '.') {
 			std::int32_t numDots = 0;
@@ -1455,6 +1566,75 @@ namespace Death { namespace IO {
 			}
 			String newPath = CombinePath(GetDirectoryName(nullTerminatedPath), &buffer[numDots]);
 			return (::rename(nullTerminatedPath.data(), newPath.data()) == 0);
+		}
+#endif
+		return false;
+	}
+
+	bool FileSystem::IsReadOnly(const StringView path)
+	{
+		if (path.empty()) return false;
+
+#if defined(DEATH_TARGET_WINDOWS_RT)
+		WIN32_FILE_ATTRIBUTE_DATA lpFileInfo;
+		return (::GetFileAttributesExFromAppW(Utf8::ToUtf16(path), GetFileExInfoStandard, &lpFileInfo) && (lpFileInfo.dwFileAttributes & FILE_ATTRIBUTE_READONLY) == FILE_ATTRIBUTE_READONLY);
+#elif defined(DEATH_TARGET_WINDOWS)
+		const DWORD attrs = ::GetFileAttributesW(Utf8::ToUtf16(path));
+		return (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_READONLY) == FILE_ATTRIBUTE_READONLY);
+#elif defined(DEATH_TARGET_APPLE) || defined(__FreeBSD__)
+		auto nullTerminatedPath = String::nullTerminatedView(path);
+		struct stat sb;
+		return (::stat(nullTerminatedPath.data(), &sb) == 0 && (sb.st_flags & UF_IMMUTABLE) == UF_IMMUTABLE);
+#else
+		return false;
+#endif
+	}
+
+	bool FileSystem::SetReadOnly(const StringView path, bool readonly)
+	{
+		if (path.empty()) return false;
+
+#if defined(DEATH_TARGET_WINDOWS_RT)
+		Array<wchar_t> nullTerminatedPath = Utf8::ToUtf16(path);
+		WIN32_FILE_ATTRIBUTE_DATA lpFileInfo;
+		if (!::GetFileAttributesExFromAppW(nullTerminatedPath, GetFileExInfoStandard, &lpFileInfo)) {
+			return false;
+		}
+
+		if (readonly == ((lpFileInfo.dwFileAttributes & FILE_ATTRIBUTE_READONLY) == FILE_ATTRIBUTE_READONLY)) {
+			return true;
+		} else if (readonly) {
+			return ::SetFileAttributes(nullTerminatedPath, lpFileInfo.dwFileAttributes | FILE_ATTRIBUTE_READONLY);
+		} else {
+			return ::SetFileAttributes(nullTerminatedPath, lpFileInfo.dwFileAttributes & ~FILE_ATTRIBUTE_READONLY);
+		}
+#elif defined(DEATH_TARGET_WINDOWS)
+		Array<wchar_t> nullTerminatedPath = Utf8::ToUtf16(path);
+		DWORD attrs = ::GetFileAttributesW(nullTerminatedPath);
+		if (attrs == INVALID_FILE_ATTRIBUTES) {
+			return false;
+		}
+
+		if (readonly == ((attrs & FILE_ATTRIBUTE_READONLY) == FILE_ATTRIBUTE_READONLY)) {
+			return true;
+		} else if (readonly) {
+			return ::SetFileAttributesW(nullTerminatedPath, attrs | FILE_ATTRIBUTE_READONLY);
+		} else {
+			return ::SetFileAttributesW(nullTerminatedPath, attrs & ~FILE_ATTRIBUTE_READONLY);
+		}
+#elif defined(DEATH_TARGET_APPLE) || defined(__FreeBSD__)
+		auto nullTerminatedPath = String::nullTerminatedView(path);
+		struct stat sb;
+		if (::stat(nullTerminatedPath.data(), &sb) != 0) {
+			return false;
+		}
+
+		if (readonly == ((sb.st_flags & UF_IMMUTABLE) == UF_IMMUTABLE)) {
+			return true;
+		} else if (readonly) {
+			return ::chflags(nullTerminatedPath.data(), sb.st_flags | UF_IMMUTABLE) == 0;
+		} else {
+			return ::chflags(nullTerminatedPath.data(), sb.st_flags & ~UF_IMMUTABLE) == 0;
 		}
 #endif
 		return false;
@@ -1653,6 +1833,39 @@ namespace Death { namespace IO {
 #endif
 	}
 
+	bool FileSystem::MoveToTrash(const StringView path)
+	{
+		if (path.empty()) return false;
+
+#if defined(DEATH_TARGET_APPLE)
+		Class nsStringClass = objc_getClass("NSString");
+		Class nsUrlClass = objc_getClass("NSURL");
+		Class nsFileManager = objc_getClass("NSFileManager");
+		if (nsStringClass != nullptr && nsUrlClass != nullptr && nsFileManager != nullptr) {
+			id pathString = ((id(*)(Class, SEL, const char*))objc_msgSend)(nsStringClass, sel_getUid("stringWithUTF8String:"), String::nullTerminatedView(path).data());
+			id pathUrl = ((id(*)(Class, SEL, id))objc_msgSend)(nsUrlClass, sel_getUid("fileURLWithPath:"), pathString);
+			id fileManagerInstance = ((id(*)(Class, SEL))objc_msgSend)(nsFileManager, sel_getUid("defaultManager"));
+			return ((bool(*)(id, SEL, id, SEL, id, SEL, id))objc_msgSend)(fileManagerInstance, sel_getUid("trashItemAtURL:"), pathUrl, sel_getUid("resultingItemURL:"), nullptr, sel_getUid("error:"), nullptr);
+		}
+		return false;
+#elif defined(DEATH_TARGET_WINDOWS) && !defined(DEATH_TARGET_WINDOWS_RT)
+		auto pathW = Utf8::ToUtf16(path);
+
+		SHFILEOPSTRUCTW sf;
+		sf.hwnd = NULL;
+		sf.wFunc = FO_DELETE;
+		sf.pFrom = pathW;
+		sf.pTo = nullptr;
+		sf.fFlags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT;
+		sf.fAnyOperationsAborted = FALSE;
+		sf.hNameMappings = nullptr;
+		sf.lpszProgressTitle = nullptr;
+		return ::SHFileOperationW(&sf) == 0;
+#else
+		return false;
+#endif
+	}
+
 	bool FileSystem::Copy(const StringView oldPath, const StringView newPath, bool overwrite)
 	{
 		if (oldPath.empty() || newPath.empty()) return false;
@@ -1673,51 +1886,125 @@ namespace Death { namespace IO {
 			return false;
 		}
 
-		std::int32_t source, dest;
-		struct stat sb;
-		if ((source = ::open(nullTerminatedOldPath.data(), O_RDONLY)) == -1) {
-			return false;
-		}
-		::fstat(source, &sb);
-#	if defined(DEATH_TARGET_SWITCH)
-		// Switch doesn't support `creat()`
-		if ((dest = ::open(nullTerminatedNewPath.data(), O_WRONLY | O_CREAT, sb.st_mode)) == -1) {
-#	else
-		if ((dest = ::creat(nullTerminatedNewPath.data(), sb.st_mode)) == -1) {
-#	endif
-			::close(source);
+		std::int32_t sourceFd, destFd;
+		if ((sourceFd = ::open(nullTerminatedOldPath.data(), O_RDONLY | O_CLOEXEC)) == -1) {
 			return false;
 		}
 
+		struct stat sb;
+		if (::fstat(sourceFd, &sb) != 0) {
+			return false;
+		}
+
+		mode_t sourceMode = sb.st_mode;
+		mode_t destMode = sourceMode;
+#if !defined(DEATH_TARGET_EMSCRIPTEN)
+		// Enable writing for the newly created files, needed for some file systems
+		destMode |= S_IWUSR;
+#endif
+		if ((destFd = ::open(nullTerminatedNewPath.data(), O_WRONLY | O_CLOEXEC | O_CREAT | O_TRUNC, destMode)) == -1) {
+			::close(sourceFd);
+			return false;
+		}
+
+#if !defined(DEATH_TARGET_APPLE) && !defined(DEATH_TARGET_SWITCH) && !defined(__FreeBSD__)
+		while (true) {
+			if (::fallocate(destFd, FALLOC_FL_KEEP_SIZE, 0, sb.st_size) == 0) {
+				break;
+			}
+			std::int32_t error = errno;
+			if (error == EOPNOTSUPP || error == ENOSYS) {
+				break;
+			}
+			if (error != EINTR) {
+				return false;
+			}
+		}
+#endif
+
 #	if defined(DEATH_TARGET_APPLE)
 		// fcopyfile works on FreeBSD and OS X 10.5+ 
-		bool success = (::fcopyfile(source, dest, 0, COPYFILE_ALL) == 0);
+		bool success = (::fcopyfile(sourceFd, destFd, 0, COPYFILE_ALL) == 0);
 #	elif defined(__linux__)
-		off_t offset = 0;
-		bool success = (::sendfile(dest, source, &offset, sb.st_size) == sb.st_size);
+		constexpr std::size_t MaxSendSize = 0x7FFFF000u;
+
+		std::uint64_t size = sb.st_size;
+		std::uint64_t offset = 0;
+		bool success = true;
+		while (offset < size) {
+			std::uint64_t bytesLeft = size - offset;
+			std::size_t bytesToCopy = MaxSendSize;
+			if (bytesLeft < static_cast<std::uint64_t>(MaxSendSize)) {
+				bytesToCopy = static_cast<std::size_t>(bytesLeft);
+			}
+			ssize_t sz = ::sendfile(destFd, sourceFd, nullptr, bytesToCopy);
+			if DEATH_UNLIKELY(sz < 0) {
+				std::int32_t err = errno;
+				if (errno == EINTR) {
+					continue;
+				}
+
+				success = false;
+				break;
+			}
+
+			offset += sz;
+		}
 #	else
-#		if !defined(DEATH_TARGET_SWITCH) && defined(_POSIX_C_SOURCE) && _POSIX_C_SOURCE >= 200112L
+#		if defined(POSIX_FADV_SEQUENTIAL) && (!defined(__ANDROID__) || __ANDROID_API__ >= 21) && !defined(DEATH_TARGET_SWITCH)
 		// As noted in https://eklitzke.org/efficient-file-copying-on-linux, might make the file reading faster
-		::posix_fadvise(source, 0, 0, POSIX_FADV_SEQUENTIAL);
+		::posix_fadvise(sourceFd, 0, 0, POSIX_FADV_SEQUENTIAL);
 #		endif
+
 #		if defined(DEATH_TARGET_EMSCRIPTEN)
 		constexpr std::size_t BufferSize = 8 * 1024;
 #		else
 		constexpr std::size_t BufferSize = 128 * 1024;
 #		endif
 		char buffer[BufferSize];
-		std::size_t size = 0;
 		bool success = true;
-		while ((size = ::read(source, buffer, BufferSize)) > 0) {
-			if (::write(dest, buffer, size) != size) {
-				success = false;
+		while (true) {
+			ssize_t bytesRead = ::read(sourceFd, buffer, BufferSize);
+			if (bytesRead == 0) {
 				break;
 			}
+			if DEATH_UNLIKELY(bytesRead < 0) {
+				if (errno == EINTR) {
+					continue;	// Retry
+				}
+
+				success = false;
+				goto End;
+			}
+
+			ssize_t bytesWritten = 0;
+			do {
+				ssize_t sz = ::write(destFd, buffer + bytesWritten, bytesRead);
+				if DEATH_UNLIKELY(sz < 0) {
+					if (errno == EINTR) {
+						continue;	// Retry
+					}
+
+					success = false;
+					goto End;
+				}
+
+				bytesRead -= sz;
+				bytesWritten += sz;
+			} while (bytesRead > 0);
+		}
+	End:
+#	endif
+
+#	if !defined(DEATH_TARGET_EMSCRIPTEN)
+		// If we created a new file with an explicitly added S_IWUSR permission, we may need to update its mode bits to match the source file.
+		if (destMode != sourceMode && ::fchmod(destFd, sourceMode) != 0) {
+			success = false;
 		}
 #	endif
 
-		::close(source);
-		::close(dest);
+		::close(sourceFd);
+		::close(destFd);
 
 		return success;
 #endif
@@ -1742,7 +2029,7 @@ namespace Death { namespace IO {
 		auto nullTerminatedPath = String::nullTerminatedView(path);
 #	if defined(DEATH_TARGET_ANDROID)
 		if (AndroidAssetStream::TryGetAssetPath(nullTerminatedPath.data())) {
-			return static_cast<std::int64_t>(AndroidAssetStream::GetLength(nullTerminatedPath.data()));
+			return AndroidAssetStream::GetFileSize(nullTerminatedPath.data());
 		}
 #	endif
 		struct stat sb;
@@ -2011,8 +2298,7 @@ namespace Death { namespace IO {
 			id pathString = ((id(*)(Class, SEL, const char*))objc_msgSend)(nsStringClass, sel_getUid("stringWithUTF8String:"), String::nullTerminatedView(path).data());
 			id pathUrl = ((id(*)(Class, SEL, id))objc_msgSend)(nsUrlClass, sel_getUid("fileURLWithPath:"), pathString);
 			id workspaceInstance = ((id(*)(Class, SEL))objc_msgSend)(nsWorkspaceClass, sel_getUid("sharedWorkspace"));
-			((id(*)(id, SEL, id))objc_msgSend)(workspaceInstance, sel_getUid("openURL:"), pathUrl);
-			return true;
+			return ((bool(*)(id, SEL, id))objc_msgSend)(workspaceInstance, sel_getUid("openURL:"), pathUrl);
 		}
 		return false;
 #elif defined(DEATH_TARGET_WINDOWS_RT)
@@ -2130,7 +2416,7 @@ namespace Death { namespace IO {
 				return { };
 		}
 
-		const int fd = ::open(String::nullTerminatedView(path).data(), flags);
+		const std::int32_t fd = ::open(String::nullTerminatedView(path).data(), flags);
 		if (fd == -1) {
 			LOGE("Cannot open file \"%s\"", String::nullTerminatedView(path).data());
 			return { };
@@ -2251,22 +2537,22 @@ namespace Death { namespace IO {
 		}
 #elif defined(DEATH_TARGET_APPLE)
 		// Not delegating into GetHomeDirectory() as the (admittedly rare) error message would have a confusing source
-		const char* home = ::getenv("HOME");
-		if (home == nullptr) {
+		StringView home = ::getenv("HOME");
+		if (home.empty()) {
 			return;
 		}
 
 		_savePath = CombinePath({ home, "Library/Application Support"_s, applicationName });
 #elif defined(DEATH_TARGET_UNIX) || defined(DEATH_TARGET_EMSCRIPTEN)
-		const char* config = ::getenv("XDG_CONFIG_HOME");
-		if (config != nullptr && config[0] != '\0') {
+		StringView config = ::getenv("XDG_CONFIG_HOME");
+		if (IsAbsolutePath(config)) {
 			_savePath = CombinePath(config, applicationName);
 			return;
 		}
 
 		// Not delegating into GetHomeDirectory() as the (admittedly rare) error message would have a confusing source
-		const char* home = ::getenv("HOME");
-		if (home == nullptr) {
+		StringView home = ::getenv("HOME");
+		if (home.empty()) {
 			return;
 		}
 

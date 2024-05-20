@@ -4,6 +4,8 @@
 #include "../../PreferencesCache.h"
 #include "../../../nCine/I18n.h"
 
+#include <Containers/StringConcatenable.h>
+
 using namespace Jazz2::UI::Menu::Resources;
 
 namespace Jazz2::UI::Menu
@@ -16,39 +18,29 @@ namespace Jazz2::UI::Menu
 		defaultLanguage.Item.DisplayName = "English \f[c:0x707070]· en"_s;
 
 		// Search both "Content/Translations/" and "Cache/Translations/"
-		fs::Directory dir(fs::CombinePath(resolver.GetContentPath(), "Translations"_s), fs::EnumerationOptions::SkipDirectories);
-		while (true) {
-			StringView item = dir.GetNext();
-			if (item == nullptr) {
-				break;
-			}
-
+		for (auto item : fs::Directory(fs::CombinePath(resolver.GetContentPath(), "Translations"_s), fs::EnumerationOptions::SkipDirectories)) {
 			AddLanguage(item);
 		}
 
-		fs::Directory dirCache(fs::CombinePath(resolver.GetCachePath(), "Translations"_s), fs::EnumerationOptions::SkipDirectories);
-		while (true) {
-			StringView item = dirCache.GetNext();
-			if (item == nullptr) {
-				break;
-			}
-
+		for (auto item : fs::Directory(fs::CombinePath(resolver.GetCachePath(), "Translations"_s), fs::EnumerationOptions::SkipDirectories)) {
 			AddLanguage(item);
 		}
 	}
 
 	void LanguageSelectSection::OnDraw(Canvas* canvas)
 	{
-		Vector2i viewSize = canvas->ViewSize;
-		float centerX = viewSize.X * 0.5f;
-		float bottomLine = viewSize.Y - BottomLine;
-		_root->DrawElement(MenuDim, centerX, (TopLine + bottomLine) * 0.5f, IMenuContainer::BackgroundLayer,
-			Alignment::Center, Colorf::Black, Vector2f(680.0f, bottomLine - TopLine + 2.0f), Vector4f(1.0f, 0.0f, 0.4f, 0.3f));
-		_root->DrawElement(MenuLine, 0, centerX, TopLine, IMenuContainer::MainLayer, Alignment::Center, Colorf::White, 1.6f);
+		Recti contentBounds = _root->GetContentBounds();
+		float centerX = contentBounds.X + contentBounds.W * 0.5f;
+		float topLine = contentBounds.Y + TopLine;
+		float bottomLine = contentBounds.Y + contentBounds.H - BottomLine;
+
+		_root->DrawElement(MenuDim, centerX, (topLine + bottomLine) * 0.5f, IMenuContainer::BackgroundLayer,
+			Alignment::Center, Colorf::Black, Vector2f(680.0f, bottomLine - topLine + 2.0f), Vector4f(1.0f, 0.0f, 0.4f, 0.3f));
+		_root->DrawElement(MenuLine, 0, centerX, topLine, IMenuContainer::MainLayer, Alignment::Center, Colorf::White, 1.6f);
 		_root->DrawElement(MenuLine, 1, centerX, bottomLine, IMenuContainer::MainLayer, Alignment::Center, Colorf::White, 1.6f);
 
 		int32_t charOffset = 0;
-		_root->DrawStringShadow(_("Language"), charOffset, centerX, TopLine - 21.0f, IMenuContainer::FontLayer,
+		_root->DrawStringShadow(_("Language"), charOffset, centerX, topLine - 21.0f, IMenuContainer::FontLayer,
 			Alignment::Center, Colorf(0.46f, 0.46f, 0.46f, 0.5f), 0.9f, 0.7f, 1.1f, 1.1f, 0.4f, 0.9f);
 	}
 
@@ -67,7 +59,7 @@ namespace Jazz2::UI::Menu
 				realNameLength = item.Item.DisplayName.size();
 			}
 
-			_root->DrawElement(MenuGlow, 0, centerX, item.Y, IMenuContainer::MainLayer, Alignment::Center, Colorf(1.0f, 1.0f, 1.0f, 0.4f * size), (realNameLength + 3) * 0.5f * size, 4.0f * size, true);
+			_root->DrawElement(MenuGlow, 0, centerX, item.Y, IMenuContainer::MainLayer, Alignment::Center, Colorf(1.0f, 1.0f, 1.0f, 0.4f * size), (realNameLength + 3) * 0.5f * size, 4.0f * size, true, true);
 
 			_root->DrawStringShadow(item.Item.DisplayName, charOffset, centerX, item.Y, IMenuContainer::FontLayer + 10,
 				Alignment::Center, Font::RandomColor, size, 0.7f, 1.1f, 1.1f, 0.4f, 0.9f);
@@ -105,7 +97,7 @@ namespace Jazz2::UI::Menu
 		}
 	}
 
-	void LanguageSelectSection::AddLanguage(const StringView& languageFile)
+	void LanguageSelectSection::AddLanguage(const StringView languageFile)
 	{
 		if (fs::GetExtension(languageFile) != "mo"_s) {
 			return;
@@ -122,6 +114,6 @@ namespace Jazz2::UI::Menu
 
 		auto& episode = _items.emplace_back();
 		episode.Item.FileName = languageFile;
-		episode.Item.DisplayName = I18n::GetLanguageName(language) + " \f[c:0x707070]· " + language;
+		episode.Item.DisplayName = I18n::GetLanguageName(language) + " \f[c:0x707070]· "_s + language;
 	}
 }
