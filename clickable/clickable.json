@@ -1,0 +1,38 @@
+{
+  "clickable_minimum_required": "7",
+  "framework": "ubuntu-sdk-20.04",
+  "builder": "precompiled",
+  "install_dir": "${BUILD_DIR}/click",
+  "dependencies_target": [
+    "libglew2.1",
+    "libglfw3",
+    "libsdl2-2.0-0",
+    "libvorbisfile3",
+    "libopenmpt0",
+    "libasound2",
+    "libfreetype6",
+    "libglib2.0-0",
+    "libpng16-16",
+    "libopenal1"
+  ],
+  "install_lib": [
+    "/usr/lib/${ARCH_TRIPLET}/libvorbis.so.0*",
+    "/usr/lib/${ARCH_TRIPLET}/libSDL2-2.0.so*",
+    "/usr/lib/${ARCH_TRIPLET}/libGLdispatch.so*",
+    "/usr/lib/${ARCH_TRIPLET}/libasound.so*",
+    "/usr/lib/${ARCH_TRIPLET}/libFLAC.so*",
+    "/usr/lib/${ARCH_TRIPLET}/libGLEW.so*",
+    "/usr/lib/${ARCH_TRIPLET}/libopenal.so*",
+    "/usr/lib/${ARCH_TRIPLET}/libsndio.so*",
+    "/usr/lib/${ARCH_TRIPLET}/libopenmpt.so*",
+    "/usr/lib/${ARCH_TRIPLET}/libFLAC.so*"
+  ],
+  "postbuild": [
+    "cp ${ROOT}/jazz2.apparmor ${BUILD_DIR}/click/jazz2.apparmor",
+    "cp ${ROOT}/jazz2.desktop ${BUILD_DIR}/click/jazz2.desktop",
+    "cp ${ROOT}/jazz2.png ${BUILD_DIR}/click/jazz2.png",
+    "cp ${ROOT}/manifest.json ${BUILD_DIR}/click/manifest.json",
+    "cp ${ROOT}/jazz2 ${BUILD_DIR}/click/jazz2"
+  ]
+
+}

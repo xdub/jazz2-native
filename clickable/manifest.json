@@ -1,0 +1,15 @@
+{
+    "name": "jazz2",
+    "description": "Jazz jackrabit 2",
+    "architecture": "@CLICK_ARCH@" ,
+    "title": "Jazz² Resurrection",
+    "hooks": {
+        "jazz2": {
+             "desktop": "jazz2.desktop",
+             "apparmor": "jazz2.apparmor"
+        }
+    },
+    "version": "2024.05-r645-6dfdab3",
+    "maintainer": "Vojtěch Dubský <dub@dubix.eu>",
+    "framework" : "ubuntu-sdk-20.04"
+}
