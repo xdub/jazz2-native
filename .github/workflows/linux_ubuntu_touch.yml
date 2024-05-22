@@ -74,5 +74,5 @@ jobs:
     - name: 'Upload Package'
       uses: actions/upload-artifact@v4
       with:
-        name: Jazz2_Linux_${{ matrix.Platform }}_${{ matrix.Backend }_clickable}
+        name: Jazz2_Linux_${{ matrix.Platform }}_${{ matrix.Backend }}_clickable
         path: ./_package/build/
