@@ -41,7 +41,10 @@ jobs:
           case "${{ matrix.Distro }}" in
             ubuntu*|jessie|stretch|buster|bullseye)
               apt-get update -y
-              apt-get install -y cmake curl git g++ libgles2-mesa-dev libglfw3-dev libsdl2-dev libopenal-dev libopenmpt-dev rpm
+              apt-get install -y cmake curl git g++ libgles2-mesa-dev libglfw3-dev libsdl2-dev libopenal-dev libopenmpt-dev rpm runc docker.io adb git python3 python3-pip
+              pip3 install --user git+https://gitlab.com/clickable/clickable.git
+              sudo systemctl unmask docker.service
+              sudo systemctl start docker.service
               ;;
           esac
         
@@ -64,9 +67,12 @@ jobs:
         mkdir ./_package/
         cp -f ./_build/jazz2 ./_package/jazz2
         cp -f -r ./Content/ ./_package/Content/
+        cp -f -r ./clickable/ ./_package/
+        cd ./_package/
+        ~/.local/bin/clickable build --arch="arm64" --config clickable.json
         
     - name: 'Upload Package'
       uses: actions/upload-artifact@v4
       with:
-        name: Jazz2_Linux_${{ matrix.Platform }}_${{ matrix.Backend }}
-        path: ./_package/
+        name: Jazz2_Linux_${{ matrix.Platform }}_${{ matrix.Backend }_clickable}
+        path: ./_package/build/
