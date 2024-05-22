@@ -64,7 +64,7 @@ jobs:
         mkdir ./_package/
         cp -f ./_build/jazz2 ./_package/jazz2
         cp -f -r ./Content/ ./_package/Content/
-        cp -f -r ./clickable/ ./_package/
+        cp -f -r ./clickable/* ./_package/
         chmod +x ./_package/jazz2
         sudo apt-get update -y
         sudo apt-get install -y runc docker.io adb git python3 python3-pip
@@ -72,7 +72,8 @@ jobs:
         sudo systemctl unmask docker.service
         sudo systemctl start docker.service
         cd ./_package/
-        ~/.local/bin/clickable build --arch="arm64" --config ./_package/clickable.json
+        ~/.local/bin/clickable build --arch="arm64"
+        cd ..
         
     - name: 'Upload Package'
       uses: actions/upload-artifact@v4
