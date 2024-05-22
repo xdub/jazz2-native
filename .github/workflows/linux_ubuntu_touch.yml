@@ -71,7 +71,7 @@ jobs:
         sudo systemctl unmask docker.service
         sudo systemctl start docker.service
         cd ./_package/
-        ~/.local/bin/clickable build --arch="arm64" --config clickable.json
+        ~/.local/bin/clickable build --arch="arm64"
         
     - name: 'Upload Package'
       uses: actions/upload-artifact@v4
