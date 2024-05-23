@@ -117,6 +117,18 @@ Alternatively, you can install it using <sub><sub>[![Homebrew](https://img.shiel
   * In case of build errors, install following packages (or equivalent for your distribution):<br>`libgl1-mesa-dev libglew-dev libglfw3-dev libsdl2-dev libopenal-dev libopenmpt-dev zlib1g-dev`
 * Build the project with *CMake*
 
+#### Ubuntu Touch
+
+Install [Clickable](https://clickable-ut.dev/en/latest/install.html).
+
+```bash
+ln -s clickable/clickable.yaml .
+clickable build --arch amd64|arm64|armhf
+```
+
+See [Clickable Documentaiton](https://clickable-ut.dev/en/latest/index.html) for
+details.
+
 ### macOS
 * Build dependencies will be downloaded automatically by *CMake*
   * Can be disabled with `NCINE_DOWNLOAD_DEPENDENCIES` option, then download [build dependencies](https://github.com/deathkiller/jazz2-libraries/tree/macos) manually to `./Libs/`

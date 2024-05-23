@@ -1,0 +1,42 @@
+clickable_minimum_required: '8.1.0'
+framework: ubuntu-sdk-20.04
+builder: cmake
+ignore_review_errors: true
+
+build_args:
+- -DNCINE_STRIP_BINARIES=ON
+- -DNCINE_PREFERRED_BACKEND=GLFW
+- -DNCINE_LINUX_PACKAGE=jazz2.dubix
+- -DNCINE_PACKAGED_CONTENT_PATH=ON
+
+dependencies_target:
+- libopenal-dev
+- libglew-dev
+- libdw-dev
+- libdwarf-dev
+- libglfw3-dev
+- libvorbisfile3
+- libopenmpt-dev
+# Only for SDL backend
+#- libsdl2-dev
+# Only for Qt5 backend:
+#- libqt5gamepad5-dev
+
+install_lib:
+- libGLEW.so*
+- libglfw.so*
+- libdw*.so*
+- libOpenGL.so*
+# Only for SDL backend (needed for device, but breaks desktop mode)
+#- /opt/sdl/*so*
+
+install_root_data:
+- clickable/jazz2.apparmor
+- clickable/jazz2.desktop
+- clickable/jazz2.png
+- clickable/manifest.json
+
+postbuild:
+- mkdir -p ${CLICK_PATH}
+- mv ${INSTALL_DIR}/bin/* ${CLICK_PATH}/
+- rm -r ${INSTALL_DIR}/bin

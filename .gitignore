@@ -367,3 +367,8 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Clickable files
+/.clickable/
+/build/
+clickable.yaml
