@@ -8,9 +8,6 @@
         "video_files",
         "keep-display-on"        
     ],
-    "read_path": [
-        "/"
-    ],
     "policy_version": 20.04
 }
 
