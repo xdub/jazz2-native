@@ -1,7 +1,6 @@
 clickable_minimum_required: '8.1.0'
 framework: ubuntu-sdk-20.04
 builder: cmake
-ignore_review_errors: true
 
 build_args:
 - -D NCINE_STRIP_BINARIES=ON
@@ -12,19 +11,16 @@ build_args:
 
 dependencies_target:
 - libopenal-dev
-- libglew-dev
 - libdw-dev
 - libdwarf-dev
 - libglfw3-dev
 - libvorbisfile3
 - libopenmpt-dev
-- libopengl-dev
+- libgles-dev
 
 install_lib:
-- libGLEW.so*
 - libglfw.so*
 - libdw*.so*
-- libOpenGL.so*
 
 install_root_data:
 - clickable/jazz2.apparmor

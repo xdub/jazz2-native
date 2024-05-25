@@ -1,12 +1,6 @@
 {
     "policy_groups": [
-        "networking",
-        "connectivity",
-        "audio",
-        "music_files",
-        "video",
-        "video_files",
-        "keep-display-on"        
+        "audio"
     ],
     "policy_version": 20.04
 }
