@@ -50,7 +50,7 @@ namespace Jazz2::Actors::Environment
 
 		if (GetState(ActorState::ApplyGravitation)) {
 			// Rock is triggered
-			float currentGravity = _levelHandler->Gravity;
+			float currentGravity = _levelHandler->Gravity();
 
 			_speed.X = std::clamp(_speed.X + _externalForce.X * timeMult, -3.0f, 3.0f) * powf(0.6f, timeMult);
 
@@ -193,7 +193,7 @@ namespace Jazz2::Actors::Environment
 		if (!_triggered && eventType == EventType::RollingRockTrigger && eventParams[0] == _id) {
 			_triggered = true;
 
-			_levelHandler->ShakeCameraView(60.0f);
+			_levelHandler->ShakeCameraViewNear(_pos, 60.0f);
 
 			// TODO: Shake amplitude
 			/*float distanceToPlayer;

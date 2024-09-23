@@ -45,6 +45,12 @@ namespace nCine
 		isFullscreen_ = fullscreen;
 
 		if (fullscreen) {
+#if defined(DEATH_TARGET_EMSCRIPTEN)
+			// On Emscripten, requesting full screen on GLFW is done by changing the window size to the screen size
+			EmscriptenFullscreenChangeEvent fsce;
+			emscripten_get_fullscreen_status(&fsce);
+			glfwSetWindowSize(windowHandle_, fsce.screenWidth, fsce.screenHeight);
+#else
 			int width = (monitor != nullptr ? currentMode->width : width_);
 			int height = (monitor != nullptr ? currentMode->height : height_);
 			int refreshRate = (monitor != nullptr ? currentMode->refreshRate : GLFW_DONT_CARE);
@@ -56,12 +62,6 @@ namespace nCine
 				refreshRate = (int)mode.refreshRate;
 			}
 
-#if defined(DEATH_TARGET_EMSCRIPTEN)
-			// On Emscripten, requesting full screen on GLFW is done by changing the window size to the screen size
-			EmscriptenFullscreenChangeEvent fsce;
-			emscripten_get_fullscreen_status(&fsce);
-			glfwSetWindowSize(windowHandle_, fsce.screenWidth, fsce.screenHeight);
-#else
 			glfwSetWindowMonitor(windowHandle_, monitor, 0, 0, width, height, refreshRate);
 
 #	if defined(DEATH_TARGET_WINDOWS)
@@ -274,7 +274,7 @@ namespace nCine
 			lastWindowHeight_ = height_;
 		}
 
-		// setting window hints and creating a window with GLFW
+		// Setting window hints and creating a window with GLFW
 		glfwWindowHint(GLFW_RESIZABLE, isResizable ? GLFW_TRUE : GLFW_FALSE);
 		glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, static_cast<int>(glContextInfo_.majorVersion));
 		glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, static_cast<int>(glContextInfo_.minorVersion));
@@ -285,12 +285,12 @@ namespace nCine
 		glfwWindowHint(GLFW_ALPHA_BITS, static_cast<int>(displayMode_.alphaBits()));
 		glfwWindowHint(GLFW_DEPTH_BITS, static_cast<int>(displayMode_.depthBits()));
 		glfwWindowHint(GLFW_STENCIL_BITS, static_cast<int>(displayMode_.stencilBits()));
-#if defined(WITH_OPENGLES)
-		glfwWindowHint(GLFW_CONTEXT_CREATION_API, GLFW_EGL_CONTEXT_API);
-		glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
-#elif defined(DEATH_TARGET_EMSCRIPTEN)
+#if defined(DEATH_TARGET_EMSCRIPTEN)
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
 		glfwWindowHint(GLFW_FOCUSED, 1);
+#elif defined(WITH_OPENGLES)
+		glfwWindowHint(GLFW_CONTEXT_CREATION_API, GLFW_EGL_CONTEXT_API);
+		glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
 #else
 		glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, glContextInfo_.forwardCompatible ? GLFW_TRUE : GLFW_FALSE);
 		glfwWindowHint(GLFW_OPENGL_PROFILE, glContextInfo_.coreProfile ? GLFW_OPENGL_CORE_PROFILE : GLFW_OPENGL_COMPAT_PROFILE);

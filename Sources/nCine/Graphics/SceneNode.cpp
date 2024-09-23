@@ -165,11 +165,10 @@ namespace nCine
 		children_[index]->parent_ = nullptr;
 		dirtyBits_.set(DirtyBitPositions::TransformationBit);
 		dirtyBits_.set(DirtyBitPositions::AabbBit);
-		// TODO: Fast removal without preserving the order
-		children_.erase(&children_[index]);
+		children_.eraseUnordered(&children_[index]);
 		// The last child has been moved to this index position
-		//if (children_.size() > index)
-		//	children_[index]->childOrderIndex_ = index;
+		if (children_.size() > index)
+			children_[index]->childOrderIndex_ = index;
 		return true;
 	}
 
@@ -274,12 +273,12 @@ namespace nCine
 			}
 
 			// A non-drawable scenenode does not have the `updateRenderCommand()` method to reset the flags
-			if (type_ == ObjectType::SceneNode) {
+			if (_type == ObjectType::SceneNode) {
 				dirtyBits_.reset(DirtyBitPositions::TransformationBit);
 				dirtyBits_.reset(DirtyBitPositions::ColorBit);
 			}
 
-			lastFrameUpdated_ = theApplication().numFrames();
+			lastFrameUpdated_ = theApplication().GetFrameCount();
 		}
 	}
 
@@ -290,13 +289,13 @@ namespace nCine
 		if (drawEnabled_) {
 			// Increment the index without knowing if the node is going to be rendered or not.
 			// It avoids both a one frame delay when the value changes and calling `DrawableNode::setVisitOrder()` from this function.
-			visitOrderIndex_ = (type_ != ObjectType::Particle) ? visitOrderIndex + 1 : visitOrderIndex;
+			visitOrderIndex_ = (_type != ObjectType::Particle ? visitOrderIndex + 1 : visitOrderIndex);
 			const bool rendered = OnDraw(renderQueue);
 
 			visitOrderIndex_ = visitOrderIndex;
 			// Visit order index only incremented for rendered nodes
 			// Particles get their index incremented only once by their parent particle system
-			const bool incrementIndex = ((rendered && type_ != ObjectType::Particle) || type_ == ObjectType::ParticleSystem);
+			const bool incrementIndex = ((rendered && _type != ObjectType::Particle) || _type == ObjectType::ParticleSystem);
 			visitOrderIndex_ = incrementIndex ? visitOrderIndex++ : visitOrderIndex;
 
 			for (SceneNode* child : children_) {

@@ -2,6 +2,7 @@
 #include "ContentResolver.h"
 #include "LevelHandler.h"
 #include "UI/ControlScheme.h"
+#include "../nCine/Application.h"
 
 #include <Containers/StringConcatenable.h>
 #include <Environment.h>
@@ -11,6 +12,7 @@
 
 using namespace Death::Containers::Literals;
 using namespace Death::IO;
+using namespace nCine;
 
 namespace Jazz2
 {
@@ -27,6 +29,8 @@ namespace Jazz2
 	bool PreferencesCache::ShowPlayerTrails = true;
 	bool PreferencesCache::LowWaterQuality = false;
 	bool PreferencesCache::UnalignedViewport = false;
+	bool PreferencesCache::PreferVerticalSplitscreen = false;
+	bool PreferencesCache::PreferZoomOut = false;
 	bool PreferencesCache::EnableReforgedGameplay = true;
 	bool PreferencesCache::EnableReforgedHUD = true;
 	bool PreferencesCache::EnableReforgedMainMenu = true;
@@ -36,25 +40,23 @@ namespace Jazz2
 #endif
 	bool PreferencesCache::EnableLedgeClimb = true;
 	WeaponWheelStyle PreferencesCache::WeaponWheel = WeaponWheelStyle::Enabled;
-#if !defined(DEATH_TARGET_ANDROID) && !defined(DEATH_TARGET_IOS) && !defined(DEATH_TARGET_SWITCH) && !defined(DEATH_TARGET_WINDOWS_RT)
-	bool PreferencesCache::EnableRgbLights = true;
-#else
+#if defined(DEATH_TARGET_ANDROID) || defined(DEATH_TARGET_EMSCRIPTEN) || defined(DEATH_TARGET_IOS) || !defined(DEATH_TARGET_SWITCH) || defined(DEATH_TARGET_WINDOWS_RT)
 	bool PreferencesCache::EnableRgbLights = false;
+#else
+	bool PreferencesCache::EnableRgbLights = true;
 #endif
 	bool PreferencesCache::AllowUnsignedScripts = true;
 	bool PreferencesCache::ToggleRunAction = false;
 	GamepadType PreferencesCache::GamepadButtonLabels = GamepadType::Xbox;
-#if defined(DEATH_TARGET_ANDROID)
-	bool PreferencesCache::UseNativeBackButton = true;
-#else
+	std::uint8_t PreferencesCache::GamepadRumble = 1;
 	bool PreferencesCache::UseNativeBackButton = false;
-#endif
 	bool PreferencesCache::EnableDiscordIntegration = false;
 	bool PreferencesCache::TutorialCompleted = false;
 	bool PreferencesCache::ResumeOnStart = false;
 	bool PreferencesCache::AllowCheats = false;
 	bool PreferencesCache::AllowCheatsLives = false;
 	bool PreferencesCache::AllowCheatsUnlock = false;
+	EpisodeEndOverwriteMode PreferencesCache::OverwriteEpisodeEnd = EpisodeEndOverwriteMode::Always;
 	Vector2f PreferencesCache::TouchLeftPadding;
 	Vector2f PreferencesCache::TouchRightPadding;
 	char PreferencesCache::Language[6] { };
@@ -72,7 +74,8 @@ namespace Jazz2
 		bool resetConfig = false;
 
 #if defined(DEATH_TARGET_EMSCRIPTEN)
-		fs::MountAsPersistent("/Persistent"_s);
+		auto configDir = "/Persistent"_s;
+		fs::MountAsPersistent(configDir);
 		_configPath = "/Persistent/Jazz2.config"_s;
 
 		for (int32_t i = 0; i < config.argc(); i++) {
@@ -124,35 +127,57 @@ namespace Jazz2
 			auto& resolver = ContentResolver::Get();
 			auto localConfigPath = fs::CombinePath(fs::GetDirectoryName(resolver.GetSourcePath()), "Jazz2.config"_s);
 			if (_configPath != localConfigPath) {
-				auto configFileWritable = fs::Open(localConfigPath, FileAccessMode::Read | FileAccessMode::Write);
+				auto configFileWritable = fs::Open(localConfigPath, FileAccess::ReadWrite);
 				if (configFileWritable->IsValid()) {
-					configFileWritable->Close();
+					configFileWritable->Dispose();
 					_configPath = localConfigPath;
 				}
 			}
 #	endif
 		}
+
+		auto configDir = fs::GetDirectoryName(_configPath);
+
+#	if defined(DEATH_TRACE)
+#		if defined(DEATH_TARGET_ANDROID) || defined(DEATH_TARGET_SWITCH)
+		fs::CreateDirectories(configDir);
+		theApplication().AttachTraceTarget(fs::CombinePath(configDir, "Jazz2.log"_s));
+#		elif defined(DEATH_TARGET_APPLE) || defined(DEATH_TARGET_UNIX) || (defined(DEATH_TARGET_WINDOWS) && !defined(DEATH_TARGET_WINDOWS_RT))
+		for (std::int32_t i = 0; i < config.argc(); i++) {
+			auto arg = config.argv(i);
+			if (arg == "/log:file"_s) {
+				fs::CreateDirectories(configDir);
+				theApplication().AttachTraceTarget(fs::CombinePath(configDir, "Jazz2.log"_s));
+			}
+#			if defined(DEATH_TARGET_WINDOWS)
+			else if (arg == "/log"_s) {
+				theApplication().AttachTraceTarget(Application::ConsoleTarget);
+			}
+#			endif
+		}
+#		endif
+#	endif
 #endif
 
 		UI::ControlScheme::Reset();
 
 		// Try to read config file
 		if (!resetConfig) {
-			auto s = fs::Open(_configPath, FileAccessMode::Read);
+			auto s = fs::Open(_configPath, FileAccess::Read);
 			if (s->GetSize() > 18) {
-				uint64_t signature = s->ReadValue<uint64_t>();
-				uint8_t fileType = s->ReadValue<uint8_t>();
-				uint8_t version = s->ReadValue<uint8_t>();
+				std::uint64_t signature = s->ReadValue<std::uint64_t>();
+				std::uint8_t fileType = s->ReadValue<std::uint8_t>();
+				std::uint8_t version = s->ReadValue<std::uint8_t>();
 				if (signature == 0x2095A59FF0BFBBEF && fileType == ContentResolver::ConfigFile && version <= FileVersion) {
 					if (version == 1) {
 						// Version 1 included compressedSize and decompressedSize, it's not needed anymore
-						/*int32_t compressedSize =*/ s->ReadValue<int32_t>();
-						/*int32_t uncompressedSize =*/ s->ReadValue<int32_t>();
+						/*std::int32_t compressedSize =*/ s->ReadValue<std::int32_t>();
+						/*std::int32_t uncompressedSize =*/ s->ReadValue<std::int32_t>();
 					}
 
 					DeflateStream uc(*s);
 
-					BoolOptions boolOptions = (BoolOptions)uc.ReadValue<uint64_t>();
+					BoolOptions boolOptions = (BoolOptions)uc.ReadValue<std::uint64_t>();
 
 #if !defined(DEATH_TARGET_EMSCRIPTEN)
 					EnableFullscreen = ((boolOptions & BoolOptions::EnableFullscreen) == BoolOptions::EnableFullscreen);
@@ -162,6 +187,8 @@ namespace Jazz2
 					ShowPlayerTrails = ((boolOptions & BoolOptions::ShowPlayerTrails) == BoolOptions::ShowPlayerTrails);
 					LowWaterQuality = ((boolOptions & BoolOptions::LowWaterQuality) == BoolOptions::LowWaterQuality);
 					UnalignedViewport = ((boolOptions & BoolOptions::UnalignedViewport) == BoolOptions::UnalignedViewport);
+					PreferVerticalSplitscreen = ((boolOptions & BoolOptions::PreferVerticalSplitscreen) == BoolOptions::PreferVerticalSplitscreen);
+					PreferZoomOut = ((boolOptions & BoolOptions::PreferZoomOut) == BoolOptions::PreferZoomOut);
 					EnableReforgedGameplay = ((boolOptions & BoolOptions::EnableReforgedGameplay) == BoolOptions::EnableReforgedGameplay);
 					EnableLedgeClimb = ((boolOptions & BoolOptions::EnableLedgeClimb) == BoolOptions::EnableLedgeClimb);
 					WeaponWheel = ((boolOptions & BoolOptions::EnableWeaponWheel) == BoolOptions::EnableWeaponWheel ? WeaponWheelStyle::Enabled : WeaponWheelStyle::Disabled);
@@ -193,26 +220,35 @@ namespace Jazz2
 					}
 
 					// Bitmask of unlocked episodes, used only if compiled with SHAREWARE_DEMO_ONLY
-					UnlockedEpisodes = (UnlockableEpisodes)uc.ReadValue<uint32_t>();
+					UnlockedEpisodes = (UnlockableEpisodes)uc.ReadValue<std::uint32_t>();
 
-					ActiveRescaleMode = (RescaleMode)uc.ReadValue<uint8_t>();
+					ActiveRescaleMode = (RescaleMode)uc.ReadValue<std::uint8_t>();
 
-					MasterVolume = uc.ReadValue<uint8_t>() / 255.0f;
-					SfxVolume = uc.ReadValue<uint8_t>() / 255.0f;
-					MusicVolume = uc.ReadValue<uint8_t>() / 255.0f;
+					MasterVolume = uc.ReadValue<std::uint8_t>() / 255.0f;
+					SfxVolume = uc.ReadValue<std::uint8_t>() / 255.0f;
+					MusicVolume = uc.ReadValue<std::uint8_t>() / 255.0f;
 
-					TouchLeftPadding.X = std::round(uc.ReadValue<int8_t>() / (TouchPaddingMultiplier * INT8_MAX));
-					TouchLeftPadding.Y = std::round(uc.ReadValue<int8_t>() / (TouchPaddingMultiplier * INT8_MAX));
-					TouchRightPadding.X = std::round(uc.ReadValue<int8_t>() / (TouchPaddingMultiplier * INT8_MAX));
-					TouchRightPadding.Y = std::round(uc.ReadValue<int8_t>() / (TouchPaddingMultiplier * INT8_MAX));
+					TouchLeftPadding.X = std::round(uc.ReadValue<std::int8_t>() / (TouchPaddingMultiplier * INT8_MAX));
+					TouchLeftPadding.Y = std::round(uc.ReadValue<std::int8_t>() / (TouchPaddingMultiplier * INT8_MAX));
+					TouchRightPadding.X = std::round(uc.ReadValue<std::int8_t>() / (TouchPaddingMultiplier * INT8_MAX));
+					TouchRightPadding.Y = std::round(uc.ReadValue<std::int8_t>() / (TouchPaddingMultiplier * INT8_MAX));
 
 					if (version >= 5) {
-						GamepadButtonLabels = (GamepadType)uc.ReadValue<uint8_t>();
+						GamepadButtonLabels = (GamepadType)uc.ReadValue<std::uint8_t>();
+					}
+
+					if (version >= 6) {
+						GamepadRumble = uc.ReadValue<std::uint8_t>();
+					}
+
+					if (version >= 7) {
+						AllowCheats = ((boolOptions & BoolOptions::AllowCheats) == BoolOptions::AllowCheats);
+						OverwriteEpisodeEnd = (EpisodeEndOverwriteMode)uc.ReadValue<std::uint8_t>();
 					}
 
 					// Controls
 					if (version >= 4) {
-						auto mappings = UI::ControlScheme::GetMappings();
+						auto mappings = UI::ControlScheme::GetAllMappings();
 
 						std::uint8_t playerCount = uc.ReadValue<std::uint8_t>();
 						std::uint8_t controlMappingCount = uc.ReadValue<std::uint8_t>();
@@ -240,16 +276,16 @@ namespace Jazz2
 						}
 					} else {
 						// Skip old control mapping definitions
-						uint8_t controlMappingCount = uc.ReadValue<std::uint8_t>();
+						std::uint8_t controlMappingCount = uc.ReadValue<std::uint8_t>();
 						uc.Seek(controlMappingCount * sizeof(std::uint32_t), SeekOrigin::Current);
 					}
 
 					// Episode End
-					uint16_t episodeEndSize = uc.ReadValue<uint16_t>();
-					uint16_t episodeEndCount = uc.ReadValue<uint16_t>();
+					std::uint16_t episodeEndSize = uc.ReadValue<std::uint16_t>();
+					std::uint16_t episodeEndCount = uc.ReadValue<std::uint16_t>();
 
-					for (uint32_t i = 0; i < episodeEndCount; i++) {
-						uint8_t nameLength = uc.ReadValue<uint8_t>();
+					for (std::uint32_t i = 0; i < episodeEndCount; i++) {
+						std::uint8_t nameLength = uc.ReadValue<std::uint8_t>();
 						String episodeName = String(NoInit, nameLength);
 						uc.Read(episodeName.data(), nameLength);
 
@@ -266,17 +302,17 @@ namespace Jazz2
 					}
 
 					// Episode Continue
-					uint16_t episodeContinueSize = uc.ReadValue<uint16_t>();
-					uint16_t episodeContinueCount = uc.ReadValue<uint16_t>();
+					std::uint16_t episodeContinueSize = uc.ReadValue<std::uint16_t>();
+					std::uint16_t episodeContinueCount = uc.ReadValue<std::uint16_t>();
 
-					for (uint32_t i = 0; i < episodeContinueCount; i++) {
-						uint8_t nameLength = uc.ReadValue<uint8_t>();
+					for (std::uint32_t i = 0; i < episodeContinueCount; i++) {
+						std::uint8_t nameLength = uc.ReadValue<std::uint8_t>();
 						String episodeName = String(NoInit, nameLength);
 						uc.Read(episodeName.data(), nameLength);
 
 						if (episodeContinueSize == sizeof(EpisodeContinuationState)) {
 							EpisodeContinuationStateWithLevel stateWithLevel = { };
-							nameLength = uc.ReadValue<uint8_t>();
+							nameLength = uc.ReadValue<std::uint8_t>();
 							stateWithLevel.LevelName = String(NoInit, nameLength);
 							uc.Read(stateWithLevel.LevelName.data(), nameLength);
 
@@ -284,7 +320,7 @@ namespace Jazz2
 							_episodeContinue.emplace(std::move(episodeName), std::move(stateWithLevel));
 						} else {
 							// Struct has different size, so it's better to skip it
-							nameLength = uc.ReadValue<uint8_t>();
+							nameLength = uc.ReadValue<std::uint8_t>();
 							uc.Seek(nameLength + episodeContinueSize, SeekOrigin::Current);
 						}
 					}
@@ -293,10 +329,7 @@ namespace Jazz2
 				FirstRun = true;
 				TryLoadPreferredLanguage();
 
-				auto configDir = fs::GetDirectoryName(_configPath);
-				if (!configDir.empty()) {
-					fs::CreateDirectories(configDir);
-				}
+				fs::CreateDirectories(configDir);
 
 #if !defined(DEATH_TARGET_EMSCRIPTEN)
 				// Create "Source" directory on the first launch
@@ -359,14 +392,14 @@ namespace Jazz2
 
 		fs::CreateDirectories(fs::GetDirectoryName(_configPath));
 
-		auto so = fs::Open(_configPath, FileAccessMode::Write);
+		auto so = fs::Open(_configPath, FileAccess::Write);
 		if (!so->IsValid()) {
 			return;
 		}
 
-		so->WriteValue<uint64_t>(0x2095A59FF0BFBBEF);
-		so->WriteValue<uint8_t>(ContentResolver::ConfigFile);
-		so->WriteValue<uint8_t>(FileVersion);
+		so->WriteValue<std::uint64_t>(0x2095A59FF0BFBBEF);
+		so->WriteValue<std::uint8_t>(ContentResolver::ConfigFile);
+		so->WriteValue<std::uint8_t>(FileVersion);
 
 		DeflateWriter co(*so);
 
@@ -377,6 +410,8 @@ namespace Jazz2
 		if (ShowPlayerTrails) boolOptions |= BoolOptions::ShowPlayerTrails;
 		if (LowWaterQuality) boolOptions |= BoolOptions::LowWaterQuality;
 		if (UnalignedViewport) boolOptions |= BoolOptions::UnalignedViewport;
+		if (PreferVerticalSplitscreen) boolOptions |= BoolOptions::PreferVerticalSplitscreen;
+		if (PreferZoomOut) boolOptions |= BoolOptions::PreferZoomOut;
 		if (EnableReforgedGameplay) boolOptions |= BoolOptions::EnableReforgedGameplay;
 		if (EnableLedgeClimb) boolOptions |= BoolOptions::EnableLedgeClimb;
 		if (WeaponWheel != WeaponWheelStyle::Disabled) boolOptions |= BoolOptions::EnableWeaponWheel;
@@ -391,69 +426,73 @@ namespace Jazz2
 		if (ResumeOnStart) boolOptions |= BoolOptions::ResumeOnStart;
 		if (EnableReforgedHUD) boolOptions |= BoolOptions::EnableReforgedHUD;
 		if (EnableReforgedMainMenu) boolOptions |= BoolOptions::EnableReforgedMainMenu;
-		co.WriteValue<uint64_t>((uint64_t)boolOptions);
+		if (AllowCheats) boolOptions |= BoolOptions::AllowCheats;
+		co.WriteValue<std::uint64_t>((std::uint64_t)boolOptions);
 
 		if (Language[0] != '\0') {
 			co.Write(Language, sizeof(Language));
 		}
 
 		// Bitmask of unlocked episodes, used only if compiled with SHAREWARE_DEMO_ONLY
-		co.WriteValue<uint32_t>((uint32_t)UnlockedEpisodes);
+		co.WriteValue<std::uint32_t>((std::uint32_t)UnlockedEpisodes);
 
-		co.WriteValue<uint8_t>((uint8_t)ActiveRescaleMode);
+		co.WriteValue<std::uint8_t>((std::uint8_t)ActiveRescaleMode);
 
-		co.WriteValue<uint8_t>((uint8_t)(MasterVolume * 255.0f));
-		co.WriteValue<uint8_t>((uint8_t)(SfxVolume * 255.0f));
-		co.WriteValue<uint8_t>((uint8_t)(MusicVolume * 255.0f));
+		co.WriteValue<std::uint8_t>((std::uint8_t)(MasterVolume * 255.0f));
+		co.WriteValue<std::uint8_t>((std::uint8_t)(SfxVolume * 255.0f));
+		co.WriteValue<std::uint8_t>((std::uint8_t)(MusicVolume * 255.0f));
 
-		co.WriteValue<int8_t>((int8_t)(TouchLeftPadding.X * INT8_MAX * TouchPaddingMultiplier));
-		co.WriteValue<int8_t>((int8_t)(TouchLeftPadding.Y * INT8_MAX * TouchPaddingMultiplier));
-		co.WriteValue<int8_t>((int8_t)(TouchRightPadding.X * INT8_MAX * TouchPaddingMultiplier));
-		co.WriteValue<int8_t>((int8_t)(TouchRightPadding.Y * INT8_MAX * TouchPaddingMultiplier));
+		co.WriteValue<std::int8_t>((std::int8_t)(TouchLeftPadding.X * INT8_MAX * TouchPaddingMultiplier));
+		co.WriteValue<std::int8_t>((std::int8_t)(TouchLeftPadding.Y * INT8_MAX * TouchPaddingMultiplier));
+		co.WriteValue<std::int8_t>((std::int8_t)(TouchRightPadding.X * INT8_MAX * TouchPaddingMultiplier));
+		co.WriteValue<std::int8_t>((std::int8_t)(TouchRightPadding.Y * INT8_MAX * TouchPaddingMultiplier));
 
-		co.WriteValue<uint8_t>((uint8_t)GamepadButtonLabels);
+		co.WriteValue<std::uint8_t>((std::uint8_t)GamepadButtonLabels);
+		co.WriteValue<std::uint8_t>(GamepadRumble);
+		co.WriteValue<std::uint8_t>((std::uint8_t)OverwriteEpisodeEnd);
 
 		// Controls
-		auto mappings = UI::ControlScheme::GetMappings();
 		co.WriteValue<std::uint8_t>((std::uint8_t)UI::ControlScheme::MaxSupportedPlayers);
-		co.WriteValue<std::uint8_t>((std::uint8_t)mappings.size());
-		for (std::uint32_t i = 0; i < mappings.size(); i++) {
-			const auto& mapping = mappings[i];
-
-			std::uint8_t targetCount = (std::uint8_t)mapping.Targets.size();
-			co.WriteValue<std::uint8_t>(targetCount);
-			for (std::uint32_t k = 0; k < targetCount; k++) {
-				co.WriteValue<std::uint32_t>(mapping.Targets[k].Data);
+		co.WriteValue<std::uint8_t>((std::uint8_t)PlayerActions::Count);
+		for (std::int32_t i = 0; i < UI::ControlScheme::MaxSupportedPlayers; i++) {
+			auto mappings = UI::ControlScheme::GetMappings(i);
+			for (std::uint32_t j = 0; j < mappings.size(); j++) {
+				const auto& mapping = mappings[j];
+				std::uint8_t targetCount = (std::uint8_t)mapping.Targets.size();
+				co.WriteValue<std::uint8_t>(targetCount);
+				for (std::uint32_t k = 0; k < targetCount; k++) {
+					co.WriteValue<std::uint32_t>(mapping.Targets[k].Data);
+				}
 			}
 		}
 
 		// Episode End
-		co.WriteValue<uint16_t>((uint16_t)sizeof(EpisodeContinuationState));
-		co.WriteValue<uint16_t>((uint16_t)_episodeEnd.size());
+		co.WriteValue<std::uint16_t>((std::uint16_t)sizeof(EpisodeContinuationState));
+		co.WriteValue<std::uint16_t>((std::uint16_t)_episodeEnd.size());
 
 		for (auto& pair : _episodeEnd) {
-			co.WriteValue<uint8_t>((uint8_t)pair.first.size());
+			co.WriteValue<std::uint8_t>((std::uint8_t)pair.first.size());
 			co.Write(pair.first.data(), (uint32_t)pair.first.size());
 
 			co.Write(&pair.second, sizeof(EpisodeContinuationState));
 		}
 
 		// Episode Continue
-		co.WriteValue<uint16_t>((uint16_t)sizeof(EpisodeContinuationState));
-		co.WriteValue<uint16_t>((uint16_t)_episodeContinue.size());
+		co.WriteValue<std::uint16_t>((std::uint16_t)sizeof(EpisodeContinuationState));
+		co.WriteValue<std::uint16_t>((std::uint16_t)_episodeContinue.size());
 
 		for (auto& pair : _episodeContinue) {
-			co.WriteValue<uint8_t>((uint8_t)pair.first.size());
-			co.Write(pair.first.data(), (uint32_t)pair.first.size());
+			co.WriteValue<std::uint8_t>((std::uint8_t)pair.first.size());
+			co.Write(pair.first.data(), (std::uint32_t)pair.first.size());
 
-			co.WriteValue<uint8_t>((uint8_t)pair.second.LevelName.size());
-			co.Write(pair.second.LevelName.data(), (uint32_t)pair.second.LevelName.size());
+			co.WriteValue<std::uint8_t>((std::uint8_t)pair.second.LevelName.size());
+			co.Write(pair.second.LevelName.data(), (std::uint32_t)pair.second.LevelName.size());
 
 			co.Write(&pair.second.State, sizeof(EpisodeContinuationState));
 		}
 
-		co.Close();
-		so->Close();
+		co.Dispose();
+		so->Dispose();
 
 #if defined(DEATH_TARGET_EMSCRIPTEN)
 		fs::SyncToPersistent();

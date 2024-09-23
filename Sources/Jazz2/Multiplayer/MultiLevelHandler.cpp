@@ -46,6 +46,7 @@
 #include <Utf8.h>
 #include <Containers/StaticArray.h>
 #include <IO/MemoryStream.h>
+#include <IO/DeflateStream.h>
 
 using namespace nCine;
 
@@ -55,6 +56,10 @@ namespace Jazz2::Multiplayer
 		: LevelHandler(root), _gameMode(MultiplayerGameMode::Unknown), _networkManager(networkManager), _updateTimeLeft(1.0f),
 			_initialUpdateSent(false), _lastSpawnedActorId(-1), _seqNum(0), _seqNumWarped(0), _suppressRemoting(false),
 			_ignorePackets(false)
+#if defined(DEATH_DEBUG) && defined(WITH_IMGUI)
+			, _plotIndex(0), _actorsMaxCount(0.0f), _actorsCount{}, _remoteActorsCount{}, _remotingActorsCount{},
+			_mirroredActorsCount{}, _updatePacketMaxSize(0.0f), _updatePacketSize {}, _compressedUpdatePacketSize {}
+#endif
 	{
 		_isServer = (networkManager->GetState() == NetworkState::Listening);
 	}
@@ -99,9 +104,9 @@ namespace Jazz2::Multiplayer
 		return true;
 	}
 
-	float MultiLevelHandler::GetAmbientLight() const
+	float MultiLevelHandler::GetDefaultAmbientLight() const
 	{
-		return LevelHandler::GetAmbientLight();
+		return LevelHandler::GetDefaultAmbientLight();
 	}
 
 	void MultiLevelHandler::SetAmbientLight(Actors::Player* player, float value)
@@ -121,11 +126,12 @@ namespace Jazz2::Multiplayer
 	{
 		LevelHandler::OnBeginFrame();
 
-		if ((_pressedActions & 0xffffffffu) != ((_pressedActions >> 32) & 0xffffffffu)) {
+		auto& input = _playerInputs[0];
+		if (input.PressedActions != input.PressedActionsLast) {
 			MemoryStream packet(9);
 			packet.WriteValue<std::uint8_t>((std::uint8_t)ClientPacketType::PlayerKeyPress);
 			packet.WriteVariableUint32(_lastSpawnedActorId);
-			packet.WriteVariableUint32((std::uint32_t)(_pressedActions & 0xffffffffu));
+			packet.WriteVariableUint64(input.PressedActions);
 			_networkManager->SendToPeer(nullptr, NetworkChannel::UnreliableUpdates, packet.GetBuffer(), packet.GetSize());
 		}
 	}
@@ -134,10 +140,10 @@ namespace Jazz2::Multiplayer
 	{
 		LevelHandler::OnEndFrame();
 
-		float timeMult = theApplication().timeMult();
+		float timeMult = theApplication().GetTimeMult();
 
 		for (auto& [playerIndex, playerState] : _playerStates) {
-			playerState.PressedKeys |= ((playerState.PressedKeys & 0xffffffffu) << 32);
+			playerState.PressedKeysLast |= playerState.PressedKeys;
 		}
 
 		_updateTimeLeft -= timeMult;
@@ -154,11 +160,36 @@ namespace Jazz2::Multiplayer
 				}
 			}
 
+#if defined(DEATH_DEBUG) && defined(WITH_IMGUI)
+			_plotIndex = (_plotIndex + 1) % PlotValueCount;
+
+			_actorsCount[_plotIndex] = _actors.size();
+			_actorsMaxCount = std::max(_actorsMaxCount, _actorsCount[_plotIndex]);
+			_remoteActorsCount[_plotIndex] = 0;
+			_mirroredActorsCount[_plotIndex] = 0;
+			for (auto& actor : _remoteActors) {
+				if (actor.second == nullptr) {
+					continue;
+				}
+
+				bool isMirrored = (_isServer
+					? ActorShouldBeMirrored(actor.second.get())
+					: runtime_cast<Actors::Multiplayer::RemoteActor*>(actor.second) == nullptr);
+
+				if (isMirrored) {
+					_mirroredActorsCount[_plotIndex]++;
+				} else {
+					_remoteActorsCount[_plotIndex]++;
+				}
+			}
+			_remotingActorsCount[_plotIndex] = _remotingActors.size();
+#endif
+
 			if (_isServer) {
 				std::uint32_t actorCount = (std::uint32_t)(_players.size() + _remotingActors.size());
 
 				MemoryStream packet(5 + actorCount * 19);
-				packet.WriteValue<std::uint8_t>((std::uint8_t)ServerPacketType::UpdateAllActors);
+				//packet.WriteValue<std::uint8_t>((std::uint8_t)ServerPacketType::UpdateAllActors);
 				packet.WriteVariableUint32(actorCount);
 
 				for (Actors::Player* player : _players) {
@@ -239,7 +270,19 @@ namespace Jazz2::Multiplayer
 					packet.WriteValue<std::uint8_t>((std::uint8_t)rendererType);
 				}
 
-				_networkManager->SendToAll(NetworkChannel::UnreliableUpdates, packet.GetBuffer(), packet.GetSize());
+				MemoryStream packetCompressed(1024);
+				packetCompressed.WriteValue<std::uint8_t>((std::uint8_t)ServerPacketType::UpdateAllActors);
+				DeflateWriter dw(packetCompressed);
+				dw.Write(packet.GetBuffer(), packet.GetSize());
+				dw.Dispose();
+
+#if defined(DEATH_DEBUG) && defined(WITH_IMGUI)
+				_updatePacketSize[_plotIndex] = packet.GetSize();
+				_updatePacketMaxSize = std::max(_updatePacketMaxSize, _updatePacketSize[_plotIndex]);
+				_compressedUpdatePacketSize[_plotIndex] = packetCompressed.GetSize();
+#endif
+
+				_networkManager->SendToAll(NetworkChannel::UnreliableUpdates, packetCompressed.GetBuffer(), packetCompressed.GetSize());
 
 				SynchronizePeers();
 			} else {
@@ -278,12 +321,19 @@ namespace Jazz2::Multiplayer
 						packet.WriteVariableUint64(_seqNumWarped);
 					}
 
+#if defined(DEATH_DEBUG) && defined(WITH_IMGUI)
+					_updatePacketSize[_plotIndex] = packet.GetSize();
+					_updatePacketMaxSize = std::max(_updatePacketMaxSize, _updatePacketSize[_plotIndex]);
+#endif
+
 					_networkManager->SendToPeer(nullptr, NetworkChannel::UnreliableUpdates, packet.GetBuffer(), packet.GetSize());
 				}
 			}
 		}
 
 #if defined(DEATH_DEBUG) && defined(WITH_IMGUI)
+		ShowDebugWindow();
+
 		if (PreferencesCache::ShowPerformanceMetrics) {
 			ImDrawList* drawList = ImGui::GetBackgroundDrawList();
 
@@ -294,7 +344,7 @@ namespace Jazz2::Multiplayer
 					Vector2f pos;
 					auto it = _playerStates.find(player->_playerIndex);
 					if (it != _playerStates.end()) {
-						for (std::size_t i = 0; i < countof(it->second.StateBuffer); i++) {
+						for (std::size_t i = 0; i < arraySize(it->second.StateBuffer); i++) {
 							auto posFrom = WorldPosToScreenSpace(it->second.StateBuffer[i].Pos);
 							auto posTo = WorldPosToScreenSpace(it->second.StateBuffer[i].Pos + it->second.StateBuffer[i].Speed);
 
@@ -303,16 +353,16 @@ namespace Jazz2::Multiplayer
 
 						std::int32_t prevIdx = it->second.StateBufferPos - 1;
 						while (prevIdx < 0) {
-							prevIdx += countof(it->second.StateBuffer);
+							prevIdx += static_cast<std::int32_t>(arraySize(it->second.StateBuffer));
 						}
 
 						auto posPrev = WorldPosToScreenSpace(it->second.StateBuffer[prevIdx].Pos);
 						auto posLocal = WorldPosToScreenSpace(player->_pos);
 						drawList->AddLine(posPrev, posLocal, ImColor(255, 60, 60, 220), 2.0f);
 
-						formatString(actorIdString, countof(actorIdString), "%i [%0.1f] %04x", player->_playerIndex, it->second.DeviationTime, it->second.Flags);
+						formatString(actorIdString, arraySize(actorIdString), "%i [%0.1f] %04x", player->_playerIndex, it->second.DeviationTime, it->second.Flags);
 					} else {
-						formatString(actorIdString, countof(actorIdString), "%i", player->_playerIndex);
+						formatString(actorIdString, arraySize(actorIdString), "%i", player->_playerIndex);
 					}
 
 					auto aabbMin = WorldPosToScreenSpace({ player->AABB.L, player->AABB.T });
@@ -323,7 +373,7 @@ namespace Jazz2::Multiplayer
 
 				for (const auto& [actor, actorId] : _remotingActors) {
 					char actorIdString[16];
-					formatString(actorIdString, countof(actorIdString), "%u", actorId);
+					formatString(actorIdString, arraySize(actorIdString), "%u", actorId);
 
 					auto aabbMin = WorldPosToScreenSpace({ actor->AABB.L, actor->AABB.T });
 					aabbMin.x += 4.0f;
@@ -333,7 +383,7 @@ namespace Jazz2::Multiplayer
 			} else {
 				for (Actors::Player* player : _players) {
 					char actorIdString[16];
-					formatString(actorIdString, countof(actorIdString), "%i", player->_playerIndex);
+					formatString(actorIdString, arraySize(actorIdString), "%i", player->_playerIndex);
 
 					auto aabbMin = WorldPosToScreenSpace({ player->AABB.L, player->AABB.T });
 					aabbMin.x += 4.0f;
@@ -343,7 +393,7 @@ namespace Jazz2::Multiplayer
 
 				for (const auto& [actorId, actor] : _remoteActors) {
 					char actorIdString[16];
-					formatString(actorIdString, countof(actorIdString), "%u", actorId);
+					formatString(actorIdString, arraySize(actorIdString), "%u", actorId);
 
 					auto aabbMin = WorldPosToScreenSpace({ actor->AABBInner.L, actor->AABBInner.T });
 					aabbMin.x += 4.0f;
@@ -355,7 +405,7 @@ namespace Jazz2::Multiplayer
 #endif
 	}
 
-	void MultiLevelHandler::OnInitializeViewport(int32_t width, int32_t height)
+	void MultiLevelHandler::OnInitializeViewport(std::int32_t width, std::int32_t height)
 	{
 		LevelHandler::OnInitializeViewport(width, height);
 	}
@@ -518,14 +568,14 @@ namespace Jazz2::Multiplayer
 		LevelHandler::BroadcastTriggeredEvent(initiator, eventType, eventParams);
 	}
 
-	void MultiLevelHandler::BeginLevelChange(ExitType exitType, const StringView nextLevel)
+	void MultiLevelHandler::BeginLevelChange(Actors::ActorBase* initiator, ExitType exitType, const StringView nextLevel)
 	{
 		if (!_isServer) {
 			// Level can be changed only by server
 			return;
 		}
 
-		LevelHandler::BeginLevelChange(exitType, nextLevel);
+		LevelHandler::BeginLevelChange(initiator, exitType, nextLevel);
 	}
 
 	void MultiLevelHandler::HandleGameOver(Actors::Player* player)
@@ -570,17 +620,17 @@ namespace Jazz2::Multiplayer
 		return true;
 	}
 
-	void MultiLevelHandler::HandlePlayerBeforeWarp(Actors::Player* player, const Vector2f& pos, Actors::WarpFlags flags)
+	void MultiLevelHandler::HandlePlayerBeforeWarp(Actors::Player* player, const Vector2f& pos, WarpFlags flags)
 	{
 		if (!_isServer) {
 			return;
 		}
 
-		if (_gameMode == MultiplayerGameMode::Race && (flags & Actors::WarpFlags::IncrementLaps) == Actors::WarpFlags::IncrementLaps) {
+		if (_gameMode == MultiplayerGameMode::Race && (flags & WarpFlags::IncrementLaps) == WarpFlags::IncrementLaps) {
 			// TODO: Increment laps
 		}
 
-		if ((flags & Actors::WarpFlags::Fast) == Actors::WarpFlags::Fast) {
+		if ((flags & WarpFlags::Fast) == WarpFlags::Fast) {
 			// Nothing to do, sending PlayerMoveInstantly packet is enough
 			return;
 		}
@@ -667,9 +717,9 @@ namespace Jazz2::Multiplayer
 		}
 	}
 
-	void MultiLevelHandler::HandlePlayerWarped(Actors::Player* player, const Vector2f& prevPos, bool fast)
+	void MultiLevelHandler::HandlePlayerWarped(Actors::Player* player, const Vector2f& prevPos, WarpFlags flags)
 	{
-		LevelHandler::HandlePlayerWarped(player, prevPos, fast);
+		LevelHandler::HandlePlayerWarped(player, prevPos, flags);
 
 		/*if (_isServer) {
 			auto it = _playerStates.find(player->_playerIndex);
@@ -697,6 +747,42 @@ namespace Jazz2::Multiplayer
 		}
 	}
 
+	void MultiLevelHandler::HandlePlayerCoins(Actors::Player* player, std::int32_t prevCount, std::int32_t newCount)
+	{
+		LevelHandler::HandlePlayerCoins(player, prevCount, newCount);
+
+		if (_isServer) {
+			for (const auto& [peer, peerDesc] : _peerDesc) {
+				if (peerDesc.Player == player) {
+					MemoryStream packet(9);
+					packet.WriteValue<std::uint8_t>((std::uint8_t)ServerPacketType::PlayerRefreshCoins);
+					packet.WriteVariableUint32(player->_playerIndex);
+					packet.WriteVariableInt32(newCount);
+					_networkManager->SendToPeer(peer, NetworkChannel::Main, packet.GetBuffer(), packet.GetSize());
+					break;
+				}
+			}
+		}
+	}
+
+	void MultiLevelHandler::HandlePlayerGems(Actors::Player* player, std::int32_t prevCount, std::int32_t newCount)
+	{
+		LevelHandler::HandlePlayerGems(player, prevCount, newCount);
+
+		if (_isServer) {
+			for (const auto& [peer, peerDesc] : _peerDesc) {
+				if (peerDesc.Player == player) {
+					MemoryStream packet(9);
+					packet.WriteValue<std::uint8_t>((std::uint8_t)ServerPacketType::PlayerRefreshGems);
+					packet.WriteVariableUint32(player->_playerIndex);
+					packet.WriteVariableInt32(newCount);
+					_networkManager->SendToPeer(peer, NetworkChannel::Main, packet.GetBuffer(), packet.GetSize());
+					break;
+				}
+			}
+		}
+	}
+
 	void MultiLevelHandler::SetCheckpoint(Actors::Player* player, const Vector2f& pos)
 	{
 		LevelHandler::SetCheckpoint(player, pos);
@@ -717,38 +803,12 @@ namespace Jazz2::Multiplayer
 		LevelHandler::ShowLevelText(text);
 	}
 
-	void MultiLevelHandler::ShowCoins(Actors::Player* player, std::int32_t count)
-	{
-		if (_isServer) {
-			auto it = _playerStates.find(player->_playerIndex);
-			if (it != _playerStates.end()) {
-				// TODO: Send it to remote peer
-				return;
-			}
-		}
-
-		LevelHandler::ShowCoins(player, count);
-	}
-
-	void MultiLevelHandler::ShowGems(Actors::Player* player, std::int32_t count)
-	{
-		if (_isServer) {
-			auto it = _playerStates.find(player->_playerIndex);
-			if (it != _playerStates.end()) {
-				// TODO: Send it to remote peer
-				return;
-			}
-		}
-
-		LevelHandler::ShowGems(player, count);
-	}
-
-	StringView MultiLevelHandler::GetLevelText(uint32_t textId, int32_t index, uint32_t delimiter)
+	StringView MultiLevelHandler::GetLevelText(std::uint32_t textId, std::int32_t index, std::uint32_t delimiter)
 	{
 		return LevelHandler::GetLevelText(textId, index, delimiter);
 	}
 
-	void MultiLevelHandler::OverrideLevelText(uint32_t textId, const StringView value)
+	void MultiLevelHandler::OverrideLevelText(std::uint32_t textId, const StringView value)
 	{
 		LevelHandler::OverrideLevelText(textId, value);
 
@@ -765,20 +825,19 @@ namespace Jazz2::Multiplayer
 		}
 	}
 
-	bool MultiLevelHandler::PlayerActionPressed(int32_t index, PlayerActions action, bool includeGamepads)
+	bool MultiLevelHandler::PlayerActionPressed(std::int32_t index, PlayerActions action, bool includeGamepads)
 	{
 		// TODO: Remove this override
 		return LevelHandler::PlayerActionPressed(index, action, includeGamepads);
 	}
 
-	bool MultiLevelHandler::PlayerActionPressed(int32_t index, PlayerActions action, bool includeGamepads, bool& isGamepad)
+	bool MultiLevelHandler::PlayerActionPressed(std::int32_t index, PlayerActions action, bool includeGamepads, bool& isGamepad)
 	{
 		if (index > 0) {
 			auto it = _playerStates.find(index);
 			if (it != _playerStates.end()) {
-				std::uint64_t pressedKeys = it->second.PressedKeys;
-				if ((pressedKeys & (1ull << (int32_t)action)) != 0) {
-					isGamepad = (pressedKeys & (1ull << (16 + (int32_t)action))) != 0;
+				if ((it->second.PressedKeys & (1ull << (std::int32_t)action)) != 0) {
+					isGamepad = (it->second.PressedKeys & (1ull << (32 + (std::int32_t)action))) != 0;
 					return true;
 				}
 
@@ -790,20 +849,19 @@ namespace Jazz2::Multiplayer
 		return LevelHandler::PlayerActionPressed(index, action, includeGamepads, isGamepad);
 	}
 
-	bool MultiLevelHandler::PlayerActionHit(int32_t index, PlayerActions action, bool includeGamepads)
+	bool MultiLevelHandler::PlayerActionHit(std::int32_t index, PlayerActions action, bool includeGamepads)
 	{
 		// TODO: Remove this override
 		return LevelHandler::PlayerActionHit(index, action, includeGamepads);
 	}
 
-	bool MultiLevelHandler::PlayerActionHit(int32_t index, PlayerActions action, bool includeGamepads, bool& isGamepad)
+	bool MultiLevelHandler::PlayerActionHit(std::int32_t index, PlayerActions action, bool includeGamepads, bool& isGamepad)
 	{
 		if (index > 0) {
 			auto it = _playerStates.find(index);
 			if (it != _playerStates.end()) {
-				std::uint64_t pressedKeys = it->second.PressedKeys;
-				if ((pressedKeys & ((1ull << (int32_t)action) | (1ull << (32 + (int32_t)action)))) == (1ull << (int32_t)action)) {
-					isGamepad = (pressedKeys & (1ull << (16 + (int32_t)action))) != 0;
+				if ((it->second.PressedKeys & (1ull << (std::int32_t)action)) != 0 && (it->second.PressedKeysLast & (1ull << (std::int32_t)action)) == 0) {
+					isGamepad = (it->second.PressedKeys & (1ull << (32 + (std::int32_t)action))) != 0;
 					return true;
 				}
 
@@ -815,14 +873,14 @@ namespace Jazz2::Multiplayer
 		return LevelHandler::PlayerActionHit(index, action, includeGamepads, isGamepad);
 	}
 
-	float MultiLevelHandler::PlayerHorizontalMovement(int32_t index)
+	float MultiLevelHandler::PlayerHorizontalMovement(std::int32_t index)
 	{
 		if (index > 0) {
 			auto it = _playerStates.find(index);
 			if (it != _playerStates.end()) {
-				if ((it->second.PressedKeys & (1ull << (int32_t)PlayerActions::Left)) != 0) {
+				if ((it->second.PressedKeys & (1ull << (std::int32_t)PlayerActions::Left)) != 0) {
 					return -1.0f;
-				} else if ((it->second.PressedKeys & (1ull << (int32_t)PlayerActions::Right)) != 0) {
+				} else if ((it->second.PressedKeys & (1ull << (std::int32_t)PlayerActions::Right)) != 0) {
 					return 1.0f;
 				} else {
 					return 0.0f;
@@ -833,14 +891,14 @@ namespace Jazz2::Multiplayer
 		return LevelHandler::PlayerHorizontalMovement(index);
 	}
 
-	float MultiLevelHandler::PlayerVerticalMovement(int32_t index)
+	float MultiLevelHandler::PlayerVerticalMovement(std::int32_t index)
 	{
 		if (index > 0) {
 			auto it = _playerStates.find(index);
 			if (it != _playerStates.end()) {
-				if ((it->second.PressedKeys & (1ull << (int32_t)PlayerActions::Up)) != 0) {
+				if ((it->second.PressedKeys & (1ull << (std::int32_t)PlayerActions::Up)) != 0) {
 					return -1.0f;
-				} else if ((it->second.PressedKeys & (1ull << (int32_t)PlayerActions::Down)) != 0) {
+				} else if ((it->second.PressedKeys & (1ull << (std::int32_t)PlayerActions::Down)) != 0) {
 					return 1.0f;
 				} else {
 					return 0.0f;
@@ -907,7 +965,7 @@ namespace Jazz2::Multiplayer
 			return;
 		}
 
-		for (std::int32_t i = 0; i < countof(levelInit.PlayerCarryOvers); i++) {
+		for (std::int32_t i = 0; i < static_cast<std::int32_t>(arraySize(levelInit.PlayerCarryOvers)); i++) {
 			if (levelInit.PlayerCarryOvers[i].Type == PlayerType::None) {
 				continue;
 			}
@@ -931,6 +989,7 @@ namespace Jazz2::Multiplayer
 			Actors::Multiplayer::LocalPlayerOnServer* ptr = player.get();
 			_players.push_back(ptr);
 			AddActor(player);
+			AssignViewport(ptr);
 
 			ptr->ReceiveLevelCarryOver(levelInit.LastExitType, levelInit.PlayerCarryOvers[i]);
 		}
@@ -972,7 +1031,7 @@ namespace Jazz2::Multiplayer
 
 				for (std::size_t i = 0; i < _players.size(); i++) {
 					if (_players[i] == player) {
-						_players.erase(_players.begin() + i);
+						_players.eraseUnordered(i);
 						break;
 					}
 				}
@@ -1011,6 +1070,8 @@ namespace Jazz2::Multiplayer
 			auto packetType = (ClientPacketType)data[0];
 			switch (packetType) {
 				case ClientPacketType::Auth: {
+					LOGD("ClientPacketType::Auth received - peer: %p", peer._enet);
+
 					std::uint8_t flags = 0;
 					if (PreferencesCache::EnableReforgedGameplay) {
 						flags |= 0x01;
@@ -1029,6 +1090,8 @@ namespace Jazz2::Multiplayer
 					return true;
 				}
 				case ClientPacketType::LevelReady: {
+					LOGD("ClientPacketType::LevelReady received - peer: %p", peer._enet);
+
 					_peerDesc[peer] = PeerDesc(nullptr, PeerState::LevelLoaded);
 					return true;
 				}
@@ -1138,8 +1201,8 @@ namespace Jazz2::Multiplayer
 						return true;
 					}
 					
-					std::uint64_t prevState = (it->second.PressedKeys & 0xffffffffu);
-					it->second.PressedKeys = packet.ReadVariableUint32() | (prevState << 32);
+					it->second.PressedKeysLast = it->second.PressedKeys;
+					it->second.PressedKeys = packet.ReadVariableUint64();
 
 					//LOGD("Player %i pressed 0x%08x, last state was 0x%08x", playerIndex, it->second.PressedKeys & 0xffffffffu, prevState);
 					return true;
@@ -1156,6 +1219,9 @@ namespace Jazz2::Multiplayer
 				case ServerPacketType::ChangeGameMode: {
 					MemoryStream packet(data + 1, dataLength - 1);
 					MultiplayerGameMode gameMode = (MultiplayerGameMode)packet.ReadValue<std::uint8_t>();
+
+					LOGD("ServerPacketType::ChangeGameMode received - mode: %u", gameMode);
+
 					_gameMode = gameMode;
 					break;
 				}
@@ -1199,6 +1265,9 @@ namespace Jazz2::Multiplayer
 					std::uint32_t messageLength = packet.ReadVariableUint32();
 					String message = String(NoInit, messageLength);
 					packet.Read(message.data(), messageLength);
+
+					LOGD("ServerPacketType::ShowMessage received - text: \"%s\"", message.data());
+
 					_hud->ShowLevelText(message);
 					break;
 				}
@@ -1212,11 +1281,14 @@ namespace Jazz2::Multiplayer
 					std::int32_t posX = packet.ReadVariableInt32();
 					std::int32_t posY = packet.ReadVariableInt32();
 
+					LOGD("ServerPacketType::CreateControllablePlayer received - playerIndex: %u, playerType: %u, health: %u, flags: %u, team: %u, x: %i, y: %i",
+						playerIndex, playerType, health, flags, teamId, posX, posY);
+
 					_lastSpawnedActorId = playerIndex;
 
 					_root->InvokeAsync([this, playerType, health, teamId, posX, posY]() {
 						std::shared_ptr<Actors::Multiplayer::RemotablePlayer> player = std::make_shared<Actors::Multiplayer::RemotablePlayer>();
-						uint8_t playerParams[2] = { (uint8_t)playerType, 0 };
+						std::uint8_t playerParams[2] = { (std::uint8_t)playerType, 0 };
 						player->OnActivated(Actors::ActorActivationDetails(
 							this,
 							Vector3i(posX, posY, PlayerZ),
@@ -1228,6 +1300,10 @@ namespace Jazz2::Multiplayer
 						Actors::Multiplayer::RemotablePlayer* ptr = player.get();
 						_players.push_back(ptr);
 						AddActor(player);
+						AssignViewport(ptr);
+						// TODO: Needed to initialize newly assigned viewport, because it called asynchronously, not from handler initialization
+						Vector2i res = theApplication().GetResolution();
+						OnInitializeViewport(res.X, res.Y);
 					});
 					return true;
 				}
@@ -1294,7 +1370,8 @@ namespace Jazz2::Multiplayer
 					return true;
 				}
 				case ServerPacketType::UpdateAllActors: {
-					MemoryStream packet(data + 1, dataLength - 1);
+					MemoryStream packetCompressed(data + 1, dataLength - 1);
+					DeflateStream packet(packetCompressed);
 					std::uint32_t actorCount = packet.ReadVariableUint32();
 					for (std::uint32_t i = 0; i < actorCount; i++) {
 						std::uint32_t index = packet.ReadVariableUint32();
@@ -1317,6 +1394,9 @@ namespace Jazz2::Multiplayer
 				}
 				case ServerPacketType::SyncTileMap: {
 					MemoryStream packet(data + 1, dataLength - 1);
+
+					LOGD("ServerPacketType::SyncTileMap received");
+
 					// TODO: No lock here ???
 					TileMap()->InitializeFromStream(packet);
 					return true;
@@ -1325,6 +1405,9 @@ namespace Jazz2::Multiplayer
 					MemoryStream packet(data + 1, dataLength - 1);
 					std::uint8_t triggerId = packet.ReadValue<std::uint8_t>();
 					bool newState = (bool)packet.ReadValue<std::uint8_t>();
+
+					LOGD("ServerPacketType::SetTrigger received - id: %u, state: %u", triggerId, newState);
+
 					_root->InvokeAsync([this, triggerId, newState]() {
 						TileMap()->SetTrigger(triggerId, newState);
 					});
@@ -1352,6 +1435,9 @@ namespace Jazz2::Multiplayer
 					float speedX = packet.ReadValue<std::int16_t>() / 512.0f;
 					float speedY = packet.ReadValue<std::int16_t>() / 512.0f;
 
+					LOGD("ServerPacketType::PlayerMoveInstantly received - playerIndex: %u, x: %f, y: %f, sx: %f, sy: %f",
+						playerIndex, posX, posY, speedX, speedY);
+
 					_root->InvokeAsync([this, posX, posY, speedX, speedY]() {
 						static_cast<Actors::Multiplayer::RemotablePlayer*>(_players[0])->MoveRemotely(Vector2f(posX, posY), Vector2f(speedX, speedY));
 					});
@@ -1361,6 +1447,9 @@ namespace Jazz2::Multiplayer
 					MemoryStream packet(data + 1, dataLength - 1);
 					std::uint32_t playerIndex = packet.ReadVariableUint32();
 					std::uint64_t seqNum = packet.ReadVariableUint64();
+
+					LOGD("ServerPacketType::PlayerAckWarped received - playerIndex: %u, seqNum: %llu", playerIndex, seqNum);
+
 					if (_lastSpawnedActorId == playerIndex && _seqNumWarped == seqNum) {
 						_seqNumWarped = 0;
 					}
@@ -1370,10 +1459,14 @@ namespace Jazz2::Multiplayer
 					MemoryStream packet(data + 1, dataLength - 1);
 					std::uint32_t playerIndex = packet.ReadVariableUint32();
 					if (_lastSpawnedActorId != playerIndex) {
+						LOGW("ServerPacketType::PlayerChangeWeapon received - malformed packet");
 						return true;
 					}
 
 					std::uint8_t weaponType = packet.ReadValue<std::uint8_t>();
+
+					LOGD("ServerPacketType::PlayerChangeWeapon received - playerIndex: %u, weaponType: %u", playerIndex, weaponType);
+
 					_players[0]->SetCurrentWeapon((WeaponType)weaponType);
 					return true;
 				}
@@ -1386,6 +1479,9 @@ namespace Jazz2::Multiplayer
 
 					std::uint8_t weaponType = packet.ReadValue<std::uint8_t>();
 					std::uint16_t weaponAmmo = packet.ReadValue<std::uint16_t>();
+
+					LOGD("ServerPacketType::PlayerRefreshAmmo received - playerIndex: %u, weaponType: %u, weaponAmmo: %u", playerIndex, weaponType, weaponAmmo);
+
 					_players[0]->_weaponAmmo[weaponType] = weaponAmmo;
 					return true;
 				}
@@ -1398,7 +1494,40 @@ namespace Jazz2::Multiplayer
 
 					std::uint8_t weaponType = packet.ReadValue<std::uint8_t>();
 					std::uint8_t weaponUpgrades = packet.ReadValue<std::uint8_t>();
+
+					LOGD("ServerPacketType::PlayerRefreshWeaponUpgrades received - playerIndex: %u, weaponType: %u, weaponUpgrades: %u", playerIndex, weaponType, weaponUpgrades);
+
 					_players[0]->_weaponUpgrades[weaponType] = weaponUpgrades;
+					return true;
+				}
+				case ServerPacketType::PlayerRefreshCoins: {
+					MemoryStream packet(data + 1, dataLength - 1);
+					std::uint32_t playerIndex = packet.ReadVariableUint32();
+					if (_lastSpawnedActorId != playerIndex) {
+						return true;
+					}
+
+					std::int32_t newCount = packet.ReadVariableInt32();
+
+					LOGD("ServerPacketType::PlayerRefreshCoins received - playerIndex: %u, newCount: %i, weaponUpgrades: %u", playerIndex, newCount);
+
+					_players[0]->_coins = newCount;
+					_hud->ShowCoins(newCount);
+					return true;
+				}
+				case ServerPacketType::PlayerRefreshGems: {
+					MemoryStream packet(data + 1, dataLength - 1);
+					std::uint32_t playerIndex = packet.ReadVariableUint32();
+					if (_lastSpawnedActorId != playerIndex) {
+						return true;
+					}
+
+					std::int32_t newCount = packet.ReadVariableInt32();
+
+					LOGD("ServerPacketType::PlayerRefreshGems received - playerIndex: %u, newCount: %i, weaponUpgrades: %u", playerIndex, newCount);
+
+					_players[0]->_gems = newCount;
+					_hud->ShowGems(newCount);
 					return true;
 				}
 				case ServerPacketType::PlayerTakeDamage: {
@@ -1410,6 +1539,9 @@ namespace Jazz2::Multiplayer
 
 					std::int32_t health = packet.ReadVariableInt32();
 					float pushForce = packet.ReadValue<std::int16_t>() / 512.0f;
+
+					LOGD("ServerPacketType::PlayerTakeDamage received - playerIndex: %u, health: %i, pushForce: %f", playerIndex, health, pushForce);
+
 					_root->InvokeAsync([this, health, pushForce]() {
 						_players[0]->TakeDamage(_players[0]->_health - health, pushForce);
 					});
@@ -1441,8 +1573,11 @@ namespace Jazz2::Multiplayer
 					MemoryStream packet(data + 1, dataLength - 1);
 					std::uint32_t playerIndex = packet.ReadVariableUint32();
 					if (_lastSpawnedActorId != playerIndex) {
+						LOGW("ServerPacketType::PlayerWarpIn received - malformed packet");
 						return true;
 					}
+
+					LOGD("ServerPacketType::PlayerWarpIn received - playerIndex: %u", playerIndex);
 
 					_root->InvokeAsync([this]() {
 						static_cast<Actors::Multiplayer::RemotablePlayer*>(_players[0])->WarpIn();
@@ -1455,16 +1590,22 @@ namespace Jazz2::Multiplayer
 		return false;
 	}
 
-	void MultiLevelHandler::LimitCameraView(int left, int width)
+	void MultiLevelHandler::LimitCameraView(Actors::Player* player, std::int32_t left, std::int32_t width)
 	{
 		// TODO: This should probably be client local
-		LevelHandler::LimitCameraView(left, width);
+		LevelHandler::LimitCameraView(player, left, width);
 	}
 
-	void MultiLevelHandler::ShakeCameraView(float duration)
+	void MultiLevelHandler::ShakeCameraView(Actors::Player* player, float duration)
 	{
 		// TODO: This should probably be client local
-		LevelHandler::ShakeCameraView(duration);
+		LevelHandler::ShakeCameraView(player, duration);
+	}
+	
+	void MultiLevelHandler::ShakeCameraViewNear(Vector2f pos, float duration)
+	{
+		// TODO: This should probably be client local
+		LevelHandler::ShakeCameraViewNear(pos, duration);
 	}
 
 	void MultiLevelHandler::SetTrigger(std::uint8_t triggerId, bool newState)
@@ -1481,7 +1622,7 @@ namespace Jazz2::Multiplayer
 		}
 	}
 
-	void MultiLevelHandler::SetWeather(WeatherType type, uint8_t intensity)
+	void MultiLevelHandler::SetWeather(WeatherType type, std::uint8_t intensity)
 	{
 		// TODO: This should probably be client local
 		LevelHandler::SetWeather(type, intensity);
@@ -1532,7 +1673,7 @@ namespace Jazz2::Multiplayer
 		LevelHandler::PrepareNextLevelInitialization(levelInit);
 
 		// Initialize only local players
-		for (std::int32_t i = 1; i < countof(levelInit.PlayerCarryOvers); i++) {
+		for (std::int32_t i = 1; i < static_cast<std::int32_t>(arraySize(levelInit.PlayerCarryOvers)); i++) {
 			levelInit.PlayerCarryOvers[i].Type = PlayerType::None;
 		}
 	}
@@ -1551,6 +1692,7 @@ namespace Jazz2::Multiplayer
 			}
 
 			std::uint8_t playerIndex = FindFreePlayerId();
+			LOGD("Syncing player %u", playerIndex);
 
 			std::shared_ptr<Actors::Multiplayer::RemotePlayerOnServer> player = std::make_shared<Actors::Multiplayer::RemotePlayerOnServer>();
 			std::uint8_t playerParams[2] = { (std::uint8_t)PlayerType::Spaz, (std::uint8_t)playerIndex };
@@ -1752,7 +1894,7 @@ namespace Jazz2::Multiplayer
 
 		std::int32_t nextIdx = playerState.StateBufferPos - 1;
 		if (nextIdx < 0) {
-			nextIdx += countof(playerState.StateBuffer);
+			nextIdx += arraySize(playerState.StateBuffer);
 		}
 
 		if (renderTime <= playerState.StateBuffer[nextIdx].Time) {
@@ -1760,7 +1902,7 @@ namespace Jazz2::Multiplayer
 			while (true) {
 				prevIdx = nextIdx - 1;
 				if (prevIdx < 0) {
-					prevIdx += countof(playerState.StateBuffer);
+					prevIdx += arraySize(playerState.StateBuffer);
 				}
 
 				if (prevIdx == playerState.StateBufferPos || playerState.StateBuffer[prevIdx].Time <= renderTime) {
@@ -1823,7 +1965,7 @@ namespace Jazz2::Multiplayer
 			// Player just warped, reset state buffer to disable interpolation
 			std::int32_t stateBufferPrevPos = playerState.StateBufferPos - 1;
 			if (stateBufferPrevPos < 0) {
-				stateBufferPrevPos += countof(playerState.StateBuffer);
+				stateBufferPrevPos += arraySize(playerState.StateBuffer);
 			}
 
 			std::int64_t renderTime = now - ServerDelay;
@@ -1837,19 +1979,124 @@ namespace Jazz2::Multiplayer
 		}
 
 		playerState.StateBufferPos++;
-		if (playerState.StateBufferPos >= countof(playerState.StateBuffer)) {
+		if (playerState.StateBufferPos >= static_cast<std::int32_t>(arraySize(playerState.StateBuffer))) {
 			playerState.StateBufferPos = 0;
 		}
 
 		playerState.Flags = (flags & ~PlayerFlags::JustWarped);
 	}*/
 
+#if defined(DEATH_DEBUG) && defined(WITH_IMGUI)
+	void MultiLevelHandler::ShowDebugWindow()
+	{
+		const float appWidth = theApplication().GetWidth();
+
+		//const ImVec2 windowPos = ImVec2(appWidth * 0.5f, ImGui::GetIO().DisplaySize.y - Margin);
+		//const ImVec2 windowPosPivot = ImVec2(0.5f, 1.0f);
+		//ImGui::SetNextWindowPos(windowPos, ImGuiCond_FirstUseEver, windowPosPivot);
+		ImGui::Begin("Multiplayer Debug", nullptr);
+
+		ImGui::PlotLines("Update Packet Size", _updatePacketSize, PlotValueCount, _plotIndex, nullptr, 0.0f, _updatePacketMaxSize, ImVec2(appWidth * 0.2f, 40.0f));
+		ImGui::SameLine(360.0f);
+		ImGui::Text("%.0f bytes", _updatePacketSize[_plotIndex]);
+
+		ImGui::PlotLines("Update Packet Size Compressed", _compressedUpdatePacketSize, PlotValueCount, _plotIndex, nullptr, 0.0f, _updatePacketMaxSize, ImVec2(appWidth * 0.2f, 40.0f));
+		ImGui::SameLine(360.0f);
+		ImGui::Text("%.0f bytes", _compressedUpdatePacketSize[_plotIndex]);
+
+		ImGui::Separator();
+
+		ImGui::PlotLines("Actors", _actorsCount, PlotValueCount, _plotIndex, nullptr, 0.0f, _actorsMaxCount, ImVec2(appWidth * 0.2f, 40.0f));
+		ImGui::SameLine(360.0f);
+		ImGui::Text("%.0f", _actorsCount[_plotIndex]);
+
+		ImGui::PlotLines("Remote Actors", _remoteActorsCount, PlotValueCount, _plotIndex, nullptr, 0.0f, _actorsMaxCount, ImVec2(appWidth * 0.2f, 40.0f));
+		ImGui::SameLine(360.0f);
+		ImGui::Text("%.0f", _remoteActorsCount[_plotIndex]);
+
+		ImGui::PlotLines("Mirrored Actors", _mirroredActorsCount, PlotValueCount, _plotIndex, nullptr, 0.0f, _actorsMaxCount, ImVec2(appWidth * 0.2f, 40.0f));
+		ImGui::SameLine(360.0f);
+		ImGui::Text("%.0f", _mirroredActorsCount[_plotIndex]);
+
+		ImGui::PlotLines("Remoting Actors", _remotingActorsCount, PlotValueCount, _plotIndex, nullptr, 0.0f, _actorsMaxCount, ImVec2(appWidth * 0.2f, 40.0f));
+		ImGui::SameLine(360.0f);
+		ImGui::Text("%.0f", _remotingActorsCount[_plotIndex]);
+
+		ImGui::Text("Last spawned ID: %u", _lastSpawnedActorId);
+
+		ImGui::SeparatorText("Peers");
+
+		ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_Reorderable | ImGuiTableFlags_Hideable | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInner | ImGuiTableFlags_NoPadOuterX;
+		if (ImGui::BeginTable("peers", 6, flags, ImVec2(0.0f, 0.0f))) {
+			ImGui::TableSetupColumn("Peer");
+			ImGui::TableSetupColumn("Player Index");
+			ImGui::TableSetupColumn("State");
+			ImGui::TableSetupColumn("Last Updated");
+			ImGui::TableSetupColumn("X");
+			ImGui::TableSetupColumn("Y");
+			ImGui::TableHeadersRow();
+			
+			for (auto& [peer, desc] : _peerDesc) {
+				ImGui::TableNextRow();
+
+				ImGui::TableSetColumnIndex(0);
+				ImGui::Text("0x%p", peer._enet);
+
+				ImGui::TableSetColumnIndex(1);
+				ImGui::Text("%u", desc.Player != nullptr ? desc.Player->GetPlayerIndex() : -1);
+
+				ImGui::TableSetColumnIndex(2);
+				ImGui::Text("0x%x", desc.State);
+
+				ImGui::TableSetColumnIndex(3);
+				ImGui::Text("%u", desc.LastUpdated);
+
+				ImGui::TableSetColumnIndex(4);
+				ImGui::Text("%.2f", desc.Player != nullptr ? desc.Player->GetPos().X : -1.0f);
+
+				ImGui::TableSetColumnIndex(5);
+				ImGui::Text("%.2f", desc.Player != nullptr ? desc.Player->GetPos().Y : -1.0f);
+			}
+			ImGui::EndTable();
+		}
+
+		ImGui::SeparatorText("Player States");
+
+		if (ImGui::BeginTable("playerStates", 4, flags, ImVec2(0.0f, 0.0f))) {
+			ImGui::TableSetupColumn("Player Index");
+			ImGui::TableSetupColumn("Flags");
+			ImGui::TableSetupColumn("Pressed");
+			ImGui::TableSetupColumn("Pressed (Last)");
+			ImGui::TableHeadersRow();
+
+			for (auto& [playerIdx, state] : _playerStates) {
+				ImGui::TableNextRow();
+
+				ImGui::TableSetColumnIndex(0);
+				ImGui::Text("%u", playerIdx);
+
+				ImGui::TableSetColumnIndex(1);
+				ImGui::Text("0x%08x", state.Flags);
+
+				ImGui::TableSetColumnIndex(2);
+				ImGui::Text("0x%08x", state.PressedKeys);
+
+				ImGui::TableSetColumnIndex(3);
+				ImGui::Text("0x%08x", state.PressedKeysLast);
+			}
+			ImGui::EndTable();
+		}
+
+		ImGui::End();
+	}
+#endif
+
 	MultiLevelHandler::PlayerState::PlayerState()
 	{
 	}
 
 	MultiLevelHandler::PlayerState::PlayerState(const Vector2f& pos, const Vector2f& speed)
-		: Flags(PlayerFlags::None), PressedKeys(0)/*, WarpSeqNum(0), WarpTimeLeft(0.0f)*/
+		: Flags(PlayerFlags::None), PressedKeys(0), PressedKeysLast(0)/*, WarpSeqNum(0), WarpTimeLeft(0.0f)*/
 	{
 	}
 }

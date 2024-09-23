@@ -1,4 +1,4 @@
-﻿#include "../Common.h"
+﻿#include "Application.h"
 
 #if defined(DEATH_TARGET_WINDOWS)
 extern "C"
@@ -42,7 +42,6 @@ extern "C"
 #	endif
 #endif
 
-#include "Application.h"
 #include "Base/Algorithms.h"
 #include "Base/Random.h"
 #include "IAppEventHandler.h"
@@ -103,6 +102,7 @@ using namespace Death::IO;
 #elif defined(DEATH_TARGET_ANDROID)
 #	include <stdarg.h>
 #	include <time.h>
+#	include <unistd.h>
 #	include <android/log.h>
 #else
 #	include <cstdarg>
@@ -112,124 +112,145 @@ using namespace Death::IO;
 #	endif
 #endif
 
-#if defined(DEATH_TARGET_ANDROID) || defined(DEATH_TARGET_SWITCH)
+#if !defined(DEATH_TARGET_EMSCRIPTEN)
 #	include <IO/FileStream.h>
-extern std::unique_ptr<Death::IO::Stream> __logFile;
+std::unique_ptr<Death::IO::Stream> __logFile;
 #endif
 #if defined(DEATH_TARGET_WINDOWS) && !defined(DEATH_TARGET_WINDOWS_RT)
+extern HANDLE __consoleHandleOut;
+extern SHORT __consoleCursorY;
 extern bool __showLogConsole;
 #endif
 #if defined(DEATH_TARGET_APPLE) || defined(DEATH_TARGET_EMSCRIPTEN) || defined(DEATH_TARGET_UNIX) || (defined(DEATH_TARGET_WINDOWS) && !defined(DEATH_TARGET_WINDOWS_RT))
 extern bool __hasVirtualTerminal;
 #endif
 
+struct TraceDateTime {
+	std::uint32_t Milliseconds;
+	std::uint32_t Seconds;
+	std::uint32_t Minutes;
+	std::uint32_t Hours;
+	std::uint32_t Days;
+	std::uint32_t Months;
+	std::uint32_t Years;
+};
+
+static TraceDateTime GetTraceDateTime()
+{
+	TraceDateTime result;
+
+#if defined(DEATH_TARGET_WINDOWS)
+	SYSTEMTIME systemTime;
+	::GetLocalTime(&systemTime);
+
+	result.Milliseconds = systemTime.wMilliseconds;
+	result.Seconds = systemTime.wSecond;
+	result.Minutes = systemTime.wMinute;
+	result.Hours = systemTime.wHour;
+	result.Days = systemTime.wDay;
+	result.Months = systemTime.wMonth;
+	result.Years = systemTime.wYear;
+#else
+	struct timespec currentTime;
+	clock_gettime(CLOCK_REALTIME, &currentTime);
+
+	time_t seconds = currentTime.tv_sec;
+	struct tm localTime;
+	localtime_r(&seconds, &localTime);
+
+	result.Milliseconds = (currentTime.tv_nsec / 1000000) % 1000;
+	result.Seconds = localTime.tm_sec;
+	result.Minutes = localTime.tm_min;
+	result.Hours = localTime.tm_hour;
+	result.Days = localTime.tm_mday;
+	result.Months = localTime.tm_mon;
+	result.Years = localTime.tm_year;
+#endif
+
+	return result;
+}
+
 void DEATH_TRACE(TraceLevel level, const char* fmt, ...)
 {
 	constexpr std::int32_t MaxEntryLength = 4096;
 	char logEntry[MaxEntryLength];
+	char logEntryWithColors[MaxEntryLength + 24];
+	const char* logEntryWithoutLevel = logEntry;
+	std::int32_t length;
 
 #if defined(DEATH_TARGET_ANDROID)
 	android_LogPriority priority;
-
-	// clang-format off
 	switch (level) {
 		case TraceLevel::Fatal:		priority = ANDROID_LOG_FATAL; break;
+		case TraceLevel::Assert:	// Android doesn't support this priority, use ANDROID_LOG_ERROR instead
 		case TraceLevel::Error:		priority = ANDROID_LOG_ERROR; break;
 		case TraceLevel::Warning:	priority = ANDROID_LOG_WARN; break;
 		case TraceLevel::Info:		priority = ANDROID_LOG_INFO; break;
 		default:					priority = ANDROID_LOG_DEBUG; break;
 	}
-	// clang-format on
 
 	va_list args;
 	va_start(args, fmt);
-	/*std::int32_t length =*/ vsnprintf(logEntry, MaxEntryLength, fmt, args);
+	length = vsnprintf(logEntry, MaxEntryLength, fmt, args);
 	va_end(args);
 
-	__android_log_write(priority, "jazz2", logEntry);
-
-	if (__logFile != nullptr) {
-		const char* levelIdentifier;
-		switch (level) {
-			case TraceLevel::Fatal:		levelIdentifier = "F"; break;
-			case TraceLevel::Error:		levelIdentifier = "E"; break;
-			case TraceLevel::Warning:	levelIdentifier = "W"; break;
-			case TraceLevel::Info:		levelIdentifier = "I"; break;
-			default:					levelIdentifier = "D"; break;
-		}
-
-		struct timespec currentTime;
-		clock_gettime(CLOCK_REALTIME, &currentTime);
-
-		time_t seconds = currentTime.tv_sec;
-		long milliseconds = (currentTime.tv_nsec / 1000000) % 1000;
-
-		struct tm localTime;
-		localtime_r(&seconds, &localTime);
-
-		FileStream* s = static_cast<FileStream*>(__logFile.get());
-		fprintf(s->GetHandle(), "%02d:%02d:%02d.%03ld [%s] %s\n", localTime.tm_hour, localTime.tm_min, localTime.tm_sec, milliseconds, levelIdentifier, logEntry);
-		fflush(s->GetHandle());
+	std::int32_t result = __android_log_write(priority, NCINE_APP, logEntry);
+	std::int32_t n = 0;
+	while (result == -11 /*EAGAIN*/ && n < 2) {
+		::usleep(5000); // in microseconds
+		result = __android_log_write(priority, NCINE_APP, logEntry);
+		n++;
 	}
 #elif defined(DEATH_TARGET_SWITCH)
 	va_list args;
 	va_start(args, fmt);
-	std::int32_t length = vsnprintf(logEntry, MaxEntryLength, fmt, args);
+	length = vsnprintf(logEntry, MaxEntryLength, fmt, args);
 	va_end(args);
 
 	svcOutputDebugString(logEntry, length);
-
-	if (__logFile != nullptr) {
-		const char* levelIdentifier;
-		switch (level) {
-			case TraceLevel::Fatal:		levelIdentifier = "F"; break;
-			case TraceLevel::Error:		levelIdentifier = "E"; break;
-			case TraceLevel::Warning:	levelIdentifier = "W"; break;
-			case TraceLevel::Info:		levelIdentifier = "I"; break;
-			default:					levelIdentifier = "D"; break;
-		}
-
-		struct timespec currentTime;
-		clock_gettime(CLOCK_REALTIME, &currentTime);
-
-		time_t seconds = currentTime.tv_sec;
-		long milliseconds = (currentTime.tv_nsec / 1000000) % 1000;
-
-		struct tm localTime;
-		localtime_r(&seconds, &localTime);
-
-		FileStream* s = static_cast<FileStream*>(__logFile.get());
-		fprintf(s->GetHandle(), "%02d:%02d:%02d.%03ld [%s] %s\n", localTime.tm_hour, localTime.tm_min, localTime.tm_sec, milliseconds, levelIdentifier, logEntry);
-		fflush(s->GetHandle());
-	}
 #elif defined(DEATH_TARGET_WINDOWS_RT)
-	logEntry[0] = '[';
+	char levelIdentifier;
 	switch (level) {
-		case TraceLevel::Fatal:		logEntry[1] = 'F'; break;
-		case TraceLevel::Error:		logEntry[1] = 'E'; break;
-		case TraceLevel::Warning:	logEntry[1] = 'W'; break;
-		case TraceLevel::Info:		logEntry[1] = 'I'; break;
-		default:					logEntry[1] = 'D'; break;
+		case TraceLevel::Fatal:		levelIdentifier = 'F'; break;
+		case TraceLevel::Assert:	levelIdentifier = 'A'; break;
+		case TraceLevel::Error:		levelIdentifier = 'E'; break;
+		case TraceLevel::Warning:	levelIdentifier = 'W'; break;
+		case TraceLevel::Info:		levelIdentifier = 'I'; break;
+		default:					levelIdentifier = 'D'; break;
 	}
-	logEntry[2] = ']';
-	logEntry[3] = ' ';
+
+#	if defined(WITH_THREADS)
+	length = snprintf(logEntry, MaxEntryLength, "[%c]%u} ", levelIdentifier, static_cast<std::uint32_t>(nCine::Thread::GetCurrentId()));
+#	else
+	length = snprintf(logEntry, MaxEntryLength, "[%c] ", levelIdentifier);
+#	endif
+	logEntryWithoutLevel += length;
 
 	va_list args;
 	va_start(args, fmt);
-	std::int32_t length = vsnprintf(logEntry + 4, MaxEntryLength - 4, fmt, args) + 4;
+	std::int32_t partLength = vsnprintf(logEntry + length, MaxEntryLength - length, fmt, args);
 	va_end(args);
+	if (partLength <= 0) {
+		return;
+	}
 
+	length += partLength;
 	if (length >= MaxEntryLength - 2) {
 		length = MaxEntryLength - 2;
 	}
 
-	logEntry[length++] = '\n';
+	// Use OutputDebugStringA() to avoid conversion UTF-8 => UTF-16 => current code page
+	/*wchar_t logEntryW[MaxEntryLength];
+	std::int32_t lengthW = Death::Utf8::ToUtf16(logEntryW, logEntry, length);
+	if (lengthW > 0) {
+		logEntryW[lengthW++] = '\n';
+		logEntryW[lengthW] = '\0';
+		::OutputDebugStringW(logEntryW);
+	}*/
+	logEntry[length] = '\n';
+	logEntry[length + 1] = '\0';
+	::OutputDebugStringA(logEntry);
 	logEntry[length] = '\0';
-
-	wchar_t logEntryW[MaxEntryLength];
-	if (Death::Utf8::ToUtf16(logEntryW, logEntry, length) > 0) {
-		::OutputDebugString(logEntryW);
-	}
 #else
 	static const char Reset[] = "\033[0m";
 	static const char Bold[] = "\033[1m";
@@ -237,18 +258,15 @@ void DEATH_TRACE(TraceLevel level, const char* fmt, ...)
 	static const char DarkGray[] = "\033[90m";
 	static const char BrightRed[] = "\033[91m";
 	static const char BrightYellow[] = "\033[93m";
+	static const char BrightMagenta[] = "\033[95m";
 
-#	if defined(DEATH_TARGET_WINDOWS)
+#	if defined(DEATH_TARGET_WINDOWS) && defined(DEATH_DEBUG)
 	if (__showLogConsole) {
 #	endif
 
-	char logEntryWithColors[MaxEntryLength];
-	logEntryWithColors[0] = '\0';
-	logEntryWithColors[MaxEntryLength - 1] = '\0';
-
 	va_list args;
 	va_start(args, fmt);
-	std::int32_t length = vsnprintf(logEntry, MaxEntryLength, fmt, args);
+	length = vsnprintf(logEntry, MaxEntryLength, fmt, args);
 	va_end(args);
 
 	// Colorize the output
@@ -274,19 +292,22 @@ void DEATH_TRACE(TraceLevel level, const char* fmt, ...)
 	std::int32_t length2 = 0;
 	if (logMsgFuncLength > 0) {
 		if (hasVirtualTerminal) {
-			length2 += nCine::copyStringFirst(logEntryWithColors, MaxEntryLength - 1, Faint, countof(Faint) - 1);
+			length2 += nCine::copyStringFirst(logEntryWithColors, MaxEntryLength - 1, Faint, static_cast<std::int32_t>(arraySize(Faint)) - 1);
 
 			switch (level) {
 				case TraceLevel::Error:
 				case TraceLevel::Fatal:
-					length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, BrightRed, countof(BrightRed) - 1);
+					length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, BrightRed, static_cast<std::int32_t>(arraySize(BrightRed)) - 1);
+					break;
+				case TraceLevel::Assert:
+					length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, BrightMagenta, static_cast<std::int32_t>(arraySize(BrightMagenta)) - 1);
 					break;
 				case TraceLevel::Warning:
-					length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, BrightYellow, countof(BrightYellow) - 1);
+					length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, BrightYellow, static_cast<std::int32_t>(arraySize(BrightYellow)) - 1);
 					break;
 #	if defined(DEATH_TARGET_EMSCRIPTEN)
 				case TraceLevel::Debug:
-					length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, DarkGray, countof(DarkGray) - 1);
+					length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, DarkGray, static_cast<std::int32_t>(arraySize(DarkGray)) - 1);
 					break;
 #	endif
 			}
@@ -300,28 +321,31 @@ void DEATH_TRACE(TraceLevel level, const char* fmt, ...)
 		if (level != TraceLevel::Warning && level != TraceLevel::Debug)
 #	endif
 		{
-			length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, Reset, countof(Reset) - 1);
+			length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, Reset, static_cast<std::int32_t>(arraySize(Reset)) - 1);
 		}
 
 		switch (level) {
 			case TraceLevel::Error:
 			case TraceLevel::Fatal:
-				length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, BrightRed, countof(BrightRed) - 1);
+				length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, BrightRed, static_cast<std::int32_t>(arraySize(BrightRed)) - 1);
 				if (level == TraceLevel::Fatal) {
-					length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, Bold, countof(Bold) - 1);
+					length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, Bold, static_cast<std::int32_t>(arraySize(Bold)) - 1);
 				}
+				break;
+			case TraceLevel::Assert:
+				length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, BrightMagenta, static_cast<std::int32_t>(arraySize(BrightMagenta)) - 1);
 				break;
 #	if defined(DEATH_TARGET_EMSCRIPTEN)
 			case TraceLevel::Info:
 			case TraceLevel::Warning:
-				length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, Bold, countof(Bold) - 1);
+				length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, Bold, static_cast<std::int32_t>(arraySize(Bold)) - 1);
 				break;
 #	else
 			case TraceLevel::Warning:
-				length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, BrightYellow, countof(BrightYellow) - 1);
+				length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, BrightYellow, static_cast<std::int32_t>(arraySize(BrightYellow)) - 1);
 				break;
 			case TraceLevel::Debug:
-				length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, DarkGray, countof(DarkGray) - 1);
+				length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, DarkGray, static_cast<std::int32_t>(arraySize(DarkGray)) - 1);
 				break;
 #	endif
 		}
@@ -330,8 +354,8 @@ void DEATH_TRACE(TraceLevel level, const char* fmt, ...)
 	length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, logEntry + logMsgFuncLength, length - logMsgFuncLength);
 
 	if (hasVirtualTerminal) {
-		if (level == TraceLevel::Debug || level == TraceLevel::Warning || level == TraceLevel::Error || level == TraceLevel::Fatal) {
-			length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, Reset, countof(Reset) - 1);
+		if (level == TraceLevel::Debug || level == TraceLevel::Warning || level == TraceLevel::Error || level == TraceLevel::Assert || level == TraceLevel::Fatal) {
+			length2 += nCine::copyStringFirst(logEntryWithColors + length2, MaxEntryLength - length2 - 1, Reset, static_cast<std::int32_t>(arraySize(Reset)) - 1);
 		}
 	}
 
@@ -342,65 +366,156 @@ void DEATH_TRACE(TraceLevel level, const char* fmt, ...)
 	logEntryWithColors[length2++] = '\n';
 	logEntryWithColors[length2] = '\0';
 
-	if (level == TraceLevel::Error || level == TraceLevel::Fatal) {
-		fputs(logEntryWithColors, stderr);
-	} else {
-		fputs(logEntryWithColors, stdout);
+#	if defined(DEATH_TARGET_WINDOWS)
+	// Try to restore previous cursor position (this doesn't work correctly in Windows Terminal v1.19)
+	if (__consoleHandleOut != NULL) {
+		CONSOLE_SCREEN_BUFFER_INFO csbi;
+		if (::GetConsoleScreenBufferInfo(__consoleHandleOut, &csbi)) {
+			if (__consoleCursorY <= csbi.dwCursorPosition.Y) {
+				::SetConsoleCursorPosition(__consoleHandleOut, { 0, __consoleCursorY });
+			}
+		}
+	}
+	if (hasVirtualTerminal && length2 < MaxEntryLength) {
+		// Console can be shared with parent process, so clear the rest of the line (using "\x1b[0K" sequence)
+		length2--;
+		logEntryWithColors[length2++] = '\x1b';
+		logEntryWithColors[length2++] = '[';
+		logEntryWithColors[length2++] = '0';
+		logEntryWithColors[length2++] = 'K';
+		logEntryWithColors[length2++] = '\n';
+		logEntryWithColors[length2] = '\0';
 	}
 
-#	if defined(DEATH_TARGET_WINDOWS)
-	} else {
-#		if defined(DEATH_DEBUG)
-		logEntry[0] = '[';
-		switch (level) {
-			case TraceLevel::Fatal:		logEntry[1] = 'F'; break;
-			case TraceLevel::Error:		logEntry[1] = 'E'; break;
-			case TraceLevel::Warning:	logEntry[1] = 'W'; break;
-			case TraceLevel::Info:		logEntry[1] = 'I'; break;
-			default:					logEntry[1] = 'D'; break;
+	fputs(logEntryWithColors, level == TraceLevel::Error || level == TraceLevel::Fatal ? stderr : stdout);
+
+	// Save the last cursor position for later
+	if (__consoleHandleOut != NULL) {
+		CONSOLE_SCREEN_BUFFER_INFO csbi;
+		if (::GetConsoleScreenBufferInfo(__consoleHandleOut, &csbi)) {
+			__consoleCursorY = csbi.dwCursorPosition.Y;
 		}
-		logEntry[2] = ']';
-		logEntry[3] = ' ';
+	}
+#	else
+	fputs(logEntryWithColors, level == TraceLevel::Error || level == TraceLevel::Fatal ? stderr : stdout);
+#	endif
+
+#	if defined(DEATH_TARGET_WINDOWS) && defined(DEATH_DEBUG)
+	} else {
+		char levelIdentifier;
+		switch (level) {
+			case TraceLevel::Fatal:		levelIdentifier = 'F'; break;
+			case TraceLevel::Assert:	levelIdentifier = 'A'; break;
+			case TraceLevel::Error:		levelIdentifier = 'E'; break;
+			case TraceLevel::Warning:	levelIdentifier = 'W'; break;
+			case TraceLevel::Info:		levelIdentifier = 'I'; break;
+			default:					levelIdentifier = 'D'; break;
+		}
+#		if defined(WITH_THREADS)
+		length = snprintf(logEntry, MaxEntryLength, "[%c]%u} ", levelIdentifier, static_cast<std::uint32_t>(nCine::Thread::GetCurrentId()));
+#		else
+		length = snprintf(logEntry, MaxEntryLength, "[%c] ", levelIdentifier);
+#		endif
+		logEntryWithoutLevel += length;
 
 		va_list args;
 		va_start(args, fmt);
-		std::int32_t length = vsnprintf(logEntry + 4, MaxEntryLength - 4, fmt, args) + 4;
+		std::int32_t partLength = vsnprintf(logEntry + length, MaxEntryLength - length, fmt, args);
 		va_end(args);
+		if (partLength <= 0) {
+			return;
+		}
 
+		length += partLength;
 		if (length >= MaxEntryLength - 2) {
 			length = MaxEntryLength - 2;
 		}
 
-		logEntry[length++] = '\n';
+		// Use OutputDebugStringA() to avoid conversion UTF-8 => UTF-16 => current code page
+		/*wchar_t logEntryW[MaxEntryLength];
+		std::int32_t lengthW = Death::Utf8::ToUtf16(logEntryW, logEntry, length);
+		if (lengthW > 0) {
+			logEntryW[lengthW++] = '\n';
+			logEntryW[lengthW] = '\0';
+			::OutputDebugStringW(logEntryW);
+		}*/
+		logEntry[length] = '\n';
+		logEntry[length + 1] = '\0';
+		::OutputDebugStringA(logEntry);
 		logEntry[length] = '\0';
-
-		wchar_t logEntryW[MaxEntryLength];
-		if (Death::Utf8::ToUtf16(logEntryW, logEntry, length) > 0) {
-			::OutputDebugString(logEntryW);
-		}
-#		endif
 	}
 #	endif
 #endif
 
+#if !defined(DEATH_TARGET_EMSCRIPTEN)
+	// Allow to attach custom target using Application::AttachTraceTarget()
+	if (__logFile != nullptr) {
+		char levelIdentifier;
+		switch (level) {
+			case TraceLevel::Fatal:		levelIdentifier = 'F'; break;
+			case TraceLevel::Assert:	levelIdentifier = 'A'; break;
+			case TraceLevel::Error:		levelIdentifier = 'E'; break;
+			case TraceLevel::Warning:	levelIdentifier = 'W'; break;
+			case TraceLevel::Info:		levelIdentifier = 'I'; break;
+			default:					levelIdentifier = 'D'; break;
+		}
+
+		TraceDateTime dateTime = GetTraceDateTime();
+		FileStream* s = static_cast<FileStream*>(__logFile.get());
+
+#	if defined(WITH_THREADS)
+		std::int32_t length2 = snprintf(logEntryWithColors, MaxEntryLength, "%02u:%02u:%02u.%03u [%c]%u}", dateTime.Hours, dateTime.Minutes,
+			dateTime.Seconds, dateTime.Milliseconds, levelIdentifier, static_cast<std::uint32_t>(nCine::Thread::GetCurrentId()));
+
+		while (length2 < 23) {
+			logEntryWithColors[length2++] = ' ';
+		}
+		logEntryWithColors[length2++] = ' ';
+
+		std::int32_t partLength = std::min(length - (std::int32_t)(logEntryWithoutLevel - logEntry), MaxEntryLength - length2 - 2);
+		std::memcpy(&logEntryWithColors[length2], logEntryWithoutLevel, partLength);
+		length2 += partLength;
+
+		logEntryWithColors[length2++] = '\n';
+		logEntryWithColors[length2] = '\0';
+		fputs(logEntryWithColors, s->GetHandle());
+#	else
+		fprintf(s->GetHandle(), "%02u:%02u:%02u.%03u [%c] %s\n", dateTime.Hours, dateTime.Minutes,
+			dateTime.Seconds, dateTime.Milliseconds, levelIdentifier, logEntryWithoutLevel);
+#	endif
+		s->Flush();
+	}
+#endif
+
+#if defined(WITH_IMGUI)
+	auto* debugOverlay = nCine::theApplication().debugOverlay_.get();
+	if (debugOverlay != nullptr) {
+#	if defined(WITH_THREADS)
+		std::uint32_t tid = static_cast<std::uint32_t>(nCine::Thread::GetCurrentId());
+#	else
+		std::uint32_t tid = 0;
+#	endif
+
+		TraceDateTime dateTime = GetTraceDateTime();
+		snprintf(logEntryWithColors, MaxEntryLength, "%02u:%02u:%02u.%03u", dateTime.Hours,
+			dateTime.Minutes, dateTime.Seconds, dateTime.Milliseconds);
+
+		debugOverlay->log(level, logEntryWithColors, tid, logEntryWithoutLevel);
+	}
+#endif
+
 #if defined(WITH_TRACY)
-	uint32_t colorTracy;
-	// clang-format off
+	std::uint32_t colorTracy;
 	switch (level) {
 		case TraceLevel::Fatal:		colorTracy = 0xEC3E40; break;
+		case TraceLevel::Assert:	colorTracy = 0xD651B0; break;
 		case TraceLevel::Error:		colorTracy = 0xD85050; break;
 		case TraceLevel::Warning:	colorTracy = 0xEBC77A; break;
 		case TraceLevel::Info:		colorTracy = 0xD2D2D2; break;
 		default:					colorTracy = 0x969696; break;
 	}
-	// clang-format on
 
-	va_list argsTracy;
-	va_start(argsTracy, fmt);
-	std::int32_t lengthTracy = vsnprintf(logEntry, MaxEntryLength, fmt, argsTracy);
-	va_end(argsTracy);
-
-	TracyMessageC(logEntry, lengthTracy, colorTracy);
+	TracyMessageC(logEntryWithoutLevel, strlen(logEntryWithoutLevel), colorTracy);
 #endif
 }
 
@@ -422,27 +537,27 @@ namespace nCine
 	}
 #endif
 
-	Viewport& Application::screenViewport()
+	Viewport& Application::GetScreenViewport()
 	{
 		return *screenViewport_;
 	}
 
-	unsigned long int Application::numFrames() const
+	unsigned long int Application::GetFrameCount() const
 	{
-		return frameTimer_->totalNumberFrames();
+		return frameTimer_->GetTotalNumberFrames();
 	}
 
-	float Application::timeMult() const
+	float Application::GetTimeMult() const
 	{
-		return frameTimer_->timeMult();
+		return frameTimer_->GetTimeMult();
 	}
 
-	const FrameTimer& Application::frameTimer() const
+	const FrameTimer& Application::GetFrameTimer() const
 	{
 		return *frameTimer_;
 	}
 
-	void Application::resizeScreenViewport(int width, int height)
+	void Application::ResizeScreenViewport(std::int32_t width, std::int32_t height)
 	{
 		if (screenViewport_ != nullptr) {
 			bool sizeChanged = (width != screenViewport_->width_ || height != screenViewport_->height_);
@@ -453,7 +568,12 @@ namespace nCine
 		}
 	}
 
-	void Application::preInitCommon(std::unique_ptr<IAppEventHandler> appEventHandler)
+	bool Application::ShouldSuspend()
+	{
+		return ((!hasFocus_ && autoSuspension_) || isSuspended_);
+	}
+
+	void Application::PreInitCommon(std::unique_ptr<IAppEventHandler> appEventHandler)
 	{
 #if defined(WITH_BACKWARD)
 #	if defined(DEATH_TARGET_ANDROID)
@@ -467,18 +587,27 @@ namespace nCine
 #endif
 
 		appEventHandler_ = std::move(appEventHandler);
-		appEventHandler_->OnPreInit(appCfg_);
-		LOGI("IAppEventHandler::OnPreInit() invoked");
+		appEventHandler_->OnPreInitialize(appCfg_);
+		LOGI("IAppEventHandler::OnPreInitialize() invoked");
 	}
 
-	void Application::initCommon()
+	void Application::InitCommon()
 	{
 		TracyGpuContext;
 		ZoneScopedC(0x81A861);
 		// This timestamp is needed to initialize random number generator
 		profileStartTime_ = TimeStamp::now();
 
+#if defined(DEATH_TARGET_WINDOWS_RT)
+		LOGI(NCINE_APP_NAME " v" NCINE_VERSION " (UWP) initializing...");
+#elif defined(WITH_GLFW)
+		LOGI(NCINE_APP_NAME " v" NCINE_VERSION " (GLFW) initializing...");
+#elif defined(WITH_SDL)
+		LOGI(NCINE_APP_NAME " v" NCINE_VERSION " (SDL2) initializing...");
+#else
 		LOGI(NCINE_APP_NAME " v" NCINE_VERSION " initializing...");
+#endif
+		
 #if defined(WITH_TRACY)
 		TracyAppInfo(NCINE_APP, sizeof(NCINE_APP) - 1);
 		LOGW("Tracy integration is enabled");
@@ -486,17 +615,17 @@ namespace nCine
 
 #if defined(WITH_AUDIO)
 		if (appCfg_.withAudio) {
-			theServiceLocator().registerAudioDevice(std::make_unique<ALAudioDevice>());
+			theServiceLocator().RegisterAudioDevice(std::make_unique<ALAudioDevice>());
 		}
 #endif
 #if defined(WITH_THREADS)
 		if (appCfg_.withThreads) {
-			theServiceLocator().registerThreadPool(std::make_unique<ThreadPool>());
+			theServiceLocator().RegisterThreadPool(std::make_unique<ThreadPool>());
 		}
 #endif
 
-		theServiceLocator().registerGfxCapabilities(std::make_unique<GfxCapabilities>());
-		const auto& gfxCapabilities = theServiceLocator().gfxCapabilities();
+		theServiceLocator().RegisterGfxCapabilities(std::make_unique<GfxCapabilities>());
+		const auto& gfxCapabilities = theServiceLocator().GetGfxCapabilities();
 		GLDebug::init(gfxCapabilities);
 
 #if defined(DEATH_TARGET_ANDROID) && !(defined(WITH_FIXED_BATCH_SIZE) && WITH_FIXED_BATCH_SIZE > 0)
@@ -518,14 +647,9 @@ namespace nCine
 		RenderDocCapture::init();
 #endif
 
-		// Swapping frame now for a cleaner API trace capture when debugging
-		gfxDevice_->update();
-		FrameMark;
-		TracyGpuCollect;
-
 		frameTimer_ = std::make_unique<FrameTimer>(appCfg_.frameTimerLogInterval, 0.2f);
-#if defined(DEATH_TARGET_WINDOWS)
-		_waitableTimer = ::CreateWaitableTimer(NULL, TRUE, NULL);
+#if 0 //defined(DEATH_TARGET_WINDOWS)
+		_waitableTimer = ::CreateWaitableTimerW(NULL, TRUE, NULL);
 #endif
 
 		LOGI("Creating rendering resources...");
@@ -551,22 +675,22 @@ namespace nCine
 #endif
 
 		// Initialization of the static random generator seeds
-		Random().Initialize(static_cast<uint64_t>(TimeStamp::now().ticks()), static_cast<uint64_t>(profileStartTime_.ticks()));
+		Random().Initialize(TimeStamp::now().ticks(), profileStartTime_.ticks());
 
 		LOGI("Application initialized");
 #if defined(NCINE_PROFILING)
-		timings_[(int)Timings::InitCommon] = profileStartTime_.secondsSince();
+		timings_[(std::int32_t)Timings::InitCommon] = profileStartTime_.secondsSince();
 #endif
 		{
-			ZoneScopedNC("onInit", 0x81A861);
+			ZoneScopedNC("OnInitialize", 0x81A861);
 #if defined(NCINE_PROFILING)
 			profileStartTime_ = TimeStamp::now();
 #endif
-			appEventHandler_->OnInit();
+			appEventHandler_->OnInitialize();
 #if defined(NCINE_PROFILING)
-			timings_[(int)Timings::AppInit] = profileStartTime_.secondsSince();
+			timings_[(std::int32_t)Timings::AppInit] = profileStartTime_.secondsSince();
 #endif
-			LOGI("IAppEventHandler::OnInit() invoked");
+			LOGI("IAppEventHandler::OnInitialize() invoked");
 		}
 
 #if defined(WITH_IMGUI)
@@ -579,9 +703,9 @@ namespace nCine
 		TracyGpuCollect;
 	}
 
-	void Application::step()
+	void Application::Step()
 	{
-		frameTimer_->addFrame();
+		frameTimer_->AddFrame();
 
 #if defined(WITH_IMGUI)
 		{
@@ -591,7 +715,7 @@ namespace nCine
 #	endif
 			imguiDrawing_->newFrame();
 #	if defined(NCINE_PROFILING)
-			timings_[(int)Timings::ImGui] = profileStartTime_.secondsSince();
+			timings_[(std::int32_t)Timings::ImGui] = profileStartTime_.secondsSince();
 #	endif
 		}
 #endif
@@ -600,13 +724,13 @@ namespace nCine
 #endif
 
 		{
-			ZoneScopedNC("OnFrameStart", 0x81A861);
+			ZoneScopedNC("OnBeginFrame", 0x81A861);
 #if defined(NCINE_PROFILING)
 			profileStartTime_ = TimeStamp::now();
 #endif
-			appEventHandler_->OnFrameStart();
+			appEventHandler_->OnBeginFrame();
 #if defined(NCINE_PROFILING)
-			timings_[(int)Timings::FrameStart] = profileStartTime_.secondsSince();
+			timings_[(std::int32_t)Timings::BeginFrame] = profileStartTime_.secondsSince();
 #endif
 		}
 
@@ -625,7 +749,7 @@ namespace nCine
 #endif
 				screenViewport_->update();
 #if defined(NCINE_PROFILING)
-				timings_[(int)Timings::Update] = profileStartTime_.secondsSince();
+				timings_[(std::int32_t)Timings::Update] = profileStartTime_.secondsSince();
 #endif
 			}
 
@@ -636,7 +760,7 @@ namespace nCine
 #endif
 				appEventHandler_->OnPostUpdate();
 #if defined(NCINE_PROFILING)
-				timings_[(int)Timings::PostUpdate] = profileStartTime_.secondsSince();
+				timings_[(std::int32_t)Timings::PostUpdate] = profileStartTime_.secondsSince();
 #endif
 			}
 
@@ -647,7 +771,7 @@ namespace nCine
 #endif
 				screenViewport_->visit();
 #if defined(NCINE_PROFILING)
-				timings_[(int)Timings::Visit] = profileStartTime_.secondsSince();
+				timings_[(std::int32_t)Timings::Visit] = profileStartTime_.secondsSince();
 #endif
 			}
 
@@ -660,7 +784,7 @@ namespace nCine
 				RenderQueue* imguiRenderQueue = (guiSettings_.imguiViewport ? guiSettings_.imguiViewport->renderQueue_.get() : screenViewport_->renderQueue_.get());
 				imguiDrawing_->endFrame(*imguiRenderQueue);
 #	if defined(NCINE_PROFILING)
-				timings_[(int)Timings::ImGui] += profileStartTime_.secondsSince();
+				timings_[(std::int32_t)Timings::ImGui] += profileStartTime_.secondsSince();
 #	endif
 			}
 #endif
@@ -673,7 +797,7 @@ namespace nCine
 				screenViewport_->sortAndCommitQueue();
 				screenViewport_->draw();
 #if defined(NCINE_PROFILING)
-				timings_[(int)Timings::Draw] = profileStartTime_.secondsSince();
+				timings_[(std::int32_t)Timings::Draw] = profileStartTime_.secondsSince();
 #endif
 			}
 		} else {
@@ -685,14 +809,14 @@ namespace nCine
 #	endif
 				imguiDrawing_->endFrame();
 #	if defined(NCINE_PROFILING)
-				timings_[(int)Timings::ImGui] += profileStartTime_.secondsSince();
+				timings_[(std::int32_t)Timings::ImGui] += profileStartTime_.secondsSince();
 #	endif
 			}
 #endif
 		}
 
 		{
-			theServiceLocator().audioDevice().updatePlayers();
+			theServiceLocator().GetAudioDevice().updatePlayers();
 		}
 
 		{
@@ -700,9 +824,9 @@ namespace nCine
 #if defined(NCINE_PROFILING)
 			profileStartTime_ = TimeStamp::now();
 #endif
-			appEventHandler_->OnFrameEnd();
+			appEventHandler_->OnEndFrame();
 #if defined(NCINE_PROFILING)
-			timings_[(int)Timings::FrameEnd] = profileStartTime_.secondsSince();
+			timings_[(std::int32_t)Timings::EndFrame] = profileStartTime_.secondsSince();
 #endif
 		}
 
@@ -733,7 +857,7 @@ namespace nCine
 			}
 #else
 			const float frameDuration = 1.0f / static_cast<float>(appCfg_.frameLimit);
-			while (frameTimer_->frameDuration() < frameDuration) {
+			while (frameTimer_->GetFrameDuration() < frameDuration) {
 				Timer::sleep(0);
 			}
 #endif
@@ -741,37 +865,37 @@ namespace nCine
 		}
 	}
 
-	void Application::shutdownCommon()
+	void Application::ShutdownCommon()
 	{
 		ZoneScopedC(0x81A861);
 		appEventHandler_->OnShutdown();
 		LOGI("IAppEventHandler::OnShutdown() invoked");
-		appEventHandler_.reset();
+		appEventHandler_ = nullptr;
 
 #if defined(WITH_IMGUI)
-		imguiDrawing_.reset(nullptr);
-		debugOverlay_.reset(nullptr);
+		imguiDrawing_ = nullptr;
+		debugOverlay_ = nullptr;
 #endif
 #if defined(WITH_RENDERDOC)
 		RenderDocCapture::removeHooks();
 #endif
 
-		rootNode_.reset();
+		rootNode_ = nullptr;
 		RenderResources::dispose();
-		frameTimer_.reset();
-		inputManager_.reset();
-		gfxDevice_.reset();
+		frameTimer_ = nullptr;
+		inputManager_ = nullptr;
+		gfxDevice_ = nullptr;
 
-#if defined(DEATH_TARGET_WINDOWS)
+#if 0 //defined(DEATH_TARGET_WINDOWS)
 		::CloseHandle(_waitableTimer);
 #endif
 
 		LOGI("Application shut down");
 
-		theServiceLocator().unregisterAll();
+		theServiceLocator().UnregisterAll();
 	}
 
-	void Application::setFocus(bool hasFocus)
+	void Application::SetFocus(bool hasFocus)
 	{
 #if defined(WITH_TRACY) && !defined(DEATH_TARGET_ANDROID)
 		hasFocus = true;
@@ -780,31 +904,31 @@ namespace nCine
 		hasFocus_ = hasFocus;
 	}
 
-	void Application::suspend()
+	void Application::Suspend()
 	{
-		frameTimer_->suspend();
+		frameTimer_->Suspend();
 		if (appEventHandler_ != nullptr) {
 			appEventHandler_->OnSuspend();
 		}
 #if defined(WITH_AUDIO)
-		IAudioDevice& audioDevice = theServiceLocator().audioDevice();
+		IAudioDevice& audioDevice = theServiceLocator().GetAudioDevice();
 		audioDevice.suspendDevice();
 #endif
 
 		LOGI("IAppEventHandler::OnSuspend() invoked");
 	}
 
-	void Application::resume()
+	void Application::Resume()
 	{
 		if (appEventHandler_ != nullptr) {
 			appEventHandler_->OnResume();
 		}
 #if defined(WITH_AUDIO)
-		IAudioDevice& audioDevice = theServiceLocator().audioDevice();
+		IAudioDevice& audioDevice = theServiceLocator().GetAudioDevice();
 		audioDevice.resumeDevice();
 #endif
 
-		const TimeStamp suspensionDuration = frameTimer_->resume();
+		const TimeStamp suspensionDuration = frameTimer_->Resume();
 		LOGD("Suspended for %.3f seconds", suspensionDuration.seconds());
 #if defined(NCINE_PROFILING)
 		profileStartTime_ += suspensionDuration;
@@ -812,8 +936,13 @@ namespace nCine
 		LOGI("IAppEventHandler::OnResume() invoked");
 	}
 
-	bool Application::shouldSuspend()
+	void Application::AttachTraceTarget(Containers::StringView targetPath)
 	{
-		return ((!hasFocus_ && autoSuspension_) || isSuspended_);
+#if defined(DEATH_TRACE) && !defined(DEATH_TARGET_EMSCRIPTEN)
+		__logFile = fs::Open(targetPath, FileAccess::Write);
+		if (!__logFile->IsValid()) {
+			__logFile = nullptr;
+		}
+#endif
 	}
 }

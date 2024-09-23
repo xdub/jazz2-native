@@ -10,9 +10,7 @@ namespace winrtWSP = winrt::Windows::System::Profile;
 #
 #	include <psapi.h>
 #	include <strsafe.h>
-#elif defined(DEATH_TARGET_APPLE)
-#	include <cstring>
-#elif defined(DEATH_TARGET_UNIX)
+#elif defined(DEATH_TARGET_APPLE) || defined(DEATH_TARGET_UNIX)
 #	include <cstdio>
 #	include <cstdlib>
 #	include <cstring>
@@ -20,6 +18,17 @@ namespace winrtWSP = winrt::Windows::System::Profile;
 
 namespace Death { namespace Environment {
 //###==##====#=====--==~--~=~- --- -- -  -  -   -
+
+	bool IsSandboxed()
+	{
+#if defined(DEATH_TARGET_ANDROID) || defined(DEATH_TARGET_EMSCRIPTEN) || defined(DEATH_TARGET_IOS) || defined(DEATH_TARGET_SWITCH) || defined(DEATH_TARGET_WINDOWS_RT)
+		return true;
+#elif defined(DEATH_TARGET_APPLE)
+		return std::getenv("APP_SANDBOX_CONTAINER_ID");
+#else
+		return false;
+#endif
+	}
 
 #if defined(DEATH_TARGET_APPLE)
 	Containers::String GetAppleVersion()
@@ -69,7 +78,10 @@ namespace Death { namespace Environment {
 	{
 		FILE* fp = ::fopen("/etc/os-release", "r");
 		if (fp == nullptr) {
-			return { };
+			fp = ::fopen("/usr/lib/os-release", "r");
+			if (fp == nullptr) {
+				return { };
+			}
 		}
 
 		Containers::String result;

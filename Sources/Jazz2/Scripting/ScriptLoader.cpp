@@ -74,14 +74,14 @@ namespace Jazz2::Scripting
 		}
 		_includedFiles.emplace(absolutePath, true);
 
-		auto s = fs::Open(absolutePath, FileAccessMode::Read);
+		auto s = fs::Open(absolutePath, FileAccess::Read);
 		if (s->GetSize() <= 0) {
 			return ScriptContextType::Unknown;
 		}
 
 		String scriptContent(NoInit, s->GetSize());
 		s->Read(scriptContent.data(), s->GetSize());
-		s->Close();
+		s->Dispose();
 
 		ScriptContextType contextType = ScriptContextType::Legacy;
 		SmallVector<String, 4> metadata;

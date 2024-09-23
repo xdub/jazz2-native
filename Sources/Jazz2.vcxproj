@@ -78,6 +78,7 @@
   </ImportGroup>
   <ImportGroup Label="Shared">
   </ImportGroup>
+  
   <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   <Import Project="$(SolutionDir)\VC-LTL helper for Visual Studio.props" />
   <Import Project="$(SolutionDir)\Sign.props" Condition="Exists('$(SolutionDir)\Sign.props')" />
@@ -103,6 +104,7 @@
       </PropertyGroup>
     </Otherwise>
   </Choose>
+  
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
@@ -185,7 +187,7 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_HAS_EXCEPTIONS=0;DEATH_DEBUG;DEATH_TRACE;WITH_GLEW;__WITH_GLFW;WITH_SDL;WITH_AUDIO;WITH_THREADS;WITH_VORBIS;WITH_VORBIS_DYNAMIC;WITH_OPENMPT;WITH_ZLIB;WITH_BACKWARD;WITH_ANGELSCRIPT;WITH_MULTIPLAYER;_DEBUG;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_HAS_EXCEPTIONS=0;DEATH_DEBUG;DEATH_TRACE;WITH_GLEW;WITH_GLFW;__WITH_SDL;WITH_AUDIO;WITH_THREADS;WITH_VORBIS;WITH_VORBIS_DYNAMIC;WITH_OPENMPT;WITH_ZLIB;WITH_BACKWARD;WITH_ANGELSCRIPT;WITH_MULTIPLAYER;_DEBUG;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
@@ -301,7 +303,7 @@
     <ClInclude Include="$(ExtensionLibraryPath)\IO\FileSystem.h" />
     <ClInclude Include="$(ExtensionLibraryPath)\IO\MemoryStream.h" />
     <ClInclude Include="$(ExtensionLibraryPath)\IO\Stream.h" />
-    <ClInclude Include="$(ExtensionLibraryPath)\Base\Unaligned.h" />
+    <ClInclude Include="$(ExtensionLibraryPath)\Base\Memory.h" />
     <ClInclude Include="$(ExtensionLibraryPath)\Base\TypeInfo.h" />
     <ClInclude Include="$(ExtensionLibraryPath)\IO\PakFile.h" />
     <ClInclude Include="backward\backward.h" />
@@ -438,8 +440,11 @@
     <ClInclude Include="Jazz2\PitType.h" />
     <ClInclude Include="Jazz2\PlayerActions.h" />
     <ClInclude Include="Jazz2\PlayerType.h" />
+    <ClInclude Include="Jazz2\PlayerViewport.h" />
     <ClInclude Include="Jazz2\PreferencesCache.h" />
     <ClInclude Include="Jazz2\Resources.h" />
+    <ClInclude Include="Jazz2\RumbleDescription.h" />
+    <ClInclude Include="Jazz2\RumbleProcessor.h" />
     <ClInclude Include="Jazz2\Scripting\JJ2PlusDefinitions.h" />
     <ClInclude Include="Jazz2\Scripting\LevelScriptLoader.h" />
     <ClInclude Include="Jazz2\Scripting\RegisterArray.h" />
@@ -462,6 +467,7 @@
     <ClInclude Include="Jazz2\UI\ControlScheme.h" />
     <ClInclude Include="Jazz2\UI\DiscordRpcClient.h" />
     <ClInclude Include="Jazz2\UI\Font.h" />
+    <ClInclude Include="Jazz2\UI\FormattedTextBlock.h" />
     <ClInclude Include="Jazz2\UI\HUD.h" />
     <ClInclude Include="Jazz2\UI\LoadingHandler.h" />
     <ClInclude Include="Jazz2\UI\Menu\AboutSection.h" />
@@ -498,6 +504,7 @@
     <ClInclude Include="Jazz2\UI\Menu\TouchControlsOptionsSection.h" />
     <ClInclude Include="Jazz2\UI\RgbLights.h" />
     <ClInclude Include="Jazz2\UI\UpscaleRenderPass.h" />
+    <ClInclude Include="Jazz2\WarpFlags.h" />
     <ClInclude Include="Jazz2\WeaponType.h" />
     <ClInclude Include="Jazz2\WeatherType.h" />
     <ClInclude Include="nCine\AppConfiguration.h" />
@@ -692,6 +699,9 @@
     <ClInclude Include="$(ExtensionLibraryPath)\Containers\StringUtils.h" />
     <ClInclude Include="$(ExtensionLibraryPath)\Containers\StringConcatenable.h" />
     <ClInclude Include="$(ExtensionLibraryPath)\Containers\StringStl.h" />
+    <ClInclude Include="$(ExtensionLibraryPath)\IO\FileAccess.h" />
+    <ClInclude Include="$(ExtensionLibraryPath)\Base\IDisposable.h" />
+    <ClInclude Include="$(ExtensionLibraryPath)\Base\StackAlloc.h" />
     <ClInclude Include="simdjson\simdjson.h" />
   </ItemGroup>
   <ItemGroup>
@@ -819,8 +829,10 @@
     <ClCompile Include="Jazz2\Multiplayer\MultiLevelHandler.cpp" />
     <ClCompile Include="Jazz2\Multiplayer\NetworkManager.cpp" />
     <ClCompile Include="Jazz2\Multiplayer\ServerDiscovery.cpp" />
+    <ClCompile Include="Jazz2\PlayerViewport.cpp" />
     <ClCompile Include="Jazz2\PreferencesCache.cpp" />
     <ClCompile Include="Jazz2\Resources.cpp" />
+    <ClCompile Include="Jazz2\RumbleProcessor.cpp" />
     <ClCompile Include="Jazz2\Scripting\JJ2PlusDefinitions.cpp" />
     <ClCompile Include="Jazz2\Scripting\LevelScriptLoader.cpp" />
     <ClCompile Include="Jazz2\Scripting\RegisterArray.cpp" />
@@ -837,6 +849,7 @@
     <ClCompile Include="Jazz2\UI\ControlScheme.cpp" />
     <ClCompile Include="Jazz2\UI\DiscordRpcClient.cpp" />
     <ClCompile Include="Jazz2\UI\Font.cpp" />
+    <ClCompile Include="Jazz2\UI\FormattedTextBlock.cpp" />
     <ClCompile Include="Jazz2\UI\HUD.cpp" />
     <ClCompile Include="Jazz2\UI\LoadingHandler.cpp" />
     <ClCompile Include="Jazz2\UI\Menu\AboutSection.cpp" />

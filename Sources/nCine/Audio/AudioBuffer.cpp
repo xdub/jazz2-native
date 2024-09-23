@@ -5,6 +5,8 @@
 #include "IAudioLoader.h"
 #include "../../Common.h"
 
+#include <Containers/String.h>
+
 namespace nCine
 {
 	namespace
@@ -29,7 +31,9 @@ namespace nCine
 		alGetError();
 		alGenBuffers(1, &bufferId_);
 		const ALenum error = alGetError();
-		FATAL_ASSERT_MSG(error == AL_NO_ERROR, "alGenBuffers() failed with error 0x%x", error);
+		if DEATH_UNLIKELY(error != AL_NO_ERROR) {
+			LOGW("alGenBuffers() failed with error 0x%x", error);
+		}
 	}
 
 	/*AudioBuffer::AudioBuffer(const unsigned char* bufferPtr, unsigned long int bufferSize)
@@ -41,21 +45,21 @@ namespace nCine
 		}
 	}*/
 
-	AudioBuffer::AudioBuffer(const StringView filename)
+	AudioBuffer::AudioBuffer(StringView filename)
 		: AudioBuffer()
 	{
 		const bool hasLoaded = loadFromFile(filename);
 		if (!hasLoaded) {
-			LOGE("Audio file \"%s\" cannot be loaded", filename.data());
+			LOGE("Audio file \"%s\" cannot be loaded", String::nullTerminatedView(filename).data());
 		}
 	}
 
-	AudioBuffer::AudioBuffer(std::unique_ptr<Death::IO::Stream> fileHandle, const StringView filename)
+	AudioBuffer::AudioBuffer(std::unique_ptr<Death::IO::Stream> fileHandle, StringView filename)
 		: AudioBuffer()
 	{
 		const bool hasLoaded = loadFromStream(std::move(fileHandle), filename);
 		if (!hasLoaded) {
-			LOGE("Audio file \"%s\" cannot be loaded", filename.data());
+			LOGE("Audio file \"%s\" cannot be loaded", String::nullTerminatedView(filename).data());
 		}
 	}
 
@@ -123,7 +127,7 @@ namespace nCine
 		return samplesHaveLoaded;
 	}*/
 
-	bool AudioBuffer::loadFromFile(const StringView filename)
+	bool AudioBuffer::loadFromFile(StringView filename)
 	{
 		std::unique_ptr<IAudioLoader> audioLoader = IAudioLoader::createFromFile(filename);
 		if (!audioLoader->hasLoaded()) {
@@ -134,7 +138,7 @@ namespace nCine
 		return samplesHaveLoaded;
 	}
 
-	bool AudioBuffer::loadFromStream(std::unique_ptr<Death::IO::Stream> fileHandle, const StringView filename)
+	bool AudioBuffer::loadFromStream(std::unique_ptr<Death::IO::Stream> fileHandle, StringView filename)
 	{
 		std::unique_ptr<IAudioLoader> audioLoader = IAudioLoader::createFromStream(std::move(fileHandle), filename);
 		if (!audioLoader->hasLoaded()) {

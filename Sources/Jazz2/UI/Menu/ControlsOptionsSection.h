@@ -9,7 +9,10 @@ namespace Jazz2::UI::Menu
 		TouchControls,
 		ToggleRunAction,
 		EnableAltGamepad,
-#if defined(DEATH_TARGET_ANDROID)
+#if defined(NCINE_HAS_GAMEPAD_RUMBLE)
+		EnableGamepadRumble,
+#endif
+#if defined(NCINE_HAS_NATIVE_BACK_BUTTON)
 		UseNativeBackButton,
 #endif
 		InputDiagnostics
@@ -17,8 +20,9 @@ namespace Jazz2::UI::Menu
 
 	struct ControlsOptionsItem {
 		ControlsOptionsItemType Type;
-		StringView DisplayName;
+		String DisplayName;
 		bool HasBooleanValue;
+		std::int32_t PlayerIndex;
 	};
 
 	class ControlsOptionsSection : public ScrollableMenuSection<ControlsOptionsItem>
@@ -34,7 +38,7 @@ namespace Jazz2::UI::Menu
 
 		void OnHandleInput() override;
 		void OnLayoutItem(Canvas* canvas, ListViewItem& item) override;
-		void OnDrawItem(Canvas* canvas, ListViewItem& item, int32_t& charOffset, bool isSelected) override;
+		void OnDrawItem(Canvas* canvas, ListViewItem& item, std::int32_t& charOffset, bool isSelected) override;
 		void OnExecuteSelected() override;
 	};
 }

@@ -13,7 +13,7 @@ using namespace Death::Containers::Literals;
 
 namespace nCine
 {
-	const int IInputManager::MaxNumJoysticks = 4;
+	const std::int32_t IInputManager::MaxNumJoysticks = 4;
 
 	ASensorManager* AndroidInputManager::sensorManager_ = nullptr;
 	const ASensor* AndroidInputManager::accelerometerSensor_ = nullptr;
@@ -66,7 +66,7 @@ namespace nCine
 	AndroidInputManager::AndroidInputManager(struct android_app* state)
 	{
 		initAccelerometerSensor(state);
-		joyMapping_.init(this);
+		joyMapping_.Init(this);
 		checkConnectedJoysticks();
 
 #if defined(WITH_IMGUI)
@@ -277,13 +277,13 @@ namespace nCine
 	
 	bool AndroidInputManager::joystickRumble(int joyId, float lowFrequency, float highFrequency, uint32_t durationMs)
 	{
-		// TODO
+		// TODO: Rumble on Android
 		return false;
 	}
 
 	bool AndroidInputManager::joystickRumbleTriggers(int joyId, float left, float right, uint32_t durationMs)
 	{
-		// TODO
+		// TODO: Rumble on Android
 		return false;
 	}
 
@@ -312,12 +312,12 @@ namespace nCine
 						switch (AKeyEvent_getAction(event)) {
 							case AKEY_EVENT_ACTION_DOWN:
 								joystickStates_[joyId].buttons_[buttonIndex] = true;
-								joyMapping_.onJoyButtonPressed(joyButtonEvent_);
+								joyMapping_.OnJoyButtonPressed(joyButtonEvent_);
 								inputEventHandler_->OnJoyButtonPressed(joyButtonEvent_);
 								break;
 							case AKEY_EVENT_ACTION_UP:
 								joystickStates_[joyId].buttons_[buttonIndex] = false;
-								joyMapping_.onJoyButtonReleased(joyButtonEvent_);
+								joyMapping_.OnJoyButtonReleased(joyButtonEvent_);
 								inputEventHandler_->OnJoyButtonReleased(joyButtonEvent_);
 								break;
 							case AKEY_EVENT_ACTION_MULTIPLE:
@@ -348,7 +348,7 @@ namespace nCine
 							joystickStates_[joyId].hatState_ = hatState;
 							joyHatEvent_.hatState = joystickStates_[joyId].hatState_;
 
-							joyMapping_.onJoyHatMoved(joyHatEvent_);
+							joyMapping_.OnJoyHatMoved(joyHatEvent_);
 							inputEventHandler_->OnJoyHatMoved(joyHatEvent_);
 						}
 					}
@@ -387,7 +387,7 @@ namespace nCine
 							
 							joyAxisEvent_.axisId = i;
 							joyAxisEvent_.value = axisValue;
-							joyMapping_.onJoyAxisMoved(joyAxisEvent_);
+							joyMapping_.OnJoyAxisMoved(joyAxisEvent_);
 							inputEventHandler_->OnJoyAxisMoved(joyAxisEvent_);
 						}
 					}
@@ -395,14 +395,14 @@ namespace nCine
 					if (joyState.hatState_ != hatState) {
 						joyState.hatState_ = hatState;
 						joyHatEvent_.hatState = joyState.hatState_;
-						joyMapping_.onJoyHatMoved(joyHatEvent_);
+						joyMapping_.OnJoyHatMoved(joyHatEvent_);
 						inputEventHandler_->OnJoyHatMoved(joyHatEvent_);
 					}
 					break;
 				}
 			}
 		} else {
-			LOGW("No available joystick id for device %d, dropping button event", deviceId);
+			LOGW("No available joystick ID for device %d, dropping button event", deviceId);
 		}
 
 		return true;
@@ -458,7 +458,7 @@ namespace nCine
 	{
 		const int action = AMotionEvent_getAction(event);
 		
-		Vector2i res = theApplication().resolution();
+		Vector2i res = theApplication().GetResolution();
 		float w = static_cast<float>(res.X);
 		float h = static_cast<float>(res.Y);
 
@@ -500,7 +500,7 @@ namespace nCine
 		int buttonState = 0;
 
 		mouseEvent_.x = static_cast<int>(AMotionEvent_getX(event, 0));
-		mouseEvent_.y = static_cast<int>(theApplication().height() - AMotionEvent_getY(event, 0));
+		mouseEvent_.y = static_cast<int>(theApplication().GetHeight() - AMotionEvent_getY(event, 0));
 		mouseState_.x = mouseEvent_.x;
 		mouseState_.y = mouseEvent_.y;
 
@@ -606,13 +606,13 @@ namespace nCine
 		for (unsigned int i = 0; i < MaxNumJoysticks; i++) {
 			const int deviceId = joystickStates_[i].deviceId_;
 			if (deviceId > -1 && !isDeviceConnected(deviceId)) {
-				LOGI("Joystick %d (device %d) \"%s\" has been disconnected", i, deviceId, joystickStates_[i].name_);
+				LOGI("Gamepad %d \"%s\" (device %d) has been disconnected", i, joystickStates_[i].name_, deviceId);
 				joystickStates_[i].deviceId_ = -1;
 
 				if (inputEventHandler_ != nullptr && joystickStates_[i].guid_.isValid()) {
 					joyConnectionEvent_.joyId = i;
 					inputEventHandler_->OnJoyDisconnected(joyConnectionEvent_);
-					joyMapping_.onJoyDisconnected(joyConnectionEvent_);
+					joyMapping_.OnJoyDisconnected(joyConnectionEvent_);
 				}
 			}
 		}
@@ -670,14 +670,14 @@ namespace nCine
 			deviceInfo(deviceId, joyId);
 
 			const uint8_t* g = joystickStates_[joyId].guid_.data;
-			LOGI("Device %d, \"%s\" (%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x), has been connected as joystick %d - %d axes, %d buttons",
+			LOGI("Device %d \"%s\" [%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x] has been connected as gamepad %d - %d axes, %d buttons",
 				deviceId, joystickStates_[joyId].name_, g[0], g[1], g[2], g[3], g[4], g[5], g[6], g[7], g[8], g[9], g[10], g[11], g[12], g[13], g[14], g[15], joyId, joystickStates_[joyId].numAxes_, joystickStates_[joyId].numButtons_);
 			
 			joystickStates_[joyId].deviceId_ = deviceId;
 
 			if (inputEventHandler_ != nullptr && joystickStates_[joyId].guid_.isValid()) {
 				joyConnectionEvent_.joyId = joyId;
-				joyMapping_.onJoyConnected(joyConnectionEvent_);
+				joyMapping_.OnJoyConnected(joyConnectionEvent_);
 				inputEventHandler_->OnJoyConnected(joyConnectionEvent_);
 			}
 		}
@@ -700,7 +700,6 @@ namespace nCine
 		if (!inputDevice.IsNull()) {
 			auto& joyState = joystickStates_[joyId];
 
-			// InputDevice.getName()
 			inputDevice.getName(joyState.name_, AndroidJoystickState::MaxNameLength);
 			if (StringView(joyState.name_) == "uinput-fpc"_s) {
 				// Fingerprint Sensor is sometimes incorrectly recognized as joystick, disable it
@@ -714,7 +713,7 @@ namespace nCine
 			const int vendorId = inputDevice.getVendorId();
 			const int productId = inputDevice.getProductId();
 			inputDevice.getDescriptor(deviceInfoString, MaxStringLength);
-			joyState.guid_ = JoyMapping::createJoystickGuid(/*SDL_HARDWARE_BUS_BLUETOOTH*/0x05, vendorId, productId, 0, deviceInfoString, 0, 0);
+			joyState.guid_ = JoyMapping::CreateJoystickGuid(/*SDL_HARDWARE_BUS_BLUETOOTH*/0x05, vendorId, productId, 0, deviceInfoString, 0, 0);
 
 			// Checking all AKEYCODE_BUTTON_* plus AKEYCODE_BACK
 			constexpr int maxButtons = AndroidJoystickState::MaxButtons;
@@ -728,7 +727,6 @@ namespace nCine
 				// Back button is always the last one
 				buttonsToCheck[maxButtons - 1] = AKEYCODE_BACK;
 
-				// InputDevice.hasKeys()
 				inputDevice.hasKeys(buttonsToCheck, maxButtons, checkedButtons);
 			}
 
@@ -782,7 +780,6 @@ namespace nCine
 					buttonsToCheck[i] = AKEYCODE_DPAD_UP + i;
 				}
 
-				// InputDevice.hasKeys()
 				inputDevice.hasKeys(buttonsToCheck, countof(buttonsToCheck), checkedButtons);
 
 				for (int i = 0; i < countof(buttonsToCheck); i++) {
@@ -807,7 +804,7 @@ namespace nCine
 			std::memset(deviceInfoString, 0, MaxStringLength);
 #endif
 			joyState.hasHatAxes_ = true;
-			// InputDevice.getMotionRange()
+
 			int numAxes = 0;
 			int numAxesMapped = 0;
 			for (int i = 0; i < AndroidJoystickState::NumAxesToMap; i++) {

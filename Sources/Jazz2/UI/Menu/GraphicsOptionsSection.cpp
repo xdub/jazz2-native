@@ -17,7 +17,7 @@ namespace Jazz2::UI::Menu
 	{
 		// TRANSLATORS: Menu item in Options > Graphics section
 		_items.emplace_back(GraphicsOptionsItem { GraphicsOptionsItemType::RescaleMode, _("Rescale Mode") });
-#if !defined(DEATH_TARGET_ANDROID) && !defined(DEATH_TARGET_IOS) && !defined(DEATH_TARGET_SWITCH)
+#if defined(NCINE_HAS_WINDOWS)
 #	if defined(DEATH_TARGET_WINDOWS_RT)
 		// Xbox is always fullscreen
 		if (Environment::CurrentDeviceType != DeviceType::Xbox)
@@ -34,9 +34,13 @@ namespace Jazz2::UI::Menu
 		// TRANSLATORS: Menu item in Options > Graphics section
 		_items.emplace_back(GraphicsOptionsItem { GraphicsOptionsItemType::ShowPlayerTrails, _("Show Player Trails"), true });
 		// TRANSLATORS: Menu item in Options > Graphics section
-		_items.emplace_back(GraphicsOptionsItem { GraphicsOptionsItemType::UnalignedViewport, _("Unaligned Viewport"), true });
+		_items.emplace_back(GraphicsOptionsItem { GraphicsOptionsItemType::PreferVerticalSplitscreen, _("Preferred Splitscreen"), true });
+		// TRANSLATORS: Menu item in Options > Graphics section
+		_items.emplace_back(GraphicsOptionsItem { GraphicsOptionsItemType::PreferZoomOut, _("Prefer Zoom Out"), true });
 		// TRANSLATORS: Menu item in Options > Graphics section
 		_items.emplace_back(GraphicsOptionsItem { GraphicsOptionsItemType::KeepAspectRatioInCinematics, _("Keep Aspect Ratio In Cinematics"), true });
+		// TRANSLATORS: Menu item in Options > Graphics section
+		_items.emplace_back(GraphicsOptionsItem { GraphicsOptionsItemType::UnalignedViewport, _("Unaligned Viewport"), true });
 		// TRANSLATORS: Menu item in Options > Graphics section
 		_items.emplace_back(GraphicsOptionsItem { GraphicsOptionsItemType::ShowPerformanceMetrics, _("Performance Metrics"), true });
 	}
@@ -70,7 +74,7 @@ namespace Jazz2::UI::Menu
 		_root->DrawElement(MenuLine, 0, centerX, topLine, IMenuContainer::MainLayer, Alignment::Center, Colorf::White, 1.6f);
 		_root->DrawElement(MenuLine, 1, centerX, bottomLine, IMenuContainer::MainLayer, Alignment::Center, Colorf::White, 1.6f);
 
-		int32_t charOffset = 0;
+		std::int32_t charOffset = 0;
 		_root->DrawStringShadow(_("Graphics"), charOffset, centerX, topLine - 21.0f, IMenuContainer::FontLayer,
 			Alignment::Center, Colorf(0.46f, 0.46f, 0.46f, 0.5f), 0.9f, 0.7f, 1.1f, 1.1f, 0.4f, 0.9f);
 	}
@@ -80,7 +84,7 @@ namespace Jazz2::UI::Menu
 		item.Height = (item.Item.HasBooleanValue ? 52 : ItemHeight);
 	}
 
-	void GraphicsOptionsSection::OnDrawItem(Canvas* canvas, ListViewItem& item, int32_t& charOffset, bool isSelected)
+	void GraphicsOptionsSection::OnDrawItem(Canvas* canvas, ListViewItem& item, std::int32_t& charOffset, bool isSelected)
 	{
 		float centerX = canvas->ViewSize.X * 0.5f;
 
@@ -113,8 +117,10 @@ namespace Jazz2::UI::Menu
 				case GraphicsOptionsItemType::Antialiasing: enabled = (PreferencesCache::ActiveRescaleMode & RescaleMode::UseAntialiasing) == RescaleMode::UseAntialiasing; break;
 				case GraphicsOptionsItemType::LowWaterQuality: enabled = PreferencesCache::LowWaterQuality; customText = (enabled ? _("Low") : _("High")); break;
 				case GraphicsOptionsItemType::ShowPlayerTrails: enabled = PreferencesCache::ShowPlayerTrails; break;
-				case GraphicsOptionsItemType::UnalignedViewport: enabled = PreferencesCache::UnalignedViewport; customText = (enabled ? _("Enabled \f[c:0xd0705d](Experimental)\f[c]") : _("Disabled")); break;
+				case GraphicsOptionsItemType::PreferVerticalSplitscreen: enabled = PreferencesCache::PreferVerticalSplitscreen; customText = (enabled ? _("Vertical") : _("Horizontal"));  break;
+				case GraphicsOptionsItemType::PreferZoomOut: enabled = PreferencesCache::PreferZoomOut; break;
 				case GraphicsOptionsItemType::KeepAspectRatioInCinematics: enabled = PreferencesCache::KeepAspectRatioInCinematics; break;
+				case GraphicsOptionsItemType::UnalignedViewport: enabled = PreferencesCache::UnalignedViewport; customText = (enabled ? _("Enabled \f[c:#d0705d](Experimental)\f[/c]") : _("Disabled")); break;
 				case GraphicsOptionsItemType::ShowPerformanceMetrics: enabled = PreferencesCache::ShowPerformanceMetrics; break;
 			}
 
@@ -140,11 +146,11 @@ namespace Jazz2::UI::Menu
 #	endif
 				PreferencesCache::EnableFullscreen = !PreferencesCache::EnableFullscreen;
 				if (PreferencesCache::EnableFullscreen) {
-					theApplication().gfxDevice().setResolution(true);
-					theApplication().inputManager().setCursor(IInputManager::Cursor::Hidden);
+					theApplication().GetGfxDevice().setResolution(true);
+					theApplication().GetInputManager().setCursor(IInputManager::Cursor::Hidden);
 				} else {
-					theApplication().gfxDevice().setResolution(false);
-					theApplication().inputManager().setCursor(IInputManager::Cursor::Arrow);
+					theApplication().GetGfxDevice().setResolution(false);
+					theApplication().GetInputManager().setCursor(IInputManager::Cursor::Arrow);
 				}
 				_isDirty = true;
 				_animation = 0.0f;
@@ -176,14 +182,28 @@ namespace Jazz2::UI::Menu
 				_animation = 0.0f;
 				_root->PlaySfx("MenuSelect"_s, 0.6f);
 				break;
-			case GraphicsOptionsItemType::UnalignedViewport:
-				PreferencesCache::UnalignedViewport = !PreferencesCache::UnalignedViewport;
+			case GraphicsOptionsItemType::PreferVerticalSplitscreen:
+				PreferencesCache::PreferVerticalSplitscreen = !PreferencesCache::PreferVerticalSplitscreen;
+				_root->ApplyPreferencesChanges(ChangedPreferencesType::Graphics);
+				_isDirty = true;
+				_animation = 0.0f;
+				_root->PlaySfx("MenuSelect"_s, 0.6f);
+				break;
+			case GraphicsOptionsItemType::PreferZoomOut:
+				PreferencesCache::PreferZoomOut = !PreferencesCache::PreferZoomOut;
+				_root->ApplyPreferencesChanges(ChangedPreferencesType::Graphics);
 				_isDirty = true;
 				_animation = 0.0f;
 				_root->PlaySfx("MenuSelect"_s, 0.6f);
 				break;
 			case GraphicsOptionsItemType::KeepAspectRatioInCinematics:
 				PreferencesCache::KeepAspectRatioInCinematics = !PreferencesCache::KeepAspectRatioInCinematics;
+				_isDirty = true;
+				_animation = 0.0f;
+				_root->PlaySfx("MenuSelect"_s, 0.6f);
+				break;
+			case GraphicsOptionsItemType::UnalignedViewport:
+				PreferencesCache::UnalignedViewport = !PreferencesCache::UnalignedViewport;
 				_isDirty = true;
 				_animation = 0.0f;
 				_root->PlaySfx("MenuSelect"_s, 0.6f);

@@ -30,7 +30,7 @@ namespace nCine
 		return *_instance;
 	}
 
-	int UwpApplication::start(std::unique_ptr<IAppEventHandler>(*createAppEventHandler)())
+	int UwpApplication::Run(std::unique_ptr<IAppEventHandler>(*createAppEventHandler)())
 	{
 		if (createAppEventHandler == nullptr) {
 			return EXIT_FAILURE;
@@ -39,17 +39,17 @@ namespace nCine
 		winrt::init_apartment();
 
 		// Force set current directory, so everything is loaded correctly, because it's not usually intended
-		wchar_t pBuf[MAX_PATH];
-		DWORD pBufLength = ::GetModuleFileName(NULL, pBuf, countof(pBuf));
-		if (pBufLength > 0) {
-			wchar_t* lastSlash = wcsrchr(pBuf, L'\\');
+		wchar_t path[fs::MaxPathLength];
+		DWORD pathLength = ::GetModuleFileNameW(NULL, path, (DWORD)arraySize(path));
+		if (pathLength > 0) {
+			wchar_t* lastSlash = wcsrchr(path, L'\\');
 			if (lastSlash == nullptr) {
-				lastSlash = wcsrchr(pBuf, L'/');
+				lastSlash = wcsrchr(path, L'/');
 			}
 			if (lastSlash != nullptr) {
 				lastSlash++;
 				*lastSlash = '\0';
-				::SetCurrentDirectory(pBuf);
+				::SetCurrentDirectoryW(path);
 			}
 		}
 
@@ -89,24 +89,24 @@ namespace nCine
 
 	void UwpApplication::Run()
 	{
-		auto gfxDevice = dynamic_cast<UwpGfxDevice*>(gfxDevice_.get());
+		auto* gfxDevice = static_cast<UwpGfxDevice*>(gfxDevice_.get());
 		gfxDevice->MakeCurrent();
 
-		initCommon();
+		InitCommon();
 
 		while (!shouldQuit_) {
 			_dispatcher.ProcessEvents(winrtWUC::CoreProcessEventsOption::ProcessAllIfPresent);
 
-			if (!shouldSuspend()) {
+			if (!ShouldSuspend()) {
 				UwpInputManager::updateJoystickStates();
-				step();
+				Step();
 			}
 		}
 	}
 
 	void UwpApplication::Uninitialize()
 	{
-		shutdownCommon();
+		ShutdownCommon();
 	}
 
 	void UwpApplication::OnActivated(const winrtWAC::CoreApplicationView& applicationView, const winrtWAA::IActivatedEventArgs& args)
@@ -134,12 +134,12 @@ namespace nCine
 			auto task = statusBar.HideAsync();
 		}
 
-		// Only `OnPreInit()` can modify the application configuration
+		// Only `OnPreInitialize()` can modify the application configuration
 		// TODO: Parse arguments from Uri
 		//appCfg_.argc_ = argc;
 		//appCfg_.argv_ = argv;
-		appEventHandler_->OnPreInit(appCfg_);
-		LOGI("IAppEventHandler::OnPreInit() invoked");
+		appEventHandler_->OnPreInitialize(appCfg_);
+		LOGI("IAppEventHandler::OnPreInitialize() invoked");
 
 		winrtWUC::CoreWindow window = winrtWUC::CoreWindow::GetForCurrentThread();
 
@@ -182,7 +182,7 @@ namespace nCine
 		inputManager_ = std::make_unique<UwpInputManager>(window);
 
 		displayInfo.DpiChanged([](const auto&, const auto& args) {
-			auto& gfxDevice = dynamic_cast<UwpGfxDevice&>(_instance->gfxDevice());
+			auto& gfxDevice = static_cast<UwpGfxDevice&>(_instance->GetGfxDevice());
 			gfxDevice.updateMonitors();
 		});
 
@@ -196,7 +196,7 @@ namespace nCine
 		//}
 
 #if defined(NCINE_PROFILING)
-		timings_[(int)Timings::PreInit] = profileStartTime_.secondsSince();
+		timings_[(std::int32_t)Timings::PreInit] = profileStartTime_.secondsSince();
 #endif
 	}
 
@@ -204,7 +204,7 @@ namespace nCine
 	{
 		if (!_isSuspended) {
 			_isSuspended = true;
-			suspend();
+			Suspend();
 		}
 	}
 
@@ -212,7 +212,7 @@ namespace nCine
 	{
 		if (_isSuspended) {
 			_isSuspended = false;
-			resume();
+			Resume();
 		}
 	}
 
@@ -220,7 +220,7 @@ namespace nCine
 	{
 		if (!_isSuspended) {
 			_isSuspended = true;
-			suspend();
+			Suspend();
 		}
 	}
 
@@ -228,7 +228,7 @@ namespace nCine
 	{
 		if (_isSuspended) {
 			_isSuspended = false;
-			resume();
+			Resume();
 		}
 	}
 
@@ -239,7 +239,7 @@ namespace nCine
 
 	void UwpApplication::OnWindowSizeChanged(const winrtWF::IInspectable& sender, winrtWUC::WindowSizeChangedEventArgs const& args)
 	{
-		auto gfxDevice = dynamic_cast<UwpGfxDevice*>(gfxDevice_.get());
+		auto* gfxDevice = static_cast<UwpGfxDevice*>(gfxDevice_.get());
 		if (gfxDevice != nullptr) {
 			gfxDevice->isFullscreen_ = winrtWUV::ApplicationView::GetForCurrentView().IsFullScreenMode();
 			gfxDevice->_sizeChanged = 10;

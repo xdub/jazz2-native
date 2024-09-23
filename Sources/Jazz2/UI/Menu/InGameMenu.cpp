@@ -2,8 +2,9 @@
 #include "MenuResources.h"
 #include "PauseSection.h"
 #include "../ControlScheme.h"
-#include "../../PreferencesCache.h"
 #include "../../LevelHandler.h"
+#include "../../PlayerViewport.h"
+#include "../../PreferencesCache.h"
 
 #include "../../../nCine/Application.h"
 #include "../../../nCine/Graphics/RenderQueue.h"
@@ -36,7 +37,7 @@ namespace Jazz2::UI::Menu
 		_mediumFont = resolver.GetFont(FontType::Medium);
 
 		// Mark Menu button as already pressed to avoid some issues
-		_pressedActions = (1 << (int32_t)PlayerActions::Menu) | (1 << ((int32_t)PlayerActions::Menu + 16));
+		_pressedActions = (1 << (std::int32_t)PlayerActions::Menu) | (1 << ((std::int32_t)PlayerActions::Menu + 16));
 
 		SwitchToSection<PauseSection>();
 
@@ -56,14 +57,17 @@ namespace Jazz2::UI::Menu
 
 		_owner->UpdatePressedActions();
 
+#if defined(WITH_AUDIO)
 		// Destroy stopped players
-		for (int32_t i = (int32_t)_owner->_playingSounds.size() - 1; i >= 0; i--) {
-			if (_owner->_playingSounds[i]->state() == IAudioPlayer::PlayerState::Stopped) {
-				_owner->_playingSounds.erase(&_owner->_playingSounds[i]);
-			} else {
-				break;
+		auto it = _owner->_playingSounds.begin();
+		while (it != _owner->_playingSounds.end()) {
+			if ((*it)->isStopped()) {
+				it = _owner->_playingSounds.eraseUnordered(it);
+				continue;
 			}
+			++it;
 		}
+#endif
 
 		if (_owner->_touchButtonsTimer > 0.0f) {
 			_owner->_touchButtonsTimer -= timeMult;
@@ -85,7 +89,7 @@ namespace Jazz2::UI::Menu
 		}
 	}
 
-	void InGameMenu::OnInitializeViewport(int32_t width, int32_t height)
+	void InGameMenu::OnInitializeViewport(std::int32_t width, std::int32_t height)
 	{
 		UpdateContentBounds(Vector2i(width, height));
 
@@ -106,25 +110,35 @@ namespace Jazz2::UI::Menu
 
 		Vector2i center = ViewSize / 2;
 
-		int32_t charOffset = 0;
-		int32_t charOffsetShadow = 0;
+		std::int32_t charOffset = 0;
+		std::int32_t charOffsetShadow = 0;
 
-		float titleY = _owner->_contentBounds.Y - 30;
-		constexpr float logoScale = 1.0f;
-		constexpr float logoTextScale = 1.0f;
-		constexpr float logoTranslateX = 1.0f;
-		constexpr float logoTranslateY = 0.0f;
-		constexpr float logoTextTranslate = 0.0f;
+		float titleY = _owner->_contentBounds.Y - (ViewSize.Y >= 300 ? 30.0f : 12.0f);
+		float logoBaseScale = (ViewSize.Y >= 300 ? 1.0f : 0.85f);
+		float logoScale = logoBaseScale;
+		float logoTextScale = logoBaseScale;
+		float logoTranslateX = logoBaseScale;
+		float logoTranslateY = 0.0f;
+		float logoTextTranslate = 0.0f;
 
-		// Show blurred viewport behind
-		DrawTexture(*_owner->_root->_blurPass4.GetTarget(), Vector2f::Zero, 500, Vector2f(static_cast<float>(ViewSize.X), static_cast<float>(ViewSize.Y)), Vector4f(1.0f, 0.0f, 1.0f, 0.0f), Colorf(0.5f, 0.5f, 0.5f, std::min(AnimTime * 8.0f, 1.0f)));
-		Vector4f ambientColor = _owner->_root->_ambientColor;
-		if (ambientColor.W < 1.0f) {
-			DrawSolid(Vector2f::Zero, 502, Vector2f(static_cast<float>(ViewSize.X), static_cast<float>(ViewSize.Y)), Colorf(ambientColor.X, ambientColor.Y, ambientColor.Z, (1.0f - ambientColor.W) * std::min(AnimTime * 8.0f, 1.0f)));
+		// Show blurred viewports behind
+		auto& viewports = _owner->_root->_assignedViewports;
+		for (std::size_t i = 0; i < viewports.size(); i++) {
+			auto& viewport = viewports[i];
+			Rectf scopedView = viewport->GetBounds();
+			DrawTexture(*viewport->_blurPass4.GetTarget(), scopedView.GetLocation(), 500, scopedView.GetSize(), Vector4f(1.0f, 0.0f, 1.0f, 0.0f), Colorf(0.5f, 0.5f, 0.5f, std::min(AnimTime * 8.0f, 1.0f)));
+
+			Vector4f ambientColor = viewport->_ambientLight;
+			if (ambientColor.W < 1.0f) {
+				DrawSolid(scopedView.GetLocation(), 502, scopedView.GetSize(), Colorf(ambientColor.X, ambientColor.Y, ambientColor.Z, (1.0f - powf(ambientColor.W, 1.6f)) * std::min(AnimTime * 8.0f, 1.0f)));
+			}
 		}
 
+		DrawViewportSeparators();
+
 		if (_owner->_touchButtonsTimer > 0.0f && _owner->_sections.size() >= 2) {
-			_owner->DrawElement(MenuLineArrow, -1, static_cast<float>(center.X), titleY - 30.0f, ShadowLayer, Alignment::Center, Colorf::White);
+			float arrowScale = (ViewSize.Y >= 300 ? 1.0f : 0.7f);
+			_owner->DrawElement(MenuLineArrow, -1, static_cast<float>(center.X), titleY - (ViewSize.Y >= 300 ? 30.0f : 12.0f), ShadowLayer, Alignment::Center, Colorf::White, arrowScale, arrowScale);
 		}
 
 		// Title
@@ -148,7 +162,7 @@ namespace Jazz2::UI::Menu
 		// Version
 		Vector2f bottomRight = Vector2f(static_cast<float>(ViewSize.X), static_cast<float>(ViewSize.Y));
 		bottomRight.X = ViewSize.X - 24.0f;
-		bottomRight.Y -= 10.0f;
+		bottomRight.Y -= (ViewSize.Y >= 300 ? 10.0f : 4.0f);
 		_owner->DrawStringShadow("v" NCINE_VERSION, charOffset, bottomRight.X, bottomRight.Y, IMenuContainer::FontLayer,
 			Alignment::BottomRight, Colorf(0.45f, 0.45f, 0.45f, 0.5f), 0.7f, 0.4f, 1.2f, 1.2f, 0.46f, 0.8f);
 
@@ -164,6 +178,39 @@ namespace Jazz2::UI::Menu
 		}
 
 		return true;
+	}
+
+	void InGameMenu::MenuBackgroundCanvas::DrawViewportSeparators()
+	{
+		switch (_owner->_root->_assignedViewports.size()) {
+			case 2: {
+				if (PreferencesCache::PreferVerticalSplitscreen) {
+					std::int32_t halfW = ViewSize.X / 2;
+					DrawSolid(Vector2f(halfW - 1.0f, 0.0f), ShadowLayer, Vector2f(1.0f, ViewSize.Y), Colorf(0.0f, 0.0f, 0.0f, 0.2f));
+					DrawSolid(Vector2f(halfW, 0.0f), ShadowLayer, Vector2f(1.0f, ViewSize.Y), Colorf(1.0f, 1.0f, 1.0f, 0.02f), true);
+				} else {
+					std::int32_t halfH = ViewSize.Y / 2;
+					DrawSolid(Vector2f(0.0f, halfH - 1.0f), ShadowLayer, Vector2f(ViewSize.X, 1.0f), Colorf(1.0f, 1.0f, 1.0f, 0.02f), true);
+					DrawSolid(Vector2f(0.0f, halfH), ShadowLayer, Vector2f(ViewSize.X, 1.0f), Colorf(0.0f, 0.0f, 0.0f, 0.2f));
+				}
+				break;
+			}
+			case 3: {
+				std::int32_t halfW = (ViewSize.X + 1) / 2;
+				std::int32_t halfH = (ViewSize.Y + 1) / 2;
+				DrawSolid(Vector2f(halfW, halfH), ShadowLayer, Vector2f(halfW, halfH), Colorf::Black);
+				DEATH_FALLTHROUGH
+			}
+			case 4: {
+				std::int32_t halfW = (ViewSize.X + 1) / 2;
+				std::int32_t halfH = (ViewSize.Y + 1) / 2;
+				DrawSolid(Vector2f(halfW - 1.0f, 0.0f), ShadowLayer, Vector2f(1.0f, ViewSize.Y), Colorf(0.0f, 0.0f, 0.0f, 0.2f));
+				DrawSolid(Vector2f(halfW, 0.0f), ShadowLayer, Vector2f(1.0f, ViewSize.Y), Colorf(1.0f, 1.0f, 1.0f, 0.02f), true);
+				DrawSolid(Vector2f(0.0f, halfH - 1.0f), ShadowLayer, Vector2f(ViewSize.X, 1.0f), Colorf(1.0f, 1.0f, 1.0f, 0.02f), true);
+				DrawSolid(Vector2f(0.0f, halfH), ShadowLayer, Vector2f(ViewSize.X, 1.0f), Colorf(0.0f, 0.0f, 0.0f, 0.2f));
+				break;
+			}
+		}
 	}
 
 	bool InGameMenu::MenuClippedCanvas::OnDraw(RenderQueue& renderQueue)
@@ -274,10 +321,11 @@ namespace Jazz2::UI::Menu
 	{
 		if ((type & ChangedPreferencesType::Graphics) == ChangedPreferencesType::Graphics) {
 			Viewport::chain().clear();
-			Vector2i res = theApplication().resolution();
+			Vector2i res = theApplication().GetResolution();
 			_root->OnInitializeViewport(res.X, res.Y);
 		}
 
+#if defined(WITH_AUDIO)
 		if ((type & ChangedPreferencesType::Audio) == ChangedPreferencesType::Audio) {
 			if (_root->_music != nullptr) {
 				_root->_music->setGain(PreferencesCache::MasterVolume * PreferencesCache::MusicVolume);
@@ -286,6 +334,7 @@ namespace Jazz2::UI::Menu
 				_root->_sugarRushMusic->setGain(PreferencesCache::MasterVolume * PreferencesCache::MusicVolume);
 			}
 		}
+#endif
 
 		if ((type & ChangedPreferencesType::Language) == ChangedPreferencesType::Language) {
 			// All sections have to be recreated to load new language
@@ -299,7 +348,7 @@ namespace Jazz2::UI::Menu
 		}
 	}
 
-	void InGameMenu::DrawElement(AnimState state, int32_t frame, float x, float y, uint16_t z, Alignment align, const Colorf& color, float scaleX, float scaleY, bool additiveBlending, bool unaligned)
+	void InGameMenu::DrawElement(AnimState state, std::int32_t frame, float x, float y, std::uint16_t z, Alignment align, const Colorf& color, float scaleX, float scaleY, bool additiveBlending, bool unaligned)
 	{
 		auto* res = _metadata->FindAnimation(state);
 		if (res == nullptr) {
@@ -307,7 +356,7 @@ namespace Jazz2::UI::Menu
 		}
 
 		if (frame < 0) {
-			frame = res->FrameOffset + ((int32_t)(_canvasBackground->AnimTime * res->FrameCount / res->AnimDuration) % res->FrameCount);
+			frame = res->FrameOffset + ((std::int32_t)(_canvasBackground->AnimTime * res->FrameCount / res->AnimDuration) % res->FrameCount);
 		}
 
 		Canvas* currentCanvas = GetActiveCanvas();
@@ -320,8 +369,8 @@ namespace Jazz2::UI::Menu
 		}
 
 		Vector2i texSize = base->TextureDiffuse->size();
-		int32_t col = frame % base->FrameConfiguration.X;
-		int32_t row = frame / base->FrameConfiguration.X;
+		std::int32_t col = frame % base->FrameConfiguration.X;
+		std::int32_t row = frame / base->FrameConfiguration.X;
 		Vector4f texCoords = Vector4f(
 			float(base->FrameDimensions.X) / float(texSize.X),
 			float(base->FrameDimensions.X * col) / float(texSize.X),
@@ -332,7 +381,7 @@ namespace Jazz2::UI::Menu
 		currentCanvas->DrawTexture(*base->TextureDiffuse.get(), adjustedPos, z, size, texCoords, color, additiveBlending);
 	}
 
-	void InGameMenu::DrawElement(AnimState state, float x, float y, uint16_t z, Alignment align, const Colorf& color, const Vector2f& size, const Vector4f& texCoords, bool unaligned)
+	void InGameMenu::DrawElement(AnimState state, float x, float y, std::uint16_t z, Alignment align, const Colorf& color, const Vector2f& size, const Vector4f& texCoords, bool unaligned)
 	{
 		auto* res = _metadata->FindAnimation(state);
 		if (res == nullptr) {
@@ -350,7 +399,7 @@ namespace Jazz2::UI::Menu
 		currentCanvas->DrawTexture(*base->TextureDiffuse.get(), adjustedPos, z, size, texCoords, color, false);
 	}
 
-	void InGameMenu::DrawSolid(float x, float y, uint16_t z, Alignment align, const Vector2f& size, const Colorf& color, bool additiveBlending)
+	void InGameMenu::DrawSolid(float x, float y, std::uint16_t z, Alignment align, const Vector2f& size, const Colorf& color, bool additiveBlending)
 	{
 		Canvas* currentCanvas = GetActiveCanvas();
 		Vector2f adjustedPos = Canvas::ApplyAlignment(align, Vector2f(x, y), size);
@@ -360,7 +409,7 @@ namespace Jazz2::UI::Menu
 		currentCanvas->DrawSolid(adjustedPos, z, size, color, additiveBlending);
 	}
 
-	void InGameMenu::DrawTexture(const Texture& texture, float x, float y, uint16_t z, Alignment align, const Vector2f& size, const Colorf& color, bool unaligned)
+	void InGameMenu::DrawTexture(const Texture& texture, float x, float y, std::uint16_t z, Alignment align, const Vector2f& size, const Colorf& color, bool unaligned)
 	{
 		Canvas* currentCanvas = GetActiveCanvas();
 		Vector2f adjustedPos = Canvas::ApplyAlignment(align, Vector2f(x, y), size);
@@ -377,11 +426,11 @@ namespace Jazz2::UI::Menu
 		return _smallFont->MeasureString(text, scale, charSpacing, lineSpacing);
 	}
 
-	void InGameMenu::DrawStringShadow(const StringView text, int& charOffset, float x, float y, uint16_t z, Alignment align, const Colorf& color, float scale,
+	void InGameMenu::DrawStringShadow(const StringView text, int& charOffset, float x, float y, std::uint16_t z, Alignment align, const Colorf& color, float scale,
 		float angleOffset, float varianceX, float varianceY, float speed, float charSpacing, float lineSpacing)
 	{
 		Canvas* currentCanvas = GetActiveCanvas();
-		int32_t charOffsetShadow = charOffset;
+		std::int32_t charOffsetShadow = charOffset;
 		_smallFont->DrawString(currentCanvas, text, charOffsetShadow, x, y + 2.8f * scale, FontShadowLayer,
 			align, Colorf(0.0f, 0.0f, 0.0f, 0.29f), scale, angleOffset, varianceX, varianceY, speed, charSpacing, lineSpacing);
 		_smallFont->DrawString(currentCanvas, text, charOffset, x, y, z,
@@ -390,9 +439,10 @@ namespace Jazz2::UI::Menu
 
 	void InGameMenu::PlaySfx(const StringView identifier, float gain)
 	{
+#if defined(WITH_AUDIO)
 		auto it = _metadata->Sounds.find(String::nullTerminatedView(identifier));
 		if (it != _metadata->Sounds.end()) {
-			int32_t idx = (it->second.Buffers.size() > 1 ? Random().Next(0, (int32_t)it->second.Buffers.size()) : 0);
+			std::int32_t idx = (it->second.Buffers.size() > 1 ? Random().Next(0, (std::int32_t)it->second.Buffers.size()) : 0);
 			auto& player = _playingSounds.emplace_back(std::make_shared<AudioBufferPlayer>(&it->second.Buffers[idx]->Buffer));
 			player->setPosition(Vector3f(0.0f, 0.0f, 100.0f));
 			player->setGain(gain * PreferencesCache::MasterVolume * PreferencesCache::SfxVolume);
@@ -402,6 +452,7 @@ namespace Jazz2::UI::Menu
 		} else {
 			LOGE("Sound effect \"%s\" was not found", identifier.data());
 		}
+#endif
 	}
 
 	void InGameMenu::ResumeGame()
@@ -419,28 +470,29 @@ namespace Jazz2::UI::Menu
 
 	bool InGameMenu::ActionPressed(PlayerActions action)
 	{
-		return ((_pressedActions & (1 << (int32_t)action)) == (1 << (int32_t)action));
+		return ((_pressedActions & (1 << (std::int32_t)action)) == (1 << (std::int32_t)action));
 	}
 
 	bool InGameMenu::ActionHit(PlayerActions action)
 	{
-		return ((_pressedActions & ((1 << (int32_t)action) | (1 << (16 + (int32_t)action)))) == (1 << (int32_t)action));
+		return ((_pressedActions & ((1 << (std::int32_t)action) | (1 << (16 + (std::int32_t)action)))) == (1 << (std::int32_t)action));
 	}
 
 	void InGameMenu::UpdateContentBounds(Vector2i viewSize)
 	{
-		float titleY = std::clamp((200.0f * viewSize.Y / viewSize.X) - 40.0f, 30.0f, 70.0f);
-		_contentBounds = Recti(0, titleY + 30, viewSize.X, viewSize.Y - (titleY + 30));
+		float headerY = (viewSize.Y >= 300 ? std::clamp((200.0f * viewSize.Y / viewSize.X) - 40.0f, 30.0f, 70.0f) : 8.0f);
+		float footerY = (viewSize.Y >= 300 ? 30.0f : 14.0f);
+		_contentBounds = Recti(0, headerY + 30, viewSize.X, viewSize.Y - (headerY + footerY));
 	}
 
 	void InGameMenu::UpdatePressedActions()
 	{
-		auto& input = theApplication().inputManager();
+		auto& input = theApplication().GetInputManager();
 		_pressedActions = ((_pressedActions & 0xFFFF) << 16);
 
 		const JoyMappedState* joyStates[UI::ControlScheme::MaxConnectedGamepads];
 		std::int32_t joyStatesCount = 0;
-		for (std::int32_t i = 0; i < IInputManager::MaxNumJoysticks && joyStatesCount < countof(joyStates); i++) {
+		for (std::int32_t i = 0; i < IInputManager::MaxNumJoysticks && joyStatesCount < static_cast<std::int32_t>(arraySize(joyStates)); i++) {
 			if (input.isJoyMapped(i)) {
 				joyStates[joyStatesCount++] = &input.joyMappedState(i);
 			}
@@ -452,6 +504,6 @@ namespace Jazz2::UI::Menu
 			allowGamepads = lastSection->IsGamepadNavigationEnabled();
 		}
 
-		_pressedActions |= ControlScheme::FetchNativation(0, _root->_pressedKeys, ArrayView(joyStates, joyStatesCount), allowGamepads);
+		_pressedActions |= ControlScheme::FetchNativation(_root->_pressedKeys, ArrayView(joyStates, joyStatesCount), allowGamepads);
 	}
 }

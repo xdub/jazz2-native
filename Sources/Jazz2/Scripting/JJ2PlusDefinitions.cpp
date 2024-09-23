@@ -1084,7 +1084,8 @@ namespace Jazz2::Scripting
 	}
 	uint8_t jjPLAYER::get_lighting() const {
 		noop();
-		return (uint8_t)(_levelScriptLoader->_levelHandler->GetAmbientLight() * 64.0f);
+		// TODO: Viewports
+		return (uint8_t)(_levelScriptLoader->_levelHandler->GetDefaultAmbientLight() * 64.0f);
 	}
 	uint8_t jjPLAYER::set_lighting(uint8_t value) {
 		noop();
@@ -1180,7 +1181,7 @@ namespace Jazz2::Scripting
 		noop();
 
 		Vector2f pos = _player->GetPos();
-		_player->WarpToPosition(Vector2f(pos.X + xPixels, pos.Y + yPixels), Actors::WarpFlags::Fast);
+		_player->WarpToPosition(Vector2f(pos.X + xPixels, pos.Y + yPixels), WarpFlags::Fast);
 		return true;
 	}
 	bool jjPLAYER::warpToTile(int32_t xTile, int32_t yTile, bool fast) {
@@ -1188,7 +1189,7 @@ namespace Jazz2::Scripting
 
 		_player->WarpToPosition(Vector2f(xTile * TileSet::DefaultTileSize + Tiles::TileSet::DefaultTileSize / 2,
 			yTile * TileSet::DefaultTileSize + Tiles::TileSet::DefaultTileSize / 2),
-			fast ? Actors::WarpFlags::Fast : Actors::WarpFlags::Default);
+			fast ? WarpFlags::Fast : WarpFlags::Default);
 		return true;
 	}
 	bool jjPLAYER::warpToID(uint8_t warpID, bool fast) {
@@ -1197,7 +1198,7 @@ namespace Jazz2::Scripting
 		auto events = _levelScriptLoader->_levelHandler->EventMap();
 		Vector2f c = events->GetWarpTarget(warpID);
 		if (c.X >= 0.0f && c.Y >= 0.0f) {
-			_player->WarpToPosition(c, fast ? Actors::WarpFlags::Fast : Actors::WarpFlags::Default);
+			_player->WarpToPosition(c, fast ? WarpFlags::Fast : WarpFlags::Default);
 			return true;
 		}
 		return false;
@@ -1292,7 +1293,8 @@ namespace Jazz2::Scripting
 	bool jjPLAYER::limitXScroll(uint16_t left, uint16_t width) {
 		noop();
 
-		_levelScriptLoader->_levelHandler->LimitCameraView(left * Tiles::TileSet::DefaultTileSize, width * Tiles::TileSet::DefaultTileSize);
+		// TODO: Viewports
+		_levelScriptLoader->_levelHandler->LimitCameraView(nullptr, left * Tiles::TileSet::DefaultTileSize, width * Tiles::TileSet::DefaultTileSize);
 		return true;
 	}
 	void jjPLAYER::cameraFreezeFF(float xPixel, float yPixel, bool centered, bool instant) {
@@ -2073,7 +2075,7 @@ namespace Jazz2::Scripting
 
 		auto ctx = asGetActiveContext();
 		auto _this = static_cast<LevelScriptLoader*>(ctx->GetEngine()->GetUserData(EngineToOwner));
-		_this->_levelHandler->BeginLevelChange(exitType, { });
+		_this->_levelHandler->BeginLevelChange(nullptr, exitType, { });
 	}
 
 	bool getEnabledTeam(uint8_t team) {
@@ -2093,47 +2095,56 @@ namespace Jazz2::Scripting
 	bool LevelScriptLoader::jjMusicLoad(const String& filename, bool forceReload, bool temporary) {
 		noop();
 
+#if defined(WITH_AUDIO)
 		auto ctx = asGetActiveContext();
 		auto _this = static_cast<LevelScriptLoader*>(ctx->GetEngine()->GetUserData(EngineToOwner));
 		_this->_levelHandler->BeginPlayMusic(filename, !temporary, forceReload);
-
+#endif
 		return false;
 	}
 	void LevelScriptLoader::jjMusicStop() {
 		noop();
 
+#if defined(WITH_AUDIO)
 		auto ctx = asGetActiveContext();
 		auto _this = static_cast<LevelScriptLoader*>(ctx->GetEngine()->GetUserData(EngineToOwner));
 		if (_this->_levelHandler->_music != nullptr) {
 			_this->_levelHandler->_music->stop();
 		}
+#endif
 	}
 	void LevelScriptLoader::jjMusicPlay() {
 		noop();
 
+#if defined(WITH_AUDIO)
 		auto ctx = asGetActiveContext();
 		auto _this = static_cast<LevelScriptLoader*>(ctx->GetEngine()->GetUserData(EngineToOwner));
 		if (_this->_levelHandler->_music != nullptr) {
 			_this->_levelHandler->_music->play();
 		}
+#endif
 	}
 	void LevelScriptLoader::jjMusicPause() {
 		noop();
 
+#if defined(WITH_AUDIO)
 		auto ctx = asGetActiveContext();
 		auto _this = static_cast<LevelScriptLoader*>(ctx->GetEngine()->GetUserData(EngineToOwner));
 		if (_this->_levelHandler->_music != nullptr) {
 			_this->_levelHandler->_music->stop();
 		}
+#endif
 	}
 	void LevelScriptLoader::jjMusicResume() {
 		noop();
 
+#if defined(WITH_AUDIO)
 		auto ctx = asGetActiveContext();
 		auto _this = static_cast<LevelScriptLoader*>(ctx->GetEngine()->GetUserData(EngineToOwner));
 		if (_this->_levelHandler->_music != nullptr && _this->_levelHandler->_music->isPaused()) {
 			_this->_levelHandler->_music->play();
 		}
+#endif
 	}
 
 	void playSample(float xPixel, float yPixel, int32_t sample, int32_t volume, int32_t frequency) {

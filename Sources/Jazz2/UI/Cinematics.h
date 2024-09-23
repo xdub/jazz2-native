@@ -24,8 +24,8 @@ namespace Jazz2::UI
 	class Cinematics : public IStateHandler
 	{
 	public:
-		static constexpr int DefaultWidth = 720;
-		static constexpr int DefaultHeight = 405;
+		static constexpr std::int32_t DefaultWidth = 720;
+		static constexpr std::int32_t DefaultHeight = 405;
 
 		static constexpr std::uint8_t SfxListVersion = 1;
 
@@ -34,7 +34,7 @@ namespace Jazz2::UI
 		~Cinematics() override;
 
 		void OnBeginFrame() override;
-		void OnInitializeViewport(int width, int height) override;
+		void OnInitializeViewport(std::int32_t width, std::int32_t height) override;
 
 		void OnKeyPressed(const KeyboardEvent& event) override;
 		void OnKeyReleased(const KeyboardEvent& event) override;
@@ -59,6 +59,7 @@ namespace Jazz2::UI
 			RenderCommand _renderCommand;
 		};
 
+#if defined(WITH_AUDIO)
 		struct SfxItem {
 			std::unique_ptr<AudioBuffer> Buffer;
 
@@ -73,38 +74,41 @@ namespace Jazz2::UI
 			float Panning;
 			std::unique_ptr<AudioBufferPlayer> CurrentPlayer;
 		};
+#endif
 
 		IRootController* _root;
 		UI::UpscaleRenderPass _upscalePass;
 		std::unique_ptr<CinematicsCanvas> _canvas;
+#if defined(WITH_AUDIO)
 		std::unique_ptr<AudioStreamPlayer> _music;
 		SmallVector<SfxItem> _sfxSamples;
 		SmallVector<SfxPlaylistItem> _sfxPlaylist;
+#endif
 		std::function<bool(IRootController*, bool)> _callback;
-		uint32_t _width, _height;
+		std::uint32_t _width, _height;
 		float _frameDelay, _frameProgress;
-		int _frameIndex;
-		int _framesLeft;
+		std::int32_t _frameIndex;
+		std::int32_t _framesLeft;
 		std::unique_ptr<Texture> _texture;
-		std::unique_ptr<uint8_t[]> _buffer;
-		std::unique_ptr<uint8_t[]> _lastBuffer;
-		std::unique_ptr<uint32_t[]> _currentFrame;
-		uint32_t _palette[256];
+		std::unique_ptr<std::uint8_t[]> _buffer;
+		std::unique_ptr<std::uint8_t[]> _lastBuffer;
+		std::unique_ptr<std::uint32_t[]> _currentFrame;
+		std::uint32_t _palette[256];
 		MemoryStream _compressedStreams[4];
 		DeflateStream _decompressedStreams[4];
 
 		BitArray _pressedKeys;
-		uint32_t _pressedActions;
+		std::uint32_t _pressedActions;
 
 		void Initialize(const StringView path);
 		bool LoadCinematicsFromFile(const StringView path);
 		bool LoadSfxList(const StringView path);
 		void PrepareNextFrame();
-		void Read(int streamIndex, void* buffer, uint32_t bytes);
+		void Read(std::int32_t streamIndex, void* buffer, std::uint32_t bytes);
 		void UpdatePressedActions();
 
 		template<typename T>
-		inline T ReadValue(int streamIndex) {
+		inline T ReadValue(std::int32_t streamIndex) {
 			T buffer;
 			Read(streamIndex, &buffer, sizeof(T));
 			return buffer;

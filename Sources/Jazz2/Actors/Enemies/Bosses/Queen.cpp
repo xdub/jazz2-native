@@ -81,7 +81,7 @@ namespace Jazz2::Actors::Bosses
 		TryStandardMovement(timeMult, params);
 		OnUpdateHitbox();
 		if (params.TilesDestroyed > 0) {
-			_levelHandler->ShakeCameraView(20.0f);
+			_levelHandler->ShakeCameraViewNear(_pos, 20.0f);
 		}
 
 		HandleBlinking(timeMult);
@@ -136,17 +136,17 @@ namespace Jazz2::Actors::Bosses
 							_state = StateIdleToBackstep;
 							_stateTime = Random().NextFloat(70.0f, 80.0f);
 
-							auto& players = _levelHandler->GetPlayers();
-							auto player = players[Random().Next(0, (std::uint32_t)players.size())];
+							auto players = _levelHandler->GetPlayers();
+							auto* player = players[Random().Next(0, (std::uint32_t)players.size())];
 
 							std::shared_ptr<Brick> brick = std::make_shared<Brick>();
 							brick->OnActivated(ActorActivationDetails(
 								_levelHandler,
 								Vector3i((std::int32_t)(player->GetPos().X + Random().NextFloat(-50.0f, 50.0f)), (std::int32_t)(_pos.Y - 200.0f), _renderer.layer() - 20)
 							));
-							_levelHandler->AddActor(brick);
+							_levelHandler->AddActor(std::move(brick));
 
-							_levelHandler->ShakeCameraView(20.0f);
+							_levelHandler->ShakeCameraViewNear(_pos, 20.0f);
 						});
 					});
 				}
@@ -220,8 +220,8 @@ namespace Jazz2::Actors::Bosses
 			}
 
 			case StateScreaming: {
-				auto& players = _levelHandler->GetPlayers();
-				for (auto player : players) {
+				auto players = _levelHandler->GetPlayers();
+				for (auto* player : players) {
 					//player->AddExternalForce(-1.5f * timeMult, 0.0f);
 					player->MoveInstantly(Vector2f(-1.5f * timeMult, 0.0f), MoveType::Relative);
 				}

@@ -5,10 +5,11 @@
 #if defined(DEATH_TARGET_ANDROID)
 
 #include "Stream.h"
+#include "FileAccess.h"
 #include "../Containers/String.h"
 #include "../Containers/StringView.h"
 
-#include <android_native_app_glue.h>	// For android_app
+#include <android_native_app_glue.h>	// for android_app
 #include <android/asset_manager.h>
 
 namespace Death { namespace IO {
@@ -24,26 +25,24 @@ namespace Death { namespace IO {
 	public:
 		static constexpr Containers::StringView Prefix = "asset:"_s;
 
-		AndroidAssetStream(const Containers::String& path, FileAccessMode mode);
+		AndroidAssetStream(const Containers::StringView path, FileAccess mode);
+		AndroidAssetStream(Containers::String&& path, FileAccess mode);
 		~AndroidAssetStream() override;
 
 		AndroidAssetStream(const AndroidAssetStream&) = delete;
 		AndroidAssetStream& operator=(const AndroidAssetStream&) = delete;
 
-		void Close() override;
+		void Dispose() override;
 		std::int64_t Seek(std::int64_t offset, SeekOrigin origin) override;
 		std::int64_t GetPosition() const override;
 		std::int32_t Read(void* buffer, std::int32_t bytes) override;
 		std::int32_t Write(const void* buffer, std::int32_t bytes) override;
+		bool Flush() override;
+		bool IsValid() override;	
+		std::int64_t GetSize() const override;
 
-		bool IsValid() override;
-		
 		/** @brief Returns file path */
 		Containers::StringView GetPath() const;
-
-		void SetCloseOnDestruction(bool shouldCloseOnDestruction) override {
-			_shouldCloseOnDestruction = shouldCloseOnDestruction;
-		}
 
 #if defined(DEATH_USE_FILE_DESCRIPTORS)
 		/** @brief Returns file descriptor */
@@ -82,15 +81,15 @@ namespace Death { namespace IO {
 		static const char* _internalDataPath;
 
 		Containers::String _path;
+		std::int64_t _size;
 #if defined(DEATH_USE_FILE_DESCRIPTORS)
 		std::int32_t _fileDescriptor;
 		unsigned long int _startOffset;
 #else
 		AAsset* _asset;
 #endif
-		bool _shouldCloseOnDestruction;
 
-		void Open(FileAccessMode mode);
+		void Open(FileAccess mode);
 	};
 }}
 

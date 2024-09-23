@@ -13,7 +13,7 @@
 #include "../../nCine/Application.h"
 
 // Position of key in 22x6 grid
-static const uint8_t KeyLayout[] = {
+static const std::uint8_t KeyLayout[] = {
 	0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17,
 	22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 37, 38, 39, 40, 41, 42, 43,
 	44, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65,
@@ -76,9 +76,8 @@ namespace Jazz2::UI
 
 	HUD::HUD(LevelHandler* levelHandler)
 		: _levelHandler(levelHandler), _metadata(nullptr), _levelTextTime(-1.0f), _coins(0), _gems(0), _coinsTime(-1.0f), _gemsTime(-1.0f),
-			_activeBossTime(0.0f), _touchButtonsTimer(0.0f), _rgbAmbientLight(0.0f), _rgbHealthLast(0.0f), _weaponWheelAnim(0.0f),
-			_weaponWheelShown(false), _lastWeaponWheelIndex(-1), _rgbLightsAnim(0.0f), _rgbLightsTime(0.0f), _transitionState(TransitionState::None),
-			_transitionTime(0.0f)
+			_activeBossTime(0.0f), _touchButtonsTimer(0.0f), _rgbAmbientLight(0.0f), _rgbHealthLast(0.0f), _rgbLightsAnim(0.0f),
+			_rgbLightsTime(0.0f), _transitionState(TransitionState::None), _transitionTime(0.0f)
 	{
 		auto& resolver = ContentResolver::Get();
 
@@ -143,8 +142,7 @@ namespace Jazz2::UI
 				break;
 		}
 
-		auto& players = _levelHandler->GetPlayers();
-		if (!players.empty()) {
+		if (!_levelHandler->_assignedViewports.empty()) {
 			if (_coinsTime >= 0.0f) {
 				_coinsTime += timeMult;
 			}
@@ -162,29 +160,8 @@ namespace Jazz2::UI
 				_activeBossTime = 0.0f;
 			}
 
-			if (PrepareWeaponWheel(players[0], _weaponWheelCount)) {
-				if (_weaponWheelAnim < WeaponWheelAnimDuration) {
-					_weaponWheelAnim += timeMult;
-					if (_weaponWheelAnim > WeaponWheelAnimDuration) {
-						_weaponWheelAnim = WeaponWheelAnimDuration;
-					}
-				}
-			} else {
-				if (_weaponWheelAnim > 0.0f) {
-					_weaponWheelAnim -= timeMult * 2.0f;
-					if (_weaponWheelAnim <= 0.0f) {
-						_weaponWheelAnim = 0.0f;
-						_levelHandler->_playerFrozenEnabled = false;
-
-						Actors::Player* player = players[0];
-						if (player->_weaponWheelState == Actors::Player::WeaponWheelState::Visible) {
-							player->_weaponWheelState = Actors::Player::WeaponWheelState::Closing;
-						}
-					}
-				}
-			}
-
-			UpdateRgbLights(timeMult, players[0]);
+			UpdateWeaponWheel(timeMult);
+			UpdateRgbLights(timeMult, _levelHandler->_assignedViewports[0].get());
 		}
 	}
 
@@ -205,22 +182,36 @@ namespace Jazz2::UI
 			adjustedView.W = adjustedView.W - adjustedView.X - (195.0f + PreferencesCache::TouchRightPadding.X);
 		}
 
-		int32_t charOffset = 0;
+		std::int32_t charOffset = 0;
 		char stringBuffer[32];
 
-		auto& players = _levelHandler->GetPlayers();
+		auto players = _levelHandler->GetPlayers();
+		
+		for (std::size_t i = 0; i < _levelHandler->_assignedViewports.size(); i++) {
+			auto& viewport = _levelHandler->_assignedViewports[i];
+			Actors::Player* player = viewport->GetTargetPlayer();
+			Rectf scopedView = viewport->GetBounds();
+			Rectf adjustedScopedView = scopedView;
+			float left = std::max(adjustedScopedView.X, adjustedView.X);
+			float right = std::min(adjustedScopedView.X + adjustedScopedView.W, adjustedView.X + adjustedView.W);
+			adjustedScopedView.X = left;
+			adjustedScopedView.W = right - left;
+
+			DrawHealth(scopedView, adjustedScopedView, player);
+			DrawScore(scopedView, player);
+			DrawWeaponAmmo(adjustedScopedView, player);
+
+			DrawWeaponWheel(scopedView, player);
+		}
+
+		DrawViewportSeparators();
+		DrawCoins(view, charOffset);
+		DrawGems(view, charOffset);
+		DrawActiveBoss(adjustedView);
+		DrawLevelText(charOffset);
+
 		if (!players.empty()) {
 			Actors::Player* player = players[0];
-			
-			DrawHealth(view, adjustedView, player);
-			DrawScore(view, player);
-			DrawWeaponAmmo(adjustedView, player);
-			DrawActiveBoss(adjustedView);
-			DrawLevelText(charOffset);
-			DrawCoins(charOffset);
-			DrawGems(charOffset);
-
-			DrawWeaponWheel(player);
 
 			// Touch Controls
 			if (_touchButtonsTimer > 0.0f) {
@@ -228,7 +219,7 @@ namespace Jazz2::UI
 					if (button.Graphics == nullptr) {
 						continue;
 					}
-#if defined(DEATH_TARGET_ANDROID)
+#if defined(NCINE_HAS_NATIVE_BACK_BUTTON)
 					if (button.Action == PlayerActions::Menu && PreferencesCache::UseNativeBackButton) {
 						continue;
 					}
@@ -265,7 +256,7 @@ namespace Jazz2::UI
 
 		// FPS
 		if (PreferencesCache::ShowPerformanceMetrics) {
-			i32tos((int32_t)std::round(theApplication().frameTimer().averageFps()), stringBuffer);
+			i32tos((std::int32_t)std::round(theApplication().GetFrameTimer().GetAverageFps()), stringBuffer);
 			_smallFont->DrawString(this, stringBuffer, charOffset, view.W - 4.0f, view.Y + 1.0f, FontLayer,
 				Alignment::TopRight, Font::DefaultColor, 0.8f, 0.0f, 0.0f, 0.0f, 0.0f, 0.96f);
 		}
@@ -302,23 +293,23 @@ namespace Jazz2::UI
 			if (pointerIndex != -1) {
 				float x = event.pointers[pointerIndex].x * (float)ViewSize.X;
 				float y = event.pointers[pointerIndex].y * (float)ViewSize.Y;
-				for (uint32_t i = 0; i < TouchButtonsCount; i++) {
+				for (std::uint32_t i = 0; i < TouchButtonsCount; i++) {
 					auto& button = _touchButtons[i];
 					if (button.Action != PlayerActions::None) {
 						if (button.CurrentPointerId == -1 && IsOnButton(button, x, y)) {
 							button.CurrentPointerId = event.actionIndex;
-							overrideActions |= (1 << (int32_t)button.Action);
+							overrideActions |= (1 << (std::int32_t)button.Action);
 						}
 					}
 				}
 			}
 		} else if (event.type == TouchEventType::Move) {
-			for (uint32_t i = 0; i < TouchButtonsCount; i++) {
+			for (std::uint32_t i = 0; i < TouchButtonsCount; i++) {
 				auto& button = _touchButtons[i];
 				if (button.Action != PlayerActions::None) {
 					if (button.CurrentPointerId != -1) {
 						bool isPressed = false;
-						int32_t pointerIndex = event.findPointerIndex(button.CurrentPointerId);
+						std::int32_t pointerIndex = event.findPointerIndex(button.CurrentPointerId);
 						if (pointerIndex != -1) {
 							float x = event.pointers[pointerIndex].x * (float)ViewSize.X;
 							float y = event.pointers[pointerIndex].y * (float)ViewSize.Y;
@@ -327,20 +318,20 @@ namespace Jazz2::UI
 
 						if (!isPressed) {
 							button.CurrentPointerId = -1;
-							overrideActions &= ~(1 << (int32_t)button.Action);
+							overrideActions &= ~(1 << (std::int32_t)button.Action);
 						}
 					} else {
 						// Only some buttons should allow roll-over (only when the player's on foot)
-						auto& players = _levelHandler->GetPlayers();
+						auto players = _levelHandler->GetPlayers();
 						bool canPlayerMoveVertically = (!players.empty() && players[0]->CanMoveVertically());
 						if ((button.Align & AllowRollover) != AllowRollover && !canPlayerMoveVertically) continue;
 
-						for (uint32_t j = 0; j < event.count; j++) {
+						for (std::uint32_t j = 0; j < event.count; j++) {
 							float x = event.pointers[j].x * (float)ViewSize.X;
 							float y = event.pointers[j].y * (float)ViewSize.Y;
 							if (IsOnButton(button, x, y)) {
 								button.CurrentPointerId = event.pointers[j].id;
-								overrideActions |= (1 << (int32_t)button.Action);
+								overrideActions |= (1 << (std::int32_t)button.Action);
 								break;
 							}
 						}
@@ -348,20 +339,20 @@ namespace Jazz2::UI
 				}
 			}
 		} else if (event.type == TouchEventType::Up) {
-			for (uint32_t i = 0; i < TouchButtonsCount; i++) {
+			for (std::uint32_t i = 0; i < TouchButtonsCount; i++) {
 				auto& button = _touchButtons[i];
 				if (button.CurrentPointerId != -1) {
 					button.CurrentPointerId = -1;
-					overrideActions &= ~(1 << (int32_t)button.Action);
+					overrideActions &= ~(1 << (std::int32_t)button.Action);
 				}
 			}
 
 		} else if (event.type == TouchEventType::PointerUp) {
-			for (uint32_t i = 0; i < TouchButtonsCount; i++) {
+			for (std::uint32_t i = 0; i < TouchButtonsCount; i++) {
 				auto& button = _touchButtons[i];
 				if (button.CurrentPointerId == event.actionIndex) {
 					button.CurrentPointerId = -1;
-					overrideActions &= ~(1 << (int32_t)button.Action);
+					overrideActions &= ~(1 << (std::int32_t)button.Action);
 				}
 			}
 		}
@@ -377,7 +368,7 @@ namespace Jazz2::UI
 		_levelTextTime = 0.0f;
 	}
 
-	void HUD::ShowCoins(int32_t count)
+	void HUD::ShowCoins(std::int32_t count)
 	{
 		constexpr float StillTime = 120.0f;
 		constexpr float TransitionTime = 60.0f;
@@ -399,7 +390,7 @@ namespace Jazz2::UI
 		}
 	}
 
-	void HUD::ShowGems(int32_t count)
+	void HUD::ShowGems(std::int32_t count)
 	{
 		constexpr float StillTime = 120.0f;
 		constexpr float TransitionTime = 60.0f;
@@ -438,9 +429,9 @@ namespace Jazz2::UI
 		}
 	}
 
-	bool HUD::IsWeaponWheelVisible() const
+	bool HUD::IsWeaponWheelVisible(std::int32_t playerIndex) const
 	{
-		return (_weaponWheelAnim > 0.0f);
+		return (_weaponWheel[playerIndex].Anim > 0.0f);
 	}
 
 	void HUD::DrawHealth(const Rectf& view, const Rectf& adjustedView, Actors::Player* player)
@@ -540,9 +531,9 @@ namespace Jazz2::UI
 		float angleBase3 = sinf(AnimTime * 11.0f + 7.0f) * fDegToRad;
 
 		// Limit frame rate of carrot movement
-		angleBase1 = std::round(angleBase1 * 3.0f * fRadToDeg) / (3.0f * RadToDeg);
-		angleBase2 = std::round(angleBase2 * 3.0f * fRadToDeg) / (3.0f * RadToDeg);
-		angleBase3 = std::round(angleBase3 * 3.0f * fRadToDeg) / (3.0f * RadToDeg);
+		angleBase1 = std::round(angleBase1 * 3.0f * fRadToDeg) / (3.0f * fRadToDeg);
+		angleBase2 = std::round(angleBase2 * 3.0f * fRadToDeg) / (3.0f * fRadToDeg);
+		angleBase3 = std::round(angleBase3 * 3.0f * fRadToDeg) / (3.0f * fRadToDeg);
 
 		if (health >= 1) {
 			float angle = angleBase1 * (health > 1 ? -6.0f : -14.0f) + 0.2f;
@@ -618,13 +609,13 @@ namespace Jazz2::UI
 			DrawElement(PickupFood, -1, view.X + 3.0f, view.Y + 3.0f + 1.6f, ShadowLayer, Alignment::TopLeft, Colorf(0.0f, 0.0f, 0.0f, 0.4f));
 			DrawElement(PickupFood, -1, view.X + 3.0f, view.Y + 3.0f, MainLayer, Alignment::TopLeft, Colorf::White);
 
-			snprintf(stringBuffer, countof(stringBuffer), "%08i", player->_score);
+			snprintf(stringBuffer, arraySize(stringBuffer), "%08i", player->_score);
 			_smallFont->DrawString(this, stringBuffer, charOffsetShadow, view.X + 14.0f, view.Y + 5.0f + 1.0f, FontShadowLayer,
 				Alignment::TopLeft, Colorf(0.0f, 0.0f, 0.0f, 0.32f), 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.88f);
 			_smallFont->DrawString(this, stringBuffer, charOffset, view.X + 14.0f, view.Y + 5.0f, FontLayer,
 				Alignment::TopLeft, Font::DefaultColor, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.88f);
 		} else {
-			snprintf(stringBuffer, countof(stringBuffer), "%08i", player->_score);
+			snprintf(stringBuffer, arraySize(stringBuffer), "%08i", player->_score);
 			_smallFont->DrawString(this, stringBuffer, charOffsetShadow, view.X + 4.0f, view.Y + 1.0f + 1.0f, FontShadowLayer,
 				Alignment::TopLeft, Colorf(0.0f, 0.0f, 0.0f, 0.32f), 1.2f, 0.0f, 0.0f, 0.0f, 0.0f, 0.88f);
 			_smallFont->DrawString(this, stringBuffer, charOffset, view.X + 4.0f, view.Y + 1.0f, FontLayer,
@@ -726,12 +717,14 @@ namespace Jazz2::UI
 			offset = 0;
 		}
 
-		int32_t charOffsetShadow = charOffset;
+		float textScale = (ViewSize.X >= 360 ? 1.0f : 0.8f);
+
+		std::int32_t charOffsetShadow = charOffset;
 		_smallFont->DrawString(this, _levelText, charOffsetShadow, ViewSize.X * 0.5f + offset, ViewSize.Y * 0.04f + 2.5f, FontShadowLayer,
-			Alignment::Top, Colorf(0.0f, 0.0f, 0.0f, 0.3f), 1.0f, 0.72f, 0.8f, 0.8f);
+			Alignment::Top, Colorf(0.0f, 0.0f, 0.0f, 0.3f), textScale, 0.72f, 0.8f, 0.8f);
 
 		_smallFont->DrawString(this, _levelText, charOffset, ViewSize.X * 0.5f + offset, ViewSize.Y * 0.04f, FontLayer,
-			Alignment::Top, Font::DefaultColor, 1.0f, 0.72f, 0.8f, 0.8f);
+			Alignment::Top, Font::DefaultColor, textScale, 0.72f, 0.8f, 0.8f);
 
 		if (_levelTextTime > TotalTime) {
 			_levelTextTime = -1.0f;
@@ -739,7 +732,40 @@ namespace Jazz2::UI
 		}
 	}
 
-	void HUD::DrawCoins(int32_t& charOffset)
+	void HUD::DrawViewportSeparators()
+	{
+		switch (_levelHandler->_assignedViewports.size()) {
+			case 2: {
+				if (PreferencesCache::PreferVerticalSplitscreen) {
+					std::int32_t halfW = ViewSize.X / 2;
+					DrawSolid(Vector2f(halfW - 1.0f, 0.0f), ShadowLayer, Vector2f(1.0f, ViewSize.Y), Colorf(0.0f, 0.0f, 0.0f, 0.4f));
+					DrawSolid(Vector2f(halfW, 0.0f), ShadowLayer, Vector2f(1.0f, ViewSize.Y), Colorf(1.0f, 1.0f, 1.0f, 0.1f), true);
+				} else {
+					std::int32_t halfH = ViewSize.Y / 2;
+					DrawSolid(Vector2f(0.0f, halfH - 1.0f), ShadowLayer, Vector2f(ViewSize.X, 1.0f), Colorf(1.0f, 1.0f, 1.0f, 0.1f), true);
+					DrawSolid(Vector2f(0.0f, halfH), ShadowLayer, Vector2f(ViewSize.X, 1.0f), Colorf(0.0f, 0.0f, 0.0f, 0.4f));
+				}
+				break;
+			}
+			case 3: {
+				std::int32_t halfW = (ViewSize.X + 1) / 2;
+				std::int32_t halfH = (ViewSize.Y + 1) / 2;
+				DrawSolid(Vector2f(halfW, halfH), ShadowLayer, Vector2f(halfW, halfH), Colorf::Black);
+				DEATH_FALLTHROUGH
+			}
+			case 4: {
+				std::int32_t halfW = (ViewSize.X + 1) / 2;
+				std::int32_t halfH = (ViewSize.Y + 1) / 2;
+				DrawSolid(Vector2f(halfW - 1.0f, 0.0f), ShadowLayer, Vector2f(1.0f, ViewSize.Y), Colorf(0.0f, 0.0f, 0.0f, 0.4f));
+				DrawSolid(Vector2f(halfW, 0.0f), ShadowLayer, Vector2f(1.0f, ViewSize.Y), Colorf(1.0f, 1.0f, 1.0f, 0.1f), true);
+				DrawSolid(Vector2f(0.0f, halfH - 1.0f), ShadowLayer, Vector2f(ViewSize.X, 1.0f), Colorf(1.0f, 1.0f, 1.0f, 0.1f), true);
+				DrawSolid(Vector2f(0.0f, halfH), ShadowLayer, Vector2f(ViewSize.X, 1.0f), Colorf(0.0f, 0.0f, 0.0f, 0.4f));
+				break;
+			}
+		}
+	}
+
+	void HUD::DrawCoins(const Rectf& view, std::int32_t& charOffset)
 	{
 		constexpr float StillTime = 120.0f;
 		constexpr float TransitionTime = 60.0f;
@@ -764,21 +790,21 @@ namespace Jazz2::UI
 		}
 
 		float alpha2 = alpha * alpha;
-		DrawElement(PickupCoin, -1, ViewSize.X * 0.5f, ViewSize.Y * 0.92f + 2.5f + offset, ShadowLayer,
+		DrawElement(PickupCoin, -1, view.X + view.W * 0.5f, view.Y + view.H * 0.92f + 2.5f + offset, ShadowLayer,
 			Alignment::Right, Colorf(0.0f, 0.0f, 0.0f, 0.2f * alpha), 0.8f, 0.8f);
-		DrawElement(PickupCoin, -1, ViewSize.X * 0.5f, ViewSize.Y * 0.92f + offset, MainLayer,
+		DrawElement(PickupCoin, -1, view.X + view.W * 0.5f, view.Y + view.H * 0.92f + offset, MainLayer,
 			Alignment::Right, Colorf(1.0f, 1.0f, 1.0f, alpha2), 0.8f, 0.8f);
 
 		char stringBuffer[32];
-		snprintf(stringBuffer, countof(stringBuffer), "x%i", _coins);
+		snprintf(stringBuffer, arraySize(stringBuffer), "x%i", _coins);
 
-		int32_t charOffsetShadow = charOffset;
-		_smallFont->DrawString(this, stringBuffer, charOffsetShadow, ViewSize.X * 0.5f, ViewSize.Y * 0.92f + 2.5f + offset, FontShadowLayer,
+		std::int32_t charOffsetShadow = charOffset;
+		_smallFont->DrawString(this, stringBuffer, charOffsetShadow, view.X + view.W * 0.5f, view.Y + view.H * 0.92f + 2.5f + offset, FontShadowLayer,
 			Alignment::Left, Colorf(0.0f, 0.0f, 0.0f, 0.3f * alpha), 1.0f, 0.0f, 0.0f, 0.0f);
 
 		Colorf fontColor = Font::DefaultColor;
 		fontColor.SetAlpha(alpha2);
-		_smallFont->DrawString(this, stringBuffer, charOffset, ViewSize.X * 0.5f, ViewSize.Y * 0.92f + offset, FontLayer,
+		_smallFont->DrawString(this, stringBuffer, charOffset, view.X + view.W * 0.5f, view.Y + view.H * 0.92f + offset, FontLayer,
 			Alignment::Left, fontColor, 1.0f, 0.0f, 0.0f, 0.0f);
 
 		if (_coinsTime > TotalTime) {
@@ -786,7 +812,7 @@ namespace Jazz2::UI
 		}
 	}
 
-	void HUD::DrawGems(int32_t& charOffset)
+	void HUD::DrawGems(const Rectf& view, std::int32_t& charOffset)
 	{
 		constexpr float StillTime = 120.0f;
 		constexpr float TransitionTime = 60.0f;
@@ -811,21 +837,21 @@ namespace Jazz2::UI
 		}
 
 		float alpha2 = alpha * alpha;
-		DrawElement(PickupGem, -1, ViewSize.X * 0.5f, ViewSize.Y * 0.92f + 2.5f + offset, ShadowLayer, Alignment::Right,
+		DrawElement(PickupGem, -1, view.X + view.W * 0.5f, view.Y + view.H * 0.92f + 2.5f + offset, ShadowLayer, Alignment::Right,
 			Colorf(0.0f, 0.0f, 0.0f, 0.4f * alpha2), 0.8f, 0.8f);
-		DrawElement(PickupGem, -1, ViewSize.X * 0.5f, ViewSize.Y * 0.92f + offset, MainLayer, Alignment::Right,
+		DrawElement(PickupGem, -1, view.X + view.W * 0.5f, view.Y + view.H * 0.92f + offset, MainLayer, Alignment::Right,
 			Colorf(1.0f, 1.0f, 1.0f, 0.8f * alpha2), 0.8f, 0.8f);
 
 		char stringBuffer[32];
-		snprintf(stringBuffer, countof(stringBuffer), "x%i", _gems);
+		snprintf(stringBuffer, arraySize(stringBuffer), "x%i", _gems);
 
-		int32_t charOffsetShadow = charOffset;
-		_smallFont->DrawString(this, stringBuffer, charOffsetShadow, ViewSize.X * 0.5f, ViewSize.Y * 0.92f + 2.5f + offset, FontShadowLayer,
+		std::int32_t charOffsetShadow = charOffset;
+		_smallFont->DrawString(this, stringBuffer, charOffsetShadow, view.X + view.W * 0.5f, view.Y + view.H * 0.92f + 2.5f + offset, FontShadowLayer,
 			Alignment::Left, Colorf(0.0f, 0.0f, 0.0f, 0.3f * alpha), 1.0f, 0.0f, 0.0f, 0.0f);
 
 		Colorf fontColor = Font::DefaultColor;
 		fontColor.SetAlpha(alpha2);
-		_smallFont->DrawString(this, stringBuffer, charOffset, ViewSize.X * 0.5f, ViewSize.Y * 0.92f + offset, FontLayer,
+		_smallFont->DrawString(this, stringBuffer, charOffset, view.X + view.W * 0.5f, view.Y + view.H * 0.92f + offset, FontLayer,
 			Alignment::Left, fontColor, 1.0f, 0.0f, 0.0f, 0.0f);
 
 		if (_gemsTime > TotalTime) {
@@ -833,7 +859,7 @@ namespace Jazz2::UI
 		}
 	}
 
-	void HUD::DrawElement(AnimState state, int32_t frame, float x, float y, uint16_t z, Alignment align, const Colorf& color, float scaleX, float scaleY, bool additiveBlending, float angle)
+	void HUD::DrawElement(AnimState state, std::int32_t frame, float x, float y, std::uint16_t z, Alignment align, const Colorf& color, float scaleX, float scaleY, bool additiveBlending, float angle)
 	{
 		auto* res = _metadata->FindAnimation(state);
 		if (res == nullptr) {
@@ -841,7 +867,7 @@ namespace Jazz2::UI
 		}
 
 		if (frame < 0) {
-			frame = res->FrameOffset + ((int32_t)(AnimTime * res->FrameCount / res->AnimDuration) % res->FrameCount);
+			frame = res->FrameOffset + ((std::int32_t)(AnimTime * res->FrameCount / res->AnimDuration) % res->FrameCount);
 		}
 
 		GenericGraphicResource* base = res->Base;
@@ -849,8 +875,8 @@ namespace Jazz2::UI
 		Vector2f adjustedPos = ApplyAlignment(align, Vector2f(x, y), size);
 
 		Vector2i texSize = base->TextureDiffuse->size();
-		int32_t col = frame % base->FrameConfiguration.X;
-		int32_t row = frame / base->FrameConfiguration.X;
+		std::int32_t col = frame % base->FrameConfiguration.X;
+		std::int32_t row = frame / base->FrameConfiguration.X;
 		Vector4f texCoords = Vector4f(
 			float(base->FrameDimensions.X) / float(texSize.X),
 			float(base->FrameDimensions.X * col) / float(texSize.X),
@@ -861,7 +887,7 @@ namespace Jazz2::UI
 		DrawTexture(*base->TextureDiffuse.get(), adjustedPos, z, size, texCoords, color, additiveBlending, angle);
 	}
 
-	void HUD::DrawElementClipped(AnimState state, int32_t frame, float x, float y, uint16_t z, Alignment align, const Colorf& color, float clipX, float clipY)
+	void HUD::DrawElementClipped(AnimState state, std::int32_t frame, float x, float y, std::uint16_t z, Alignment align, const Colorf& color, float clipX, float clipY)
 	{
 		auto* res = _metadata->FindAnimation(state);
 		if (res == nullptr) {
@@ -869,7 +895,7 @@ namespace Jazz2::UI
 		}
 
 		if (frame < 0) {
-			frame = res->FrameOffset + ((int32_t)(AnimTime * res->FrameCount / res->AnimDuration) % res->FrameCount);
+			frame = res->FrameOffset + ((std::int32_t)(AnimTime * res->FrameCount / res->AnimDuration) % res->FrameCount);
 		}
 
 		GenericGraphicResource* base = res->Base;
@@ -877,8 +903,8 @@ namespace Jazz2::UI
 		Vector2f adjustedPos = ApplyAlignment(align, Vector2f(x, y), base->FrameDimensions.As<float>());
 
 		Vector2i texSize = base->TextureDiffuse->size();
-		int32_t col = frame % base->FrameConfiguration.X;
-		int32_t row = frame / base->FrameConfiguration.X;
+		std::int32_t col = frame % base->FrameConfiguration.X;
+		std::int32_t row = frame / base->FrameConfiguration.X;
 		Vector4f texCoords = Vector4f(
 			std::floor(float(base->FrameDimensions.X) * clipX) / float(texSize.X),
 			float(base->FrameDimensions.X * col) / float(texSize.X),
@@ -903,7 +929,7 @@ namespace Jazz2::UI
 			offset.X += 6;
 		}
 
-		if ((player->_weaponUpgrades[(int32_t)weapon] & 0x01) != 0) {
+		if ((player->_weaponUpgrades[(std::int32_t)weapon] & 0x01) != 0) {
 			switch (weapon) {
 				default:
 				case WeaponType::Blaster:
@@ -950,9 +976,10 @@ namespace Jazz2::UI
 		}
 	}
 
-	void HUD::DrawWeaponWheel(Actors::Player* player)
+	void HUD::DrawWeaponWheel(const Rectf& view, Actors::Player* player)
 	{
-		if (_weaponWheelAnim <= 0.0f) {
+		auto& state = _weaponWheel[player->_playerIndex];
+		if (state.Anim <= 0.0f) {
 			return;
 		}
 
@@ -963,33 +990,34 @@ namespace Jazz2::UI
 
 		Texture& lineTexture = *res->Base->TextureDiffuse.get();
 
-		if (!_levelHandler->_playerFrozenEnabled) {
-			_levelHandler->_playerFrozenEnabled = true;
-			_levelHandler->_playerFrozenMovement = _levelHandler->_playerRequiredMovement;
+		auto& input = _levelHandler->_playerInputs[player->_playerIndex];
+		if (!input.Frozen) {
+			input.Frozen = true;
+			input.FrozenMovement = input.RequiredMovement;
 		}
 
-		if (player->_weaponWheelState == Actors::Player::WeaponWheelState::Hidden && player->_sugarRushLeft <= 0.0f && _weaponWheelAnim >= WeaponWheelAnimDuration * 0.1f) {
+		if (player->_weaponWheelState == Actors::Player::WeaponWheelState::Hidden && player->_sugarRushLeft <= 0.0f && state.Anim >= WeaponWheelAnimDuration * 0.1f) {
 			player->_weaponWheelState = Actors::Player::WeaponWheelState::Opening;
 		}
 
-		Vector2f center = Vector2f(ViewSize.X * 0.5f, ViewSize.Y * 0.5f);
-		float angleStep = fTwoPi / _weaponWheelCount;
+		Vector2f center = view.Center();
+		float angleStep = fTwoPi / state.WeaponCount;
 
-		float h = _levelHandler->_playerRequiredMovement.X;
-		float v = _levelHandler->_playerRequiredMovement.Y;
+		float h = input.RequiredMovement.X;
+		float v = input.RequiredMovement.Y;
 		if (std::abs(h) + std::abs(v) < 0.5f) {
 			h = 0.0f;
 			v = 0.0f;
 		}
 
-		if (_weaponWheelVertices == nullptr) {
-			_weaponWheelVertices = std::make_unique<Vertex[]>(WeaponWheelMaxVertices);
+		if (state.Vertices == nullptr) {
+			state.Vertices = std::make_unique<Vertex[]>(WeaponWheelMaxVertices);
 		}
-		_weaponWheelVerticesCount = 0;
-		_weaponWheelRenderCommandsCount = 0;
+		state.VerticesCount = 0;
+		state.RenderCommandsCount = 0;
 
 		float requestedAngle;
-		int32_t requestedIndex;
+		std::int32_t requestedIndex;
 		if (h == 0.0f && v == 0.0f) {
 			requestedAngle = NAN;
 			requestedIndex = -1;
@@ -1004,22 +1032,23 @@ namespace Jazz2::UI
 				adjustedAngle -= fTwoPi;
 			}
 
-			requestedIndex = (int32_t)(_weaponWheelCount * adjustedAngle / fTwoPi);
+			requestedIndex = (std::int32_t)(state.WeaponCount * adjustedAngle / fTwoPi);
 		}
 
-		float alpha = _weaponWheelAnim / WeaponWheelAnimDuration;
+		float scale = std::min(std::min(view.W, view.H) * 0.0034f, 1.0f);
+		float alpha = state.Anim / WeaponWheelAnimDuration;
 		float easing = Menu::IMenuContainer::EaseOutCubic(alpha);
-		float distance = 20 + (70 * easing);
-		float distance2 = 10 + (50 * easing);
+		float distance = scale * (20.0f  + (70.0f * easing));
+		float distance2 = scale * (10.0f  + (50.0f * easing));
 		float distance3 = distance2 * 2.0f;
 
 		float alphaInner = std::min(Vector2f(h, v).Length() * easing * 1.5f - 0.6f, 1.0f);
 		if (alphaInner > 0.0f) {
-			DrawElement(WeaponWheelInner, -1, center.X, center.Y, MainLayer + 5, Alignment::Center, Colorf(1.0f, 1.0f, 1.0f, alphaInner), easing, easing, true, requestedAngle);
+			DrawElement(WeaponWheelInner, -1, center.X, center.Y, MainLayer + 5, Alignment::Center, Colorf(1.0f, 1.0f, 1.0f, alphaInner), scale * easing, scale * easing, true, requestedAngle);
 		}
 
 		float angle = -fPiOver2;
-		for (int32_t i = 0, j = 0; i < countof(player->_weaponAmmo); i++) {
+		for (std::int32_t i = 0, j = 0; i < static_cast<std::int32_t>(arraySize(player->_weaponAmmo)); i++) {
 			if (player->_weaponAmmo[i] != 0) {
 				float x = cosf(angle) * distance;
 				float y = sinf(angle) * distance;
@@ -1030,7 +1059,7 @@ namespace Jazz2::UI
 				float scale;
 				bool isSelected = (j == requestedIndex);
 				if (isSelected) {
-					_lastWeaponWheelIndex = i;
+					state.LastIndex = i;
 					color2 = Colorf(1.0f, 0.8f, 0.5f, alpha);
 					scale = 1.0f;
 				} else {
@@ -1052,7 +1081,7 @@ namespace Jazz2::UI
 						ammoCount = stringBuffer;
 					}
 
-					int32_t charOffset = 0;
+					std::int32_t charOffset = 0;
 					_smallFont->DrawString(this, ammoCount, charOffset, center.X + cosf(angle) * distance * 1.4f, center.Y + sinf(angle) * distance * 1.4f, FontLayer,
 						Alignment::Center, isSelected ? Colorf(0.62f, 0.44f, 0.34f, 0.5f * alpha) : Colorf(0.45f, 0.45f, 0.45f, 0.48f * alpha), 0.9f, 0.0f, 0.0f, 0.0f, 0.0f, 0.9f);
 				}
@@ -1061,14 +1090,14 @@ namespace Jazz2::UI
 				float angleTo = angle + angleStep * 0.4f;
 
 				Colorf color1 = Colorf(0.0f, 0.0f, 0.0f, alpha * 0.3f);
-				DrawWeaponWheelSegment(center.X - distance2 - 1, center.Y - distance2 - 1, distance3, distance3, ShadowLayer, angleFrom, angleTo, lineTexture, color1);
-				DrawWeaponWheelSegment(center.X - distance2 - 1, center.Y - distance2 + 1, distance3, distance3, ShadowLayer, angleFrom, angleTo, lineTexture, color1);
-				DrawWeaponWheelSegment(center.X - distance2 + 1, center.Y - distance2 - 1, distance3, distance3, ShadowLayer, angleFrom, angleTo, lineTexture, color1);
-				DrawWeaponWheelSegment(center.X - distance2 + 1, center.Y - distance2 + 1, distance3, distance3, ShadowLayer, angleFrom, angleTo, lineTexture, color1);
+				DrawWeaponWheelSegment(state, center.X - distance2 - 1, center.Y - distance2 - 1, distance3, distance3, ShadowLayer, angleFrom, angleTo, lineTexture, color1);
+				DrawWeaponWheelSegment(state, center.X - distance2 - 1, center.Y - distance2 + 1, distance3, distance3, ShadowLayer, angleFrom, angleTo, lineTexture, color1);
+				DrawWeaponWheelSegment(state, center.X - distance2 + 1, center.Y - distance2 - 1, distance3, distance3, ShadowLayer, angleFrom, angleTo, lineTexture, color1);
+				DrawWeaponWheelSegment(state, center.X - distance2 + 1, center.Y - distance2 + 1, distance3, distance3, ShadowLayer, angleFrom, angleTo, lineTexture, color1);
 
-				DrawWeaponWheelSegment(center.X - distance2, center.Y - distance2, distance3, distance3, MainLayer, angleFrom, angleTo, lineTexture, color2);
+				DrawWeaponWheelSegment(state, center.X - distance2, center.Y - distance2, distance3, distance3, MainLayer, angleFrom, angleTo, lineTexture, color2);
 				if (isSelected) {
-					DrawWeaponWheelSegment(center.X - distance2 - 1.0f, center.Y - distance2 - 1.0f, distance3 + 2.0f, distance3 + 2.0f, MainLayer + 1, angleFrom + fRadAngle1, angleTo - fRadAngle1, lineTexture, Colorf(1.0f, 0.8f, 0.5f, alpha * 0.3f));
+					DrawWeaponWheelSegment(state, center.X - distance2 - 1.0f, center.Y - distance2 - 1.0f, distance3 + 2.0f, distance3 + 2.0f, MainLayer + 1, angleFrom + fRadAngle1, angleTo - fRadAngle1, lineTexture, Colorf(1.0f, 0.8f, 0.5f, alpha * 0.3f));
 				}
 
 				angle += angleStep;
@@ -1077,46 +1106,80 @@ namespace Jazz2::UI
 		}
 	}
 
-	bool HUD::PrepareWeaponWheel(Actors::Player* player, int& weaponCount)
+	void HUD::UpdateWeaponWheel(float timeMult)
+	{
+		auto players = _levelHandler->GetPlayers();
+
+		for (auto& viewport : _levelHandler->_assignedViewports) {
+			Actors::Player* player = viewport->GetTargetPlayer();
+			auto& state = _weaponWheel[player->_playerIndex];
+
+			if (PrepareWeaponWheel(player, state.WeaponCount)) {
+				if (state.Anim < WeaponWheelAnimDuration) {
+					state.Anim += timeMult;
+					if (state.Anim > WeaponWheelAnimDuration) {
+						state.Anim = WeaponWheelAnimDuration;
+					}
+				}
+			} else {
+				if (state.Anim > 0.0f) {
+					state.Anim -= timeMult * 2.0f;
+					if (state.Anim <= 0.0f) {
+						state.Anim = 0.0f;
+						_levelHandler->_playerInputs[player->_playerIndex].Frozen = false;
+
+						if (player->_weaponWheelState == Actors::Player::WeaponWheelState::Visible) {
+							player->_weaponWheelState = Actors::Player::WeaponWheelState::Closing;
+						}
+					}
+				}
+			}
+		}
+	}
+
+	bool HUD::PrepareWeaponWheel(Actors::Player* player, std::int32_t& weaponCount)
 	{
 		weaponCount = 0;
 
-		if (PreferencesCache::WeaponWheel == WeaponWheelStyle::Disabled || player == nullptr || !player->_controllable || !player->_controllableExternal || player->_playerType == PlayerType::Frog) {
-			if (_weaponWheelAnim > 0.0f) {
-				_weaponWheelShown = false;
-				_lastWeaponWheelIndex = -1;
+		auto& state = _weaponWheel[player->_playerIndex];
+
+		if (PreferencesCache::WeaponWheel == WeaponWheelStyle::Disabled || player == nullptr ||
+			!((player->_controllable && player->_controllableExternal) || !_levelHandler->IsReforged()) || player->_playerType == PlayerType::Frog) {
+			if (state.Anim > 0.0f) {
+				state.Shown = false;
+				state.LastIndex = -1;
 			}
 			return false;
 		}
 
 		bool isGamepad;
 		if (!_levelHandler->PlayerActionPressed(player->_playerIndex, PlayerActions::ChangeWeapon, true, isGamepad) || !isGamepad) {
-			if (_weaponWheelAnim > 0.0f) {
-				if (_weaponWheelAnim < WeaponWheelAnimDuration * 0.5f) {
+			if (state.Anim > 0.0f) {
+				if (state.Anim < WeaponWheelAnimDuration * 0.5f) {
 					// Switch to the next weapon on short press
-					if (_weaponWheelShown) {
+					if (state.Shown) {
 						player->SwitchToNextWeapon();
 					}
-				} else if (_lastWeaponWheelIndex != -1) {
-					player->SwitchToWeaponByIndex((uint32_t)_lastWeaponWheelIndex);
+				} else if (state.LastIndex != -1) {
+					player->SwitchToWeaponByIndex((std::uint32_t)state.LastIndex);
 				}
-				_weaponWheelShown = false;
-				_lastWeaponWheelIndex = -1;
+				state.Shown = false;
+				state.LastIndex = -1;
 				weaponCount = GetWeaponCount(player);
 			}
 			return false;
 		}
 
-		_weaponWheelShown = true;
+		state.Shown = true;
 		weaponCount = GetWeaponCount(player);
 		return (weaponCount > 0);
 	}
 
-	int32_t HUD::GetWeaponCount(Actors::Player* player)
+	std::int32_t HUD::GetWeaponCount(Actors::Player* player)
 	{
-		int32_t weaponCount = 0;
+		std::int32_t weaponCount = 0;
 
-		for (int32_t i = 0; i < countof(player->_weaponAmmo); i++) {
+		for (std::int32_t i = 0; i < static_cast<std::int32_t>(arraySize(player->_weaponAmmo)); i++) {
 			if (player->_weaponAmmo[i] != 0) {
 				weaponCount++;
 			}
@@ -1130,21 +1193,21 @@ namespace Jazz2::UI
 		return weaponCount;
 	}
 
-	void HUD::DrawWeaponWheelSegment(float x, float y, float width, float height, uint16_t z, float minAngle, float maxAngle, const Texture& texture, const Colorf& color)
+	void HUD::DrawWeaponWheelSegment(WeaponWheelState& state, float x, float y, float width, float height, std::uint16_t z, float minAngle, float maxAngle, const Texture& texture, const Colorf& color)
 	{
 		width *= 0.5f; x += width;
 		height *= 0.5f; y += height;
 
 		float angleRange = std::min(maxAngle - minAngle, fRadAngle360);
-		int32_t segmentNum = std::clamp((int32_t)std::round(powf(std::max(width, height), 0.65f) * 3.5f * angleRange / fRadAngle360), 4, 128);
+		std::int32_t segmentNum = std::clamp((std::int32_t)std::round(powf(std::max(width, height), 0.65f) * 3.5f * angleRange / fRadAngle360), 4, 128);
 		float angleStep = angleRange / (segmentNum - 1);
-		int32_t vertexCount = segmentNum + 2;
+		std::int32_t vertexCount = segmentNum + 2;
 		float angle = minAngle;
 
-		Vertex* vertices = &_weaponWheelVertices[_weaponWheelVerticesCount];
-		_weaponWheelVerticesCount += vertexCount;
+		Vertex* vertices = &state.Vertices[state.VerticesCount];
+		state.VerticesCount += vertexCount;
 
-		if (_weaponWheelVerticesCount > WeaponWheelMaxVertices) {
+		if (state.VerticesCount > WeaponWheelMaxVertices) {
 			// This shouldn't happen, 512 vertices should be enough
 			return;
 		}
@@ -1152,14 +1215,14 @@ namespace Jazz2::UI
 		constexpr float Mult = 2.2f;
 
 		{
-			int32_t j = 0;
+			std::int32_t j = 0;
 			vertices[j].X = x + cosf(angle) * (width * Mult - 0.5f);
 			vertices[j].Y = y + sinf(angle) * (height * Mult - 0.5f);
 			vertices[j].U = 0.0f;
 			vertices[j].V = 0.0f;
 		}
 
-		for (int32_t i = 1; i < vertexCount - 1; i++) {
+		for (std::int32_t i = 1; i < vertexCount - 1; i++) {
 			vertices[i].X = x + cosf(angle) * (width - 0.5f);
 			vertices[i].Y = y + sinf(angle) * (height - 0.5f);
 			vertices[i].U = 0.15f + (0.7f * (float)(i - 1) / (vertexCount - 3));
@@ -1171,7 +1234,7 @@ namespace Jazz2::UI
 		{
 			angle -= angleStep;
 
-			int32_t j = vertexCount - 1;
+			std::int32_t j = vertexCount - 1;
 			vertices[j].X = x + cosf(angle) * (width * Mult - 0.5f);
 			vertices[j].Y = y + sinf(angle) * (height * Mult - 0.5f);
 			vertices[j].U = 1.0f;
@@ -1180,15 +1243,15 @@ namespace Jazz2::UI
 
 		// Create render command
 		RenderCommand* command;
-		if (_weaponWheelRenderCommandsCount < _weaponWheelRenderCommands.size()) {
-			command = _weaponWheelRenderCommands[_weaponWheelRenderCommandsCount].get();
-			_weaponWheelRenderCommandsCount++;
+		if (state.RenderCommandsCount < state.RenderCommands.size()) {
+			command = state.RenderCommands[state.RenderCommandsCount].get();
+			state.RenderCommandsCount++;
 		} else {
-			command = _weaponWheelRenderCommands.emplace_back(std::make_unique<RenderCommand>()).get();
+			command = state.RenderCommands.emplace_back(std::make_unique<RenderCommand>(RenderCommand::Type::MeshSprite)).get();
 			command->material().setBlendingEnabled(true);
 		}
 
-		if (command->material().setShaderProgramType(Material::ShaderProgramType::MESH_SPRITE)) {
+		if (command->material().setShaderProgramType(Material::ShaderProgramType::MeshSprite)) {
 			command->material().reserveUniformsDataMemory();
 
 			GLUniformCache* textureUniform = command->material().uniform(Material::TextureUniformName);
@@ -1258,7 +1321,7 @@ namespace Jazz2::UI
 		return true;
 	}
 
-	void HUD::UpdateRgbLights(float timeMult, Actors::Player* player)
+	void HUD::UpdateRgbLights(float timeMult, PlayerViewport* viewport)
 	{
 #if !defined(DEATH_TARGET_ANDROID) && !defined(DEATH_TARGET_IOS) && !defined(DEATH_TARGET_WINDOWS_RT)
 		if (!PreferencesCache::EnableRgbLights) {
@@ -1279,37 +1342,38 @@ namespace Jazz2::UI
 		_rgbLightsAnim += 0.06f;
 		_rgbLightsTime += RgbLights::RefreshRate;
 
+		Actors::Player* player = viewport->_targetPlayer;
 		float health = std::clamp((float)player->_health / player->_maxHealth, 0.0f, 1.0f);
 
 		_rgbHealthLast = lerp(_rgbHealthLast, health, 0.2f);
-		_rgbAmbientLight = _levelHandler->_ambientColor.W;
+		_rgbAmbientLight = viewport->_ambientLight.W;
 
-		constexpr int32_t KeyMax2 = 14;
+		constexpr std::int32_t KeyMax2 = 14;
 		Color colors[RgbLights::ColorsSize] { };
 
 		Color* captionTile = _levelHandler->_tileMap->GetCaptionTile();
 		if (captionTile != nullptr) {
-			for (int32_t i = 0; i < countof(KeyLayout); i++) {
-				int32_t x = KeyLayout[i] % AURA_KEYBOARD_WIDTH;
-				int32_t y = KeyLayout[i] / AURA_KEYBOARD_WIDTH;
+			for (std::int32_t i = 0; i < static_cast<std::int32_t>(arraySize(KeyLayout)); i++) {
+				std::int32_t x = KeyLayout[i] % AURA_KEYBOARD_WIDTH;
+				std::int32_t y = KeyLayout[i] / AURA_KEYBOARD_WIDTH;
 				Color tileColor = captionTile[y * 32 + x];
 				colors[AURA_COLORS_LIMITED_SIZE + i] = ApplyRgbGradientAlpha(tileColor, x, y, _rgbLightsAnim, _rgbAmbientLight);
 			}
 		}
 
-		int32_t percent, percentR, percentG;
-		percent = (int32_t)(_rgbHealthLast * 255);
+		std::int32_t percent, percentR, percentG;
+		percent = (std::int32_t)(_rgbHealthLast * 255);
 		percentG = percent * percent / 255;
 		percentR = (255 - (percent - 120) * 2);
 		percentR = std::clamp(percentR, 0, 255);
 
-		for (int32_t i = 0; i < KeyMax2; i++) {
-			int32_t intensity = (int32_t)((_rgbHealthLast - ((float)i / KeyMax2)) * 255 * KeyMax2);
+		for (std::int32_t i = 0; i < KeyMax2; i++) {
+			std::int32_t intensity = (std::int32_t)((_rgbHealthLast - ((float)i / KeyMax2)) * 255 * KeyMax2);
 			intensity = std::clamp(intensity, 0, 200);
 
 			if (intensity > 0) {
-				colors[(int32_t)AuraLight::Tilde + i] = Color(percentR * intensity / 255, percentG * intensity / 255, 0);
-				colors[(int32_t)AuraLight::Tab + i] = Color(percentR * intensity / (255 * 12), percentG * intensity / (255 * 12), 0);
+				colors[(std::int32_t)AuraLight::Tilde + i] = Color(percentR * intensity / 255, percentG * intensity / 255, 0);
+				colors[(std::int32_t)AuraLight::Tab + i] = Color(percentR * intensity / (255 * 12), percentG * intensity / (255 * 12), 0);
 			}
 		}
 
@@ -1446,5 +1510,10 @@ namespace Jazz2::UI
 
 			default: return AuraLight::Unknown;
 		}
+	}
+
+	HUD::WeaponWheelState::WeaponWheelState()
+		: Anim(0.0f), LastIndex(-1), Shown(false)
+	{
 	}
 }

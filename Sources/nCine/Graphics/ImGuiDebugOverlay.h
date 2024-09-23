@@ -7,6 +7,7 @@
 #include <memory>
 
 #include <Containers/String.h>
+#include <Containers/SmallVector.h>
 
 using namespace Death::Containers;
 
@@ -23,8 +24,15 @@ namespace nCine
 	public:
 		explicit ImGuiDebugOverlay(float profileTextUpdateTime);
 
+		ImGuiDebugOverlay(const ImGuiDebugOverlay&) = delete;
+		ImGuiDebugOverlay& operator=(const ImGuiDebugOverlay&) = delete;
+
 		void update() override;
 		void updateFrameTimings() override;
+
+#if defined(DEATH_TRACE)
+		void log(TraceLevel level, StringView time, std::uint32_t threadId, StringView message) override;
+#endif
 
 	private:
 		static constexpr float Margin = 10.0f;
@@ -35,14 +43,14 @@ namespace nCine
 			enum
 			{
 				FrameTime = 0,
-				FrameStart,
+				BeginFrame,
 				UpdateVisitDraw,
 				Update,
 				PostUpdate,
 				Visit,
 				Draw,
 				ImGui,
-				FrameEnd,
+				EndFrame,
 				CulledNodes,
 				VboUsed,
 				IboUsed,
@@ -51,6 +59,7 @@ namespace nCine
 				MeshSpriteVertices,
 				TileMapVertices,
 				ParticleVertices,
+				LightingVertices,
 				TextVertices,
 				ImGuiVertices,
 				UnspecifiedVertices,
@@ -61,6 +70,14 @@ namespace nCine
 #endif
 				Count
 			};
+		};
+
+		struct LogMessage
+		{
+			String Time;
+			String Text;
+			std::uint32_t ThreadId;
+			TraceLevel Level;
 		};
 
 		bool lockOverlayPositions_;
@@ -77,6 +94,8 @@ namespace nCine
 		bool plotAdditionalFrameValues_;
 		bool plotOverlayValues_;
 		String comboVideoModes_;
+
+		SmallVector<LogMessage, 0> logBuffer_;
 
 #if defined(WITH_RENDERDOC)
 		static constexpr unsigned int MaxRenderDocPathLength = 128;
@@ -116,11 +135,6 @@ namespace nCine
 #if defined(NCINE_PROFILING)
 		void updateOverlayTimings();
 #endif
-
-		/// Deleted copy constructor
-		ImGuiDebugOverlay(const ImGuiDebugOverlay&) = delete;
-		/// Deleted assignment operator
-		ImGuiDebugOverlay& operator=(const ImGuiDebugOverlay&) = delete;
 	};
 }
 

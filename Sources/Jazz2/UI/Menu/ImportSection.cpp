@@ -52,8 +52,8 @@ namespace Jazz2::UI::Menu
 	{
 		Recti contentBounds = _root->GetContentBounds();
 		Vector2f center = Vector2f(contentBounds.X + contentBounds.W * 0.5f, contentBounds.Y + contentBounds.H * 0.5f);
-		float topLine = contentBounds.Y + 31.0f;
-		float bottomLine = contentBounds.Y + contentBounds.H - 42.0f;
+		float topLine = contentBounds.Y + TopLine + 28.0f;
+		float bottomLine = contentBounds.Y + contentBounds.H - BottomLine;
 
 		_root->DrawElement(MenuDim, center.X, (topLine + bottomLine) * 0.5f, IMenuContainer::BackgroundLayer,
 			Alignment::Center, Colorf::Black, Vector2f(680.0f, bottomLine - topLine + 2), Vector4f(1.0f, 0.0f, 0.4f, 0.3f));
@@ -61,13 +61,13 @@ namespace Jazz2::UI::Menu
 		_root->DrawElement(MenuLine, 1, center.X, bottomLine, IMenuContainer::MainLayer, Alignment::Center, Colorf::White, 1.6f);
 
 		center.Y = topLine + (bottomLine - topLine) * 0.4f;
-		int32_t charOffset = 0;
+		std::int32_t charOffset = 0;
 
-		_root->DrawStringShadow(_("Import Episodes"), charOffset, center.X, topLine - 21.0f - 34.0f, IMenuContainer::FontLayer,
+		_root->DrawStringShadow(_("Import Episodes"), charOffset, center.X, contentBounds.Y + TopLine - 21.0f, IMenuContainer::FontLayer,
 			Alignment::Center, Colorf(0.46f, 0.46f, 0.46f, 0.5f), 0.9f, 0.7f, 1.1f, 1.1f, 0.4f, 0.9f);
 
 		// TRANSLATORS: Header in Import Episodes section
-		_root->DrawStringShadow(_("Select files of your original game to unlock additional episodes"), charOffset, center.X, topLine - 21.0f - 4.0f, IMenuContainer::FontLayer,
+		_root->DrawStringShadow(_("Select files of your original game to unlock additional episodes"), charOffset, center.X, topLine - 15.0f - 4.0f, IMenuContainer::FontLayer,
 			Alignment::Center, Colorf(0.46f, 0.46f, 0.46f, 0.5f), 0.76f, 0.7f, 1.1f, 1.1f, 0.4f, 0.9f);
 
 		switch (_state) {
@@ -96,7 +96,7 @@ namespace Jazz2::UI::Menu
 	void ImportSection::OnTouchEvent(const nCine::TouchEvent& event, const Vector2i& viewSize)
 	{
 		if (event.type == TouchEventType::Down) {
-			int32_t pointerIndex = event.findPointerIndex(event.actionIndex);
+			std::int32_t pointerIndex = event.findPointerIndex(event.actionIndex);
 			if (pointerIndex != -1) {
 				float y = event.pointers[pointerIndex].y * (float)viewSize.Y;
 				if (y < 80.0f) {
@@ -110,15 +110,15 @@ namespace Jazz2::UI::Menu
 		}
 	}
 
-	void ImportSection::FileDataCallback(void* context, std::unique_ptr<char[]> data, size_t length, const StringView& name)
+	void ImportSection::FileDataCallback(void* context, std::unique_ptr<char[]> data, std::size_t length, StringView name)
 	{
 		auto* _this = static_cast<ImportSection*>(context);
 		_this->_fileCount--;
 
-		int32_t offset = 180;	// Skip header
-		if (data != nullptr && length >= 262 && fs::GetExtension(name) == "j2l"_s && *(uint32_t*)&data[offset] == 0x4C56454C) {
+		std::int32_t offset = 180;	// Skip header
+		if (data != nullptr && length >= 262 && fs::GetExtension(name) == "j2l"_s && *(std::uint32_t*)&data[offset] == 0x4C56454C) {
 			offset += 4 + 4;
-			int32_t nameLength = 0;
+			std::int32_t nameLength = 0;
 			while (data[offset + nameLength] != '\0' && nameLength < 32) {
 				nameLength++;
 			}
@@ -131,7 +131,7 @@ namespace Jazz2::UI::Menu
 		}
 	}
 
-	void ImportSection::FileCountCallback(void* context, int32_t fileCount)
+	void ImportSection::FileCountCallback(void* context, std::int32_t fileCount)
 	{
 		auto* _this = static_cast<ImportSection*>(context);
 		_this->_fileCount = fileCount;
@@ -150,12 +150,12 @@ namespace Jazz2::UI::Menu
 		static const StringView TheSecretFilesLevels[] = { "Easter Bunny"_s, "Spring Chickens"_s, "Scrambled Eggs"_s, "Ghostly Antics"_s, "Skeletons Turf"_s, "Graveyard Shift"_s, "Turtle Town"_s, "Suburbia Commando"_s, "Urban Brawl"_s };
 
 		UnlockableEpisodes unlockedEpisodes = PreferencesCache::UnlockedEpisodes;
-		if (HasAllLevels(FormerlyAPrinceLevels, countof(FormerlyAPrinceLevels))) unlockedEpisodes |= UnlockableEpisodes::FormerlyAPrince;
-		if (HasAllLevels(JazzInTimeLevels, countof(JazzInTimeLevels))) unlockedEpisodes |= UnlockableEpisodes::JazzInTime;
-		if (HasAllLevels(FlashbackLevels, countof(FlashbackLevels))) unlockedEpisodes |= UnlockableEpisodes::Flashback;
-		if (HasAllLevels(FunkyMonkeysLevels, countof(FunkyMonkeysLevels))) unlockedEpisodes |= UnlockableEpisodes::FunkyMonkeys;
-		if (HasAllLevels(ChristmasChroniclesLevels, countof(ChristmasChroniclesLevels))) unlockedEpisodes |= UnlockableEpisodes::ChristmasChronicles;
-		if (HasAllLevels(TheSecretFilesLevels, countof(TheSecretFilesLevels))) unlockedEpisodes |= UnlockableEpisodes::TheSecretFiles;
+		if (HasAllLevels(FormerlyAPrinceLevels)) unlockedEpisodes |= UnlockableEpisodes::FormerlyAPrince;
+		if (HasAllLevels(JazzInTimeLevels)) unlockedEpisodes |= UnlockableEpisodes::JazzInTime;
+		if (HasAllLevels(FlashbackLevels)) unlockedEpisodes |= UnlockableEpisodes::Flashback;
+		if (HasAllLevels(FunkyMonkeysLevels)) unlockedEpisodes |= UnlockableEpisodes::FunkyMonkeys;
+		if (HasAllLevels(ChristmasChroniclesLevels)) unlockedEpisodes |= UnlockableEpisodes::ChristmasChronicles;
+		if (HasAllLevels(TheSecretFilesLevels)) unlockedEpisodes |= UnlockableEpisodes::TheSecretFiles;
 
 		if (PreferencesCache::UnlockedEpisodes != unlockedEpisodes) {
 			PreferencesCache::UnlockedEpisodes = unlockedEpisodes;
@@ -169,10 +169,10 @@ namespace Jazz2::UI::Menu
 		}
 	}
 
-	bool ImportSection::HasAllLevels(const StringView* levelNames, int32_t count)
+	bool ImportSection::HasAllLevels(ArrayView<const StringView> levelNames)
 	{
 		bool hasAll = true;
-		for (int32_t i = 0; i < count; i++) {
+		for (std::size_t i = 0; i < levelNames.size(); i++) {
 			if (_foundLevels.find(String::nullTerminatedView(levelNames[i])) == _foundLevels.end()) {
 				hasAll = false;
 				break;

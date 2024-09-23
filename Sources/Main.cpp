@@ -83,9 +83,6 @@ class GameEventHandler : public IAppEventHandler, public IInputEventHandler, pub
 #endif
 {
 public:
-	static constexpr std::int32_t DefaultWidth = 720;
-	static constexpr std::int32_t DefaultHeight = 405;
-
 	static constexpr std::uint16_t StateVersion = 2;
 	static constexpr char StateFileName[] = "Jazz2.resume";
 
@@ -94,11 +91,11 @@ public:
 	static constexpr std::uint32_t MultiplayerProtocolVersion = 1;
 #endif
 
-	void OnPreInit(AppConfiguration& config) override;
-	void OnInit() override;
-	void OnFrameStart() override;
+	void OnPreInitialize(AppConfiguration& config) override;
+	void OnInitialize() override;
+	void OnBeginFrame() override;
 	void OnPostUpdate() override;
-	void OnResizeWindow(int width, int height) override;
+	void OnResizeWindow(std::int32_t width, std::int32_t height) override;
 	void OnShutdown() override;
 	void OnSuspend() override;
 	void OnResume() override;
@@ -147,7 +144,8 @@ private:
 	std::unique_ptr<NetworkManager> _networkManager;
 #endif
 
-	void InitializeBase();
+	void OnBeforeInitialize();
+	void OnAfterInitialize();
 	void SetStateHandler(std::unique_ptr<IStateHandler>&& handler);
 #if !defined(DEATH_TARGET_EMSCRIPTEN)
 	void RefreshCache();
@@ -165,7 +163,7 @@ private:
 	static void ExtractPakFile(const StringView pakFile, const StringView targetPath);
 };
 
-void GameEventHandler::OnPreInit(AppConfiguration& config)
+void GameEventHandler::OnPreInitialize(AppConfiguration& config)
 {
 	ZoneScopedC(0x888888);
 
@@ -175,6 +173,10 @@ void GameEventHandler::OnPreInit(AppConfiguration& config)
 		for (std::int32_t i = 0; i < config.argc() - 2; i++) {
 			auto arg = config.argv(i);
 			if (arg == "/extract-pak"_s) {
+#	if defined(DEATH_TRACE) && defined(DEATH_TARGET_WINDOWS)
+				// Always attach to console in this case
+				theApplication().AttachTraceTarget(MainApplication::ConsoleTarget);
+#	endif
 				auto pakFile = config.argv(i + 1);
 				if (fs::FileExists(pakFile)) {
 					ExtractPakFile(pakFile, config.argv(i + 2));
@@ -182,7 +184,7 @@ void GameEventHandler::OnPreInit(AppConfiguration& config)
 					LOGE("\"%s\" not found", pakFile.data());
 				}
 
-				theApplication().quit();
+				theApplication().Quit();
 				return;
 			}
 		}
@@ -208,66 +210,15 @@ void GameEventHandler::OnPreInit(AppConfiguration& config)
 #endif
 
 #if defined(WITH_IMGUI)
-	//config.withDebugOverlay = true;
+	config.withDebugOverlay = true;
 #endif
 }
 
-void GameEventHandler::OnInit()
+void GameEventHandler::OnInitialize()
 {
 	ZoneScopedC(0x888888);
 
-#if defined(WITH_IMGUI)
-	//theApplication().debugOverlaySettings().showInterface = true;
-#endif
-
-	_flags |= Flags::IsInitialized;
-
-	std::memset(_newestVersion, 0, sizeof(_newestVersion));
-
-	auto& resolver = ContentResolver::Get();
-
-#if defined(DEATH_TARGET_ANDROID)
-	theApplication().setAutoSuspension(true);
-
-	if (AndroidJniWrap_Activity::hasExternalStoragePermission()) {
-		_flags |= Flags::HasExternalStoragePermission;
-	}
-#elif !defined(DEATH_TARGET_IOS) && !defined(DEATH_TARGET_SWITCH)
-#	if defined(DEATH_TARGET_WINDOWS_RT)
-	// Xbox is always fullscreen
-	if (PreferencesCache::EnableFullscreen || Environment::CurrentDeviceType == DeviceType::Xbox) {
-#	else
-	if (PreferencesCache::EnableFullscreen) {
-#	endif
-		theApplication().gfxDevice().setResolution(true);
-		theApplication().inputManager().setCursor(IInputManager::Cursor::Hidden);
-	}
-
-#	if !defined(DEATH_TARGET_EMSCRIPTEN) && !defined(DEATH_TARGET_SWITCH) && !defined(DEATH_TARGET_WINDOWS_RT)
-	// Try to load gamepad mappings from `Content` directory (or from parent directory of `Source` on Android)
-#	if defined(DEATH_TARGET_ANDROID)
-	String mappingsPath = fs::CombinePath(fs::GetDirectoryName(resolver.GetSourcePath()), "gamecontrollerdb.txt"_s);
-#	else
-	String mappingsPath = fs::CombinePath(resolver.GetContentPath(), "gamecontrollerdb.txt"_s);
-#	endif
-	if (fs::IsReadableFile(mappingsPath)) {
-		theApplication().inputManager().addJoyMappingsFromFile(mappingsPath);
-	}
-#	endif
-#endif
-
-#if !defined(DEATH_TARGET_EMSCRIPTEN) && !defined(DEATH_TARGET_SWITCH) && !defined(DEATH_TARGET_WINDOWS_RT)
-	// Try to load gamepad mappings also from config directory
-	auto configDir = PreferencesCache::GetDirectory();
-	if (!configDir.empty()) {
-		String mappingsPath2 = fs::CombinePath(configDir, "gamecontrollerdb.txt"_s);
-		if (fs::IsReadableFile(mappingsPath2)) {
-			theApplication().inputManager().addJoyMappingsFromFile(mappingsPath2);
-		}
-	}
-#endif
-
-	resolver.CompileShaders();
+	OnBeforeInitialize();
 
 #if !defined(SHAREWARE_DEMO_ONLY)
 	if (PreferencesCache::ResumeOnStart) {
@@ -275,13 +226,7 @@ void GameEventHandler::OnInit()
 		PreferencesCache::ResumeOnStart = false;
 		PreferencesCache::Save();
 		if (HasResumableState()) {
-			InitializeBase();
-#	if defined(DEATH_TARGET_EMSCRIPTEN)
-			// All required files are already included in Emscripten version, so nothing is verified
-			_flags |= Flags::IsVerified | Flags::IsPlayable;
-#	else
-			RefreshCache();
-#	endif
+			OnAfterInitialize();
 			ResumeSavedState();
 			return;
 		}
@@ -296,12 +241,8 @@ void GameEventHandler::OnInit()
 		auto handler = static_cast<GameEventHandler*>(arg);
 		ASSERT(handler != nullptr);
 
-		handler->InitializeBase();
-#	if defined(DEATH_TARGET_EMSCRIPTEN)
-		// All required files are already included in Emscripten version, so nothing is verified
-		handler->_flags |= Flags::IsVerified | Flags::IsPlayable;
-#	else
-		handler->RefreshCache();
+		handler->OnAfterInitialize();
+#	if !defined(DEATH_TARGET_EMSCRIPTEN)
 		handler->CheckUpdates();
 #	endif
 	}, this);
@@ -359,13 +300,8 @@ void GameEventHandler::OnInit()
 	}));
 #else
 	// Building without threading support is not recommended, so it can look ugly
-	InitializeBase();
-
-#	if defined(DEATH_TARGET_EMSCRIPTEN)
-	// All required files are already included in Emscripten version, so nothing is verified
-	_flags |= Flags::IsVerified | Flags::IsPlayable;
-#	else
-	RefreshCache();
+	OnAfterInitialize();
+#	if !defined(DEATH_TARGET_EMSCRIPTEN)
 	CheckUpdates();
 #	endif
 
@@ -402,11 +338,11 @@ void GameEventHandler::OnInit()
 	}));
 #endif
 
-	Vector2i res = theApplication().resolution();
+	Vector2i res = theApplication().GetResolution();
 	LOGI("Rendering resolution: %ix%i", res.X, res.Y);
 }
 
-void GameEventHandler::OnFrameStart()
+void GameEventHandler::OnBeginFrame()
 {
 	if (!_pendingCallbacks.empty()) {
 		ZoneScopedNC("Pending callbacks", 0x888888);
@@ -426,7 +362,7 @@ void GameEventHandler::OnPostUpdate()
 	_currentHandler->OnEndFrame();
 }
 
-void GameEventHandler::OnResizeWindow(int width, int height)
+void GameEventHandler::OnResizeWindow(std::int32_t width, std::int32_t height)
 {
 	// Resolution was changed, all viewports have to be recreated
 	Viewport::chain().clear();
@@ -435,8 +371,8 @@ void GameEventHandler::OnResizeWindow(int width, int height)
 		_currentHandler->OnInitializeViewport(width, height);
 	}
 
-#if !defined(DEATH_TARGET_ANDROID) && !defined(DEATH_TARGET_IOS) && !defined(DEATH_TARGET_SWITCH)
-	PreferencesCache::EnableFullscreen = theApplication().gfxDevice().isFullscreen();
+#if defined(NCINE_HAS_WINDOWS)
+	PreferencesCache::EnableFullscreen = theApplication().GetGfxDevice().isFullscreen();
 #endif
 
 	LOGI("Rendering resolution: %ix%i", width, height);
@@ -492,7 +428,7 @@ void GameEventHandler::OnResume()
 
 void GameEventHandler::OnKeyPressed(const KeyboardEvent& event)
 {
-#if !defined(DEATH_TARGET_ANDROID) && !defined(DEATH_TARGET_EMSCRIPTEN) && !defined(DEATH_TARGET_IOS) && !defined(DEATH_TARGET_SWITCH)
+#if defined(NCINE_HAS_WINDOWS) && !defined(DEATH_TARGET_EMSCRIPTEN)
 	// Allow F11 and Alt+Enter to switch fullscreen
 	if (event.sym == KeySym::F11 || (event.sym == KeySym::RETURN && (event.mod & KeyMod::MASK) == KeyMod::LALT)) {
 #	if defined(DEATH_TARGET_WINDOWS_RT)
@@ -503,11 +439,11 @@ void GameEventHandler::OnKeyPressed(const KeyboardEvent& event)
 #	endif
 		PreferencesCache::EnableFullscreen = !PreferencesCache::EnableFullscreen;
 		if (PreferencesCache::EnableFullscreen) {
-			theApplication().gfxDevice().setResolution(true);
-			theApplication().inputManager().setCursor(IInputManager::Cursor::Hidden);
+			theApplication().GetGfxDevice().setResolution(true);
+			theApplication().GetInputManager().setCursor(IInputManager::Cursor::Hidden);
 		} else {
-			theApplication().gfxDevice().setResolution(false);
-			theApplication().inputManager().setCursor(IInputManager::Cursor::Arrow);
+			theApplication().GetGfxDevice().setResolution(false);
+			theApplication().GetInputManager().setCursor(IInputManager::Cursor::Arrow);
 		}
 		return;
 	}
@@ -567,12 +503,11 @@ void GameEventHandler::ChangeLevel(LevelInitialization&& levelInit)
 			// End of episode
 			SaveEpisodeEnd(levelInit);
 
-			PreferencesCache::RemoveEpisodeContinue(levelInit.LastEpisodeName);
-
-			std::optional<Episode> lastEpisode = ContentResolver::Get().GetEpisode(levelInit.LastEpisodeName);
+			auto& resolver = ContentResolver::Get();
+			std::optional<Episode> lastEpisode = resolver.GetEpisode(levelInit.LastEpisodeName);
 			if (lastEpisode) {
 				// Redirect to next episode
-				std::optional<Episode> nextEpisode = ContentResolver::Get().GetEpisode(lastEpisode->NextEpisode);
+				std::optional<Episode> nextEpisode = resolver.GetEpisode(lastEpisode->NextEpisode);
 				if (nextEpisode) {
 					levelInit.EpisodeName = lastEpisode->NextEpisode;
 					levelInit.LevelName = nextEpisode->FirstLevel;
@@ -582,7 +517,7 @@ void GameEventHandler::ChangeLevel(LevelInitialization&& levelInit)
 			if (levelInit.LevelName != ":end"_s) {
 				if (!SetLevelHandler(levelInit)) {
 					auto mainMenu = std::make_unique<Menu::MainMenu>(this, false);
-					mainMenu->SwitchToSection<Menu::SimpleMessageSection>(_("\f[c:0x704a4a]Cannot load specified level!\f[c]\n\n\nMake sure all necessary files\nare accessible and try it again."), true);
+					mainMenu->SwitchToSection<Menu::SimpleMessageSection>(_("\f[c:#704a4a]Cannot load specified level!\f[/c]\n\n\nMake sure all necessary files\nare accessible and try it again."), true);
 					newHandler = std::move(mainMenu);
 				}
 			} else {
@@ -591,8 +526,6 @@ void GameEventHandler::ChangeLevel(LevelInitialization&& levelInit)
 		} else if (levelInit.LevelName == ":credits"_s) {
 			// End of game
 			SaveEpisodeEnd(levelInit);
-
-			PreferencesCache::RemoveEpisodeContinue(levelInit.LastEpisodeName);
 
 			newHandler = std::make_unique<Cinematics>(this, "ending"_s, [](IRootController* root, bool endOfStream) {
 				root->GoToMainMenu(false);
@@ -618,7 +551,7 @@ void GameEventHandler::ChangeLevel(LevelInitialization&& levelInit)
 			{
 				if (!SetLevelHandler(levelInit)) {
 					auto mainMenu = std::make_unique<Menu::MainMenu>(this, false);
-					mainMenu->SwitchToSection<Menu::SimpleMessageSection>(_("\f[c:0x704a4a]Cannot load specified level!\f[c]\n\n\nMake sure all necessary files\nare accessible and try it again."), true);
+					mainMenu->SwitchToSection<Menu::SimpleMessageSection>(_("\f[c:#704a4a]Cannot load specified level!\f[/c]\n\n\nMake sure all necessary files\nare accessible and try it again."), true);
 					newHandler = std::move(mainMenu);
 				}
 			}
@@ -644,7 +577,7 @@ void GameEventHandler::ResumeSavedState()
 		LOGI("Resuming saved state...");
 
 		auto configDir = PreferencesCache::GetDirectory();
-		auto s = fs::Open(fs::CombinePath(configDir, StateFileName), FileAccessMode::Read);
+		auto s = fs::Open(fs::CombinePath(configDir, StateFileName), FileAccess::Read);
 		if (s->IsValid()) {
 			std::uint64_t signature = s->ReadValue<std::uint64_t>();
 			std::uint8_t fileType = s->ReadValue<std::uint8_t>();
@@ -668,7 +601,7 @@ void GameEventHandler::ResumeSavedState()
 		}
 
 		auto mainMenu = std::make_unique<Menu::MainMenu>(this, false);
-		mainMenu->SwitchToSection<Menu::SimpleMessageSection>(_("\f[c:0x704a4a]Cannot resume saved state!\f[c]\n\n\nMake sure all necessary files\nare accessible and try it again."), true);
+		mainMenu->SwitchToSection<Menu::SimpleMessageSection>(_("\f[c:#704a4a]Cannot resume saved state!\f[/c]\n\n\nMake sure all necessary files\nare accessible and try it again."), true);
 		SetStateHandler(std::move(mainMenu));
 	});
 }
@@ -680,7 +613,7 @@ bool GameEventHandler::SaveCurrentStateIfAny()
 	if (auto* levelHandler = dynamic_cast<LevelHandler*>(_currentHandler.get())) {
 		if (levelHandler->Difficulty() != GameDifficulty::Multiplayer) {
 			auto configDir = PreferencesCache::GetDirectory();
-			auto s = fs::Open(fs::CombinePath(configDir, StateFileName), FileAccessMode::Write);
+			auto s = fs::Open(fs::CombinePath(configDir, StateFileName), FileAccess::Write);
 			s->WriteValue<std::uint64_t>(0x2095A59FF0BFBBEF);	// Signature
 			s->WriteValue<std::uint8_t>(ContentResolver::StateFile);
 			s->WriteValue<std::uint16_t>(StateVersion);
@@ -803,14 +736,14 @@ void GameEventHandler::OnPeerDisconnected(const Peer& peer, Reason reason)
 			}
 
 			switch (reason) {
-				case Reason::IncompatibleVersion: mainMenu->SwitchToSection<Menu::SimpleMessageSection>(_("\f[c:0x704a4a]Cannot connect to the server!\f[c]\n\n\nYour client version is not compatible with the server.")); break;
-				case Reason::ServerIsFull: mainMenu->SwitchToSection<Menu::SimpleMessageSection>(_("\f[c:0x704a4a]Cannot connect to the server!\f[c]\n\n\nServer capacity is full.\nPlease try it later.")); break;
-				case Reason::ServerNotReady: mainMenu->SwitchToSection<Menu::SimpleMessageSection>(_("\f[c:0x704a4a]Cannot connect to the server!\f[c]\n\n\nServer is not in a state where it can process your request.\nPlease try again in a few seconds.")); break;
-				case Reason::ServerStopped: mainMenu->SwitchToSection<Menu::SimpleMessageSection>(_("\f[c:0x704a4a]Connection has been closed!\f[c]\n\n\nServer is shutting down.\nPlease try it later.")); break;
-				case Reason::ConnectionLost: mainMenu->SwitchToSection<Menu::SimpleMessageSection>(_("\f[c:0x704a4a]Connection has been lost!\f[c]\n\n\nPlease try it again and if the problem persists,\ncheck your network connection.")); break;
-				case Reason::ConnectionTimedOut: mainMenu->SwitchToSection<Menu::SimpleMessageSection>(_("\f[c:0x704a4a]Cannot connect to the server!\f[c]\n\n\nThe server is not responding for connection request.")); break;
-				case Reason::Kicked: mainMenu->SwitchToSection<Menu::SimpleMessageSection>(_("\f[c:0x704a4a]Connection has been closed!\f[c]\n\n\nYou have been \f[c:0x907050]kicked\f[c] off the server.\nContact server administrators for more information.")); break;
-				case Reason::Banned: mainMenu->SwitchToSection<Menu::SimpleMessageSection>(_("\f[c:0x704a4a]Connection has been closed!\f[c]\n\n\nYou have been \f[c:0x725040]banned\f[c] off the server.\nContact server administrators for more information.")); break;
+				case Reason::IncompatibleVersion: mainMenu->SwitchToSection<Menu::SimpleMessageSection>(_("\f[c:#704a4a]Cannot connect to the server!\f[/c]\n\n\nYour client version is not compatible with the server.")); break;
+				case Reason::ServerIsFull: mainMenu->SwitchToSection<Menu::SimpleMessageSection>(_("\f[c:#704a4a]Cannot connect to the server!\f[/c]\n\n\nServer capacity is full.\nPlease try it later.")); break;
+				case Reason::ServerNotReady: mainMenu->SwitchToSection<Menu::SimpleMessageSection>(_("\f[c:#704a4a]Cannot connect to the server!\f[/c]\n\n\nServer is not in a state where it can process your request.\nPlease try again in a few seconds.")); break;
+				case Reason::ServerStopped: mainMenu->SwitchToSection<Menu::SimpleMessageSection>(_("\f[c:#704a4a]Connection has been closed!\f[/c]\n\n\nServer is shutting down.\nPlease try it later.")); break;
+				case Reason::ConnectionLost: mainMenu->SwitchToSection<Menu::SimpleMessageSection>(_("\f[c:#704a4a]Connection has been lost!\f[/c]\n\n\nPlease try it again and if the problem persists,\ncheck your network connection.")); break;
+				case Reason::ConnectionTimedOut: mainMenu->SwitchToSection<Menu::SimpleMessageSection>(_("\f[c:#704a4a]Cannot connect to the server!\f[/c]\n\n\nThe server is not responding for connection request.")); break;
+				case Reason::Kicked: mainMenu->SwitchToSection<Menu::SimpleMessageSection>(_("\f[c:#704a4a]Connection has been closed!\f[/c]\n\n\nYou have been \f[c:#907050]kicked\f[/c] off the server.\nContact server administrators for more information.")); break;
+				case Reason::Banned: mainMenu->SwitchToSection<Menu::SimpleMessageSection>(_("\f[c:#704a4a]Connection has been closed!\f[/c]\n\n\nYou have been \f[c:#725040]banned\f[/c] off the server.\nContact server administrators for more information.")); break;
 			}
 		});
 	}
@@ -891,7 +824,65 @@ void GameEventHandler::OnPacketReceived(const Peer& peer, std::uint8_t channelId
 }
 #endif
 
-void GameEventHandler::InitializeBase()
+void GameEventHandler::OnBeforeInitialize()
+{
+#if defined(WITH_IMGUI)
+	theApplication().GetDebugOverlaySettings().showInterface = true;
+#endif
+
+	_flags |= Flags::IsInitialized;
+
+	std::memset(_newestVersion, 0, sizeof(_newestVersion));
+
+	auto& resolver = ContentResolver::Get();
+
+#if defined(DEATH_TARGET_ANDROID)
+	theApplication().SetAutoSuspension(true);
+
+	if (AndroidJniWrap_Activity::hasExternalStoragePermission()) {
+		_flags |= Flags::HasExternalStoragePermission;
+	}
+
+	// Try to load gamepad mappings from parent directory of `Source` on Android
+	String mappingsPath = fs::CombinePath(fs::GetDirectoryName(resolver.GetSourcePath()), "gamecontrollerdb.txt"_s);
+	if (fs::IsReadableFile(mappingsPath)) {
+		theApplication().GetInputManager().addJoyMappingsFromFile(mappingsPath);
+	}
+#elif !defined(DEATH_TARGET_EMSCRIPTEN) && !defined(DEATH_TARGET_IOS) && !defined(DEATH_TARGET_SWITCH) && !defined(DEATH_TARGET_WINDOWS_RT)
+	// Try to load gamepad mappings from `Content` directory
+	String mappingsPath = fs::CombinePath(resolver.GetContentPath(), "gamecontrollerdb.txt"_s);
+	if (fs::IsReadableFile(mappingsPath)) {
+		theApplication().GetInputManager().addJoyMappingsFromFile(mappingsPath);
+	}
+#endif
+
+#if !defined(DEATH_TARGET_EMSCRIPTEN) && !defined(DEATH_TARGET_SWITCH) && !defined(DEATH_TARGET_WINDOWS_RT)
+	// Try to load gamepad mappings also from config directory
+	auto configDir = PreferencesCache::GetDirectory();
+	if (!configDir.empty()) {
+		String mappingsPath2 = fs::CombinePath(configDir, "gamecontrollerdb.txt"_s);
+		if (fs::IsReadableFile(mappingsPath2)) {
+			theApplication().GetInputManager().addJoyMappingsFromFile(mappingsPath2);
+		}
+	}
+#endif
+
+#if defined(NCINE_HAS_WINDOWS)
+#	if defined(DEATH_TARGET_WINDOWS_RT)
+	// Xbox is always fullscreen
+	if (PreferencesCache::EnableFullscreen || Environment::CurrentDeviceType == DeviceType::Xbox) {
+#	else
+	if (PreferencesCache::EnableFullscreen) {
+#	endif
+		theApplication().GetGfxDevice().setResolution(true);
+		theApplication().GetInputManager().setCursor(IInputManager::Cursor::Hidden);
+	}
+#endif
+
+	resolver.CompileShaders();
+}
+
+void GameEventHandler::OnAfterInitialize()
 {
 #if (defined(DEATH_TARGET_WINDOWS) && !defined(DEATH_TARGET_WINDOWS_RT)) || defined(DEATH_TARGET_UNIX)
 	if (PreferencesCache::EnableDiscordIntegration) {
@@ -906,6 +897,13 @@ void GameEventHandler::InitializeBase()
 			i18n.LoadFromFile(fs::CombinePath({ resolver.GetCachePath(), "Translations"_s, String(PreferencesCache::Language + ".mo"_s) }));
 		}
 	}
+
+#if defined(DEATH_TARGET_EMSCRIPTEN)
+	// All required files are already included in Emscripten version, so nothing is verified
+	_flags |= Flags::IsVerified | Flags::IsPlayable;
+#else
+	RefreshCache();
+#endif
 }
 
 void GameEventHandler::SetStateHandler(std::unique_ptr<IStateHandler>&& handler)
@@ -913,7 +911,7 @@ void GameEventHandler::SetStateHandler(std::unique_ptr<IStateHandler>&& handler)
 	_currentHandler = std::move(handler);
 
 	Viewport::chain().clear();
-	Vector2i res = theApplication().resolution();
+	Vector2i res = theApplication().GetResolution();
 	_currentHandler->OnInitializeViewport(res.X, res.Y);
 }
 
@@ -928,14 +926,14 @@ void GameEventHandler::RefreshCache()
 		return;
 	}
 
-	constexpr std::uint64_t currentVersion = parseVersion({ NCINE_VERSION, countof(NCINE_VERSION) - 1 });
+	constexpr std::uint64_t currentVersion = parseVersion({ NCINE_VERSION, arraySize(NCINE_VERSION) - 1 });
 
 	auto& resolver = ContentResolver::Get();
 	auto cachePath = fs::CombinePath(resolver.GetCachePath(), "Source.idx"_s);
 
 	// Check cache state
 	{
-		auto s = fs::Open(cachePath, FileAccessMode::Read);
+		auto s = fs::Open(cachePath, FileAccess::Read);
 		if (s->GetSize() < 16) {
 			goto RecreateCache;
 		}
@@ -1027,6 +1025,7 @@ RecreateCache:
 
 			pakWriter = nullptr;
 			Timer::sleep(t * 100);
+			t++;
 			pakWriter = std::make_unique<PakWriter>(fs::CombinePath(resolver.GetCachePath(), "Source.pak"_s));
 		}
 
@@ -1477,7 +1476,7 @@ void GameEventHandler::CheckUpdates()
 	Http::Request req(url, Http::InternetProtocol::V4);
 	Http::Response resp = req.Send("GET"_s, std::chrono::seconds(10));
 	if (resp.Status.Code == Http::HttpStatus::Ok && !resp.Body.empty() && resp.Body.size() < sizeof(_newestVersion) - 1) {
-		constexpr std::uint64_t currentVersion = parseVersion({ NCINE_VERSION, countof(NCINE_VERSION) - 1 });
+		constexpr std::uint64_t currentVersion = parseVersion({ NCINE_VERSION, arraySize(NCINE_VERSION) - 1 });
 		std::uint64_t latestVersion = parseVersion(StringView(reinterpret_cast<char*>(resp.Body.data()), resp.Body.size()));
 		if (currentVersion < latestVersion) {
 			std::memcpy(_newestVersion, resp.Body.data(), resp.Body.size());
@@ -1518,7 +1517,7 @@ bool GameEventHandler::SetLevelHandler(const LevelInitialization& levelInit)
 
 void GameEventHandler::WriteCacheDescriptor(const StringView path, std::uint64_t currentVersion, std::int64_t animsModified)
 {
-	auto so = fs::Open(path, FileAccessMode::Write);
+	auto so = fs::Open(path, FileAccess::Write);
 	so->WriteValue<std::uint64_t>(0x2095A59FF0BFBBEF);	// Signature
 	so->WriteValue<std::uint8_t>(ContentResolver::CacheIndexFile);
 	so->WriteValue<std::uint16_t>(Compatibility::JJ2Anims::CacheVersion);
@@ -1543,20 +1542,36 @@ void GameEventHandler::SaveEpisodeEnd(const LevelInitialization& levelInit)
 		}
 	}
 
-	if (playerCount == 1) {
-		auto episodeEnd = PreferencesCache::GetEpisodeEnd(levelInit.LastEpisodeName, true);
-		episodeEnd->Flags = EpisodeContinuationFlags::IsCompleted;
-		if (levelInit.CheatsUsed) {
-			episodeEnd->Flags |= EpisodeContinuationFlags::CheatsUsed;
+	PreferencesCache::RemoveEpisodeContinue(levelInit.LastEpisodeName);
+
+	if (playerCount > 0) {
+		auto* prevEnd = PreferencesCache::GetEpisodeEnd(levelInit.LastEpisodeName);
+
+		bool shouldSaveEpisodeEnd = (prevEnd == nullptr);
+		if (!shouldSaveEpisodeEnd) {
+			switch (PreferencesCache::OverwriteEpisodeEnd) {
+				// Don't overwrite existing data in multiplayer/splitscreen
+				default: shouldSaveEpisodeEnd = (playerCount == 1); break;
+				case EpisodeEndOverwriteMode::NoCheatsOnly: shouldSaveEpisodeEnd = (playerCount == 1 && !levelInit.CheatsUsed); break;
+				case EpisodeEndOverwriteMode::HigherScoreOnly: shouldSaveEpisodeEnd = (playerCount == 1 && !levelInit.CheatsUsed && firstPlayer->Score >= prevEnd->Score); break;
+			}
 		}
 
-		episodeEnd->Lives = firstPlayer->Lives;
-		episodeEnd->Score = firstPlayer->Score;
-		std::memcpy(episodeEnd->Ammo, firstPlayer->Ammo, sizeof(firstPlayer->Ammo));
-		std::memcpy(episodeEnd->WeaponUpgrades, firstPlayer->WeaponUpgrades, sizeof(firstPlayer->WeaponUpgrades));
+		if (shouldSaveEpisodeEnd) {
+			auto* episodeEnd = PreferencesCache::GetEpisodeEnd(levelInit.LastEpisodeName, true);
+			episodeEnd->Flags = EpisodeContinuationFlags::IsCompleted;
+			if (levelInit.CheatsUsed) {
+				episodeEnd->Flags |= EpisodeContinuationFlags::CheatsUsed;
+			}
 
-		PreferencesCache::Save();
+			episodeEnd->Lives = firstPlayer->Lives;
+			episodeEnd->Score = firstPlayer->Score;
+			std::memcpy(episodeEnd->Ammo, firstPlayer->Ammo, sizeof(firstPlayer->Ammo));
+			std::memcpy(episodeEnd->WeaponUpgrades, firstPlayer->WeaponUpgrades, sizeof(firstPlayer->WeaponUpgrades));
+		}
 	}
+
+	PreferencesCache::Save();
 }
 
 void GameEventHandler::SaveEpisodeContinue(const LevelInitialization& levelInit)
@@ -1581,6 +1596,7 @@ void GameEventHandler::SaveEpisodeContinue(const LevelInitialization& levelInit)
 		}
 	}
 
+	// Don't save continue in multiplayer
 	if (playerCount == 1) {
 		auto* episodeContinue = PreferencesCache::GetEpisodeContinue(levelInit.EpisodeName, true);
 		episodeContinue->LevelName = levelInit.LevelName;
@@ -1589,7 +1605,7 @@ void GameEventHandler::SaveEpisodeContinue(const LevelInitialization& levelInit)
 			episodeContinue->State.Flags |= EpisodeContinuationFlags::CheatsUsed;
 		}
 
-		episodeContinue->State.DifficultyAndPlayerType = ((int32_t)levelInit.Difficulty & 0x0f) | (((int32_t)firstPlayer->Type & 0x0f) << 4);
+		episodeContinue->State.DifficultyAndPlayerType = ((std::int32_t)levelInit.Difficulty & 0x0f) | (((std::int32_t)firstPlayer->Type & 0x0f) << 4);
 		episodeContinue->State.Lives = firstPlayer->Lives;
 		episodeContinue->State.Score = firstPlayer->Score;
 		std::memcpy(episodeContinue->State.Ammo, firstPlayer->Ammo, sizeof(firstPlayer->Ammo));
@@ -1640,7 +1656,7 @@ void GameEventHandler::ExtractPakFile(const StringView pakFile, const StringView
 			if (sourceFile != nullptr) {
 				auto targetFilePath = fs::CombinePath(targetPath, childItem);
 				fs::CreateDirectories(fs::GetDirectoryName(targetFilePath));
-				auto targetFile = fs::Open(targetFilePath, FileAccessMode::Write);
+				auto targetFile = fs::Open(targetFilePath, FileAccess::Write);
 				if (targetFile->IsValid()) {
 					sourceFile->CopyTo(*targetFile);
 					successCount++;
@@ -1666,14 +1682,14 @@ std::unique_ptr<IAppEventHandler> CreateAppEventHandler()
 #elif defined(DEATH_TARGET_WINDOWS_RT)
 int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow)
 {
-	return UwpApplication::start([]() -> std::unique_ptr<IAppEventHandler> {
+	return UwpApplication::Run([]() -> std::unique_ptr<IAppEventHandler> {
 		return std::make_unique<GameEventHandler>();
 	});
 }
 #elif defined(DEATH_TARGET_WINDOWS) && !defined(WITH_QT5)
 int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow)
 {
-	return MainApplication::start([]() -> std::unique_ptr<IAppEventHandler> {
+	return MainApplication::Run([]() -> std::unique_ptr<IAppEventHandler> {
 		return std::make_unique<GameEventHandler>();
 	}, __argc, __wargv);
 }
@@ -1717,14 +1733,15 @@ int main(int argc, char** argv)
 	bool hasVirtualTerminal = isatty(1);
 	if (hasVirtualTerminal) {
 		const char* term = ::getenv("TERM");
-		if (term != nullptr && strcmp(term, "xterm-256color") == 0) {
+		if (term != nullptr && (strstr(term, "truecolor") || strstr(term, "24bit") ||
+			strstr(term, "256color") || strstr(term, "rxvt-xpm"))) {
 			fwrite(TermLogo, sizeof(unsigned char), arraySize(TermLogo), stdout);
 			logoVisible = true;
 		}
 	}
 #endif
 #if defined(DEATH_TARGET_UNIX)
-	for (int i = 1; i < argc; i++) {
+	for (std::size_t i = 1; i < argc; i++) {
 		if (strcmp(argv[i], "--version") == 0) {
 			// Just print current version below the logo and quit
 			return PrintVersion(logoVisible);
@@ -1732,7 +1749,7 @@ int main(int argc, char** argv)
 	}
 #endif
 
-	return MainApplication::start([]() -> std::unique_ptr<IAppEventHandler> {
+	return MainApplication::Run([]() -> std::unique_ptr<IAppEventHandler> {
 		return std::make_unique<GameEventHandler>();
 	}, argc, argv);
 }

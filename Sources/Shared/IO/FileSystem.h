@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Stream.h"
+#include "FileAccess.h"
 #include "../Common.h"
 #include "../Containers/DateTime.h"
 #include "../Containers/String.h"
@@ -35,7 +36,8 @@ namespace Death { namespace IO {
 	{
 	public:
 #if defined(DEATH_TARGET_WINDOWS)
-		static constexpr std::uint32_t MaxPathLength = /*MAX_PATH*/260;
+		// Windows 10 supports long paths everywhere, so increase it a bit
+		static constexpr std::uint32_t MaxPathLength = /*MAX_PATH*/2048;
 		static constexpr char PathSeparator[] = "\\";
 #else
 		static constexpr std::uint32_t MaxPathLength = PATH_MAX;
@@ -53,18 +55,6 @@ namespace Death { namespace IO {
 		};
 
 		DEFINE_PRIVATE_ENUM_OPERATORS(Permission);
-
-		struct FileDate
-		{
-			std::int32_t Year;
-			std::int32_t Month;
-			std::int32_t Day;
-			std::int32_t Hour;
-			std::int32_t Minute;
-			std::int32_t Second;
-
-			std::uint64_t Ticks;
-		};
 
 		enum class EnumerationOptions
 		{
@@ -136,6 +126,9 @@ namespace Death { namespace IO {
 			class Impl;
 			std::shared_ptr<Impl> _impl;
 		};
+
+		FileSystem() = delete;
+		~FileSystem() = delete;
 
 #if defined(DEATH_TARGET_WINDOWS) || defined(DEATH_TARGET_SWITCH)
 		// Windows is already case in-sensitive by default
@@ -268,7 +261,7 @@ namespace Death { namespace IO {
 #endif
 
 		/** @brief Opens file stream with specified access mode */
-		static std::unique_ptr<Stream> Open(const Containers::String& path, FileAccessMode mode);
+		static std::unique_ptr<Stream> Open(const Containers::String& path, FileAccess mode);
 
 #if defined(DEATH_TARGET_UNIX) || (defined(DEATH_TARGET_WINDOWS) && !defined(DEATH_TARGET_WINDOWS_RT))
 		/**
@@ -296,7 +289,7 @@ namespace Death { namespace IO {
 #	endif
 		};
 
-		static std::optional<Containers::Array<char, MapDeleter>> OpenAsMemoryMapped(const Containers::StringView path, FileAccessMode mode);
+		static std::optional<Containers::Array<char, MapDeleter>> OpenAsMemoryMapped(const Containers::StringView path, FileAccess mode);
 #endif
 
 		static std::unique_ptr<Stream> CreateFromMemory(std::uint8_t* bufferPtr, std::int32_t bufferSize);
@@ -306,9 +299,6 @@ namespace Death { namespace IO {
 		static const Containers::String& GetSavePath(const Containers::StringView applicationName);
 
 	private:
-		FileSystem(const FileSystem&) = delete;
-		FileSystem& operator=(const FileSystem&) = delete;
-		
 		static Containers::String _savePath;
 
 		static void InitializeSavePath(const Containers::StringView applicationName);

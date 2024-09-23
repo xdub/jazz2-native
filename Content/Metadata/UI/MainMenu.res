@@ -122,6 +122,10 @@
 			"Path": "UI/gamepad_rt.aura",
 			"States": [ 56 ]
 		},
+		"GamepadMisc1": {
+			"Path": "UI/gamepad_misc1.aura",
+			"States": [ 57 ]
+		},
 		"GamepadAltA": {
 			"Path": "UI/gamepad_alt_a.aura",
 			"States": [ 58 ]
@@ -170,23 +174,27 @@
 			"Path": "UI/gamepad_alt_misc1.aura",
 			"States": [ 69 ]
 		},
+		"GamepadAltTouchpad": {
+			"Path": "UI/gamepad_alt_touchpad.aura",
+			"States": [ 70 ]
+		},
 		
 		"Menu16": {
 			"Path": "UI/menu16.aura",
-			"States": [ 70 ]
+			"States": [ 80 ]
 		},
 		"Menu32": {
 			"Path": "UI/menu32.aura",
-			"States": [ 71 ]
+			"States": [ 81 ]
 		},
 		"Menu128": {
 			"Path": "UI/menu128.aura",
-			"States": [ 72 ]
+			"States": [ 82 ]
 		},
 		
 		"LoriExistsCheck": {
 			"Path": "Lori/corpse.aura",
-			"States": [ 80 ]
+			"States": [ 90 ]
 		}
 	},
 

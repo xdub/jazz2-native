@@ -17,11 +17,9 @@ namespace Jazz2::Actors::Environment
 
 	SwingingVine::~SwingingVine()
 	{
-		auto& players = _levelHandler->GetPlayers();
-		for (auto& player : players) {
-			if (player->GetCarryingObject() == this) {
-				player->SetCarryingObject(nullptr);
-			}
+		auto players = _levelHandler->GetPlayers();
+		for (auto* player : players) {
+			player->CancelCarryingObject(this);
 		}
 	}
 
@@ -41,8 +39,8 @@ namespace Jazz2::Actors::Environment
 		}
 
 		for (int i = 0; i < ChunkCount; i++) {
-			_chunks[i] = std::make_unique<RenderCommand>();
-			_chunks[i]->material().setShaderProgramType(Material::ShaderProgramType::SPRITE);
+			_chunks[i] = std::make_unique<RenderCommand>(RenderCommand::Type::Sprite);
+			_chunks[i]->material().setShaderProgramType(Material::ShaderProgramType::Sprite);
 			_chunks[i]->material().setBlendingEnabled(true);
 			_chunks[i]->material().reserveUniformsDataMemory();
 			_chunks[i]->geometry().setDrawParameters(GL_TRIANGLE_STRIP, 0, 4);
@@ -72,8 +70,8 @@ namespace Jazz2::Actors::Environment
 		auto& lastChunk = _chunkPos[ChunkCount - 1];
 		AABBInner = AABBf(lastChunk.X - 10.0f, lastChunk.Y - 10.0f, lastChunk.X + 10.0f, lastChunk.Y + 10.0f);
 
-		auto& players = _levelHandler->GetPlayers();
-		for (auto& player : players) {
+		auto players = _levelHandler->GetPlayers();
+		for (auto* player : players) {
 			if (player->GetCarryingObject() == this) {
 				float chunkAngle = sinf(_phase - ChunkCount * 0.08f) * 0.6f;
 				Vector2f prevPos = player->GetPos();
@@ -143,7 +141,7 @@ namespace Jazz2::Actors::Environment
 	{
 		if (auto* player = runtime_cast<Player*>(other)) {
 			if (player->_springCooldown <= 0.0f) {
-				player->SetCarryingObject(this, true, SuspendType::SwingingVine);
+				player->UpdateCarryingObject(this, SuspendType::SwingingVine);
 			}
 			return true;
 		}

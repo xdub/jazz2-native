@@ -15,69 +15,69 @@ namespace nCine
 		FrameTimer(float logInterval, float avgInterval);
 
 		/// Adds a frame to the counter and calculates the interval since the previous one
-		void addFrame();
+		void AddFrame();
 
 		/// Starts counting the suspension time
-		void suspend();
+		void Suspend();
 		/// Drifts timers by the duration of last suspension
 		/*! \return A timestamp with last suspension duration */
-		TimeStamp resume();
+		TimeStamp Resume();
 
 		/// Returns the total number of frames counted
-		inline unsigned long int totalNumberFrames() const {
-			return totNumFrames_;
+		inline std::uint32_t GetTotalNumberFrames() const {
+			return _totNumFrames;
 		}
 		/// Returns the last frame duration in seconds between the last two subsequent calls to `addFrame()`
-		inline float lastFrameDuration() const {
-			return frameDuration_;
+		inline float GetLastFrameDuration() const {
+			return _frameDuration;
 		}
 		/// Returns current frame duration in seconds since the last call to `addFrame()`
-		inline float frameDuration() const {
-			return frameStart_.secondsSince();
+		inline float GetFrameDuration() const {
+			return _frameStart.secondsSince();
 		}
 		/// Returns current frame duration in ticks since the last call to `addFrame()`
-		inline uint64_t frameDurationAsTicks() const {
-			return frameStart_.timeSince().ticks();
+		inline std::uint64_t GetFrameDurationAsTicks() const {
+			return _frameStart.timeSince().ticks();
 		}
 		/// Returns the average FPS during the update interval
-		inline float averageFps() const {
-			return avgFps_;
+		inline float GetAverageFps() const {
+			return _avgFps;
 		}
 
 		/// Returns a factor that represents how long the last frame took relative to the desired frame time
-		inline float timeMult() const {
-			return timeMults_[0];
+		inline float GetTimeMult() const {
+			return _timeMults[0];
 		}
 
 	private:
 		/// Number of seconds between two average FPS calculations (user defined)
-		float averageInterval_;
+		float _averageInterval;
 		/// Number of seconds between two logging events (user defined)
-		float loggingInterval_;
+		float _loggingInterval;
 
 		/// Timestamp at the beginning of a frame
-		TimeStamp frameStart_;
+		TimeStamp _frameStart;
 		/// Last frame duration in seconds
-		float frameDuration_;
+		float _frameDuration;
 		/// Timestamp at the begininng of application suspension
-		TimeStamp suspensionStart_;
+		TimeStamp _suspensionStart;
 
 		/// Total number of frames counted
-		unsigned long int totNumFrames_;
+		std::uint32_t _totNumFrames;
 		/// Frame counter for average FPS calculation
-		unsigned long int avgNumFrames_;
+		std::uint32_t _avgNumFrames;
 		/// Frame counter for logging
-		unsigned long int logNumFrames_;
+		std::uint32_t _logNumFrames;
 
 		/// Time stamp at last average FPS calculation
-		TimeStamp lastAvgUpdate_;
+		TimeStamp _lastAvgUpdate;
 		/// Time stamp at last log event
-		TimeStamp lastLogUpdate_;
+		TimeStamp _lastLogUpdate;
 
 		/// Average FPS calulated during the specified interval
-		float avgFps_;
+		float _avgFps;
 
 		/// Factor that represents how long the last frame took relative to the desired frame time
-		float timeMults_[3];
+		float _timeMults[3];
 	};
 }

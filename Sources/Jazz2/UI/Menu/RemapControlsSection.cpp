@@ -9,9 +9,9 @@ using namespace Jazz2::UI::Menu::Resources;
 
 namespace Jazz2::UI::Menu
 {
-	RemapControlsSection::RemapControlsSection()
-		: _selectedColumn(0), _currentPlayerIndex(0), _isDirty(false), _waitForInput(false), _timeout(0.0f),
-			_hintAnimation(0.0f), _keysPressedLast((uint32_t)KeySym::COUNT)
+	RemapControlsSection::RemapControlsSection(std::int32_t playerIndex)
+		: _selectedColumn(0), _playerIndex(playerIndex), _isDirty(false), _waitForInput(false), _timeout(0.0f),
+			_hintAnimation(0.0f), _keysPressedLast(ValueInit, (std::size_t)KeySym::COUNT)
 	{
 		// TRANSLATORS: Menu item in Options > Controls > Remap Controls section
 		_items.emplace_back(RemapControlsItem { PlayerActions::Left, _("Left") });
@@ -58,7 +58,7 @@ namespace Jazz2::UI::Menu
 		}
 
 		if (waitingForInput) {
-			auto& input = theApplication().inputManager();
+			auto& input = theApplication().GetInputManager();
 			auto& keyState = input.keyboardState();
 
 			if (keyState.isKeyDown(KeySym::ESCAPE) || _timeout <= 0.0f) {
@@ -72,7 +72,7 @@ namespace Jazz2::UI::Menu
 			MappingTarget newTarget;
 			const JoyMappedState* joyStates[UI::ControlScheme::MaxConnectedGamepads];
 			std::int32_t joyStatesCount = 0;
-			for (std::uint32_t i = 0; i < IInputManager::MaxNumJoysticks && joyStatesCount < countof(joyStates) && waitingForInput; i++) {
+			for (std::uint32_t i = 0; i < IInputManager::MaxNumJoysticks && joyStatesCount < static_cast<std::int32_t>(arraySize(joyStates)) && waitingForInput; i++) {
 				if (input.isJoyMapped(i)) {
 					joyStates[joyStatesCount] = &input.joyMappedState(i);
 					auto& prevState = _joyStatesLast[joyStatesCount];
@@ -122,7 +122,7 @@ namespace Jazz2::UI::Menu
 			for (std::int32_t key = 0; key < (std::int32_t)KeySym::COUNT && waitingForInput; key++) {
 				bool isPressed = keyState.isKeyDown((KeySym)key);
 				if (isPressed != _keysPressedLast[key]) {
-					_keysPressedLast.Set(key, isPressed);
+					_keysPressedLast.set(key, isPressed);
 					if (isPressed) {
 						newTarget = ControlScheme::CreateTarget((KeySym)key);
 						std::int32_t collidingAction, collidingAssignment;
@@ -139,7 +139,7 @@ namespace Jazz2::UI::Menu
 			}
 
 			if (!waitingForInput) {
-				auto& mapping = ControlScheme::_mappings[_currentPlayerIndex * (std::int32_t)PlayerActions::Count + (std::int32_t)_items[_selectedIndex].Item.Type];
+				auto& mapping = ControlScheme::GetMappings(_playerIndex)[(std::int32_t)_items[_selectedIndex].Item.Type];
 				if (_selectedColumn < mapping.Targets.size()) {
 					mapping.Targets[_selectedColumn] = newTarget;
 				} else {
@@ -166,9 +166,14 @@ namespace Jazz2::UI::Menu
 		_root->DrawElement(MenuLine, 0, centerX, topLine, IMenuContainer::MainLayer, Alignment::Center, Colorf::White, 1.6f);
 		_root->DrawElement(MenuLine, 1, centerX, bottomLine, IMenuContainer::MainLayer, Alignment::Center, Colorf::White, 1.6f);
 
-		int32_t charOffset = 0;
-		_root->DrawStringShadow(_("Remap Controls"), charOffset, centerX, topLine - 21.0f, IMenuContainer::FontLayer,
-			Alignment::Center, Colorf(0.46f, 0.46f, 0.46f, 0.5f), 0.9f, 0.7f, 1.1f, 1.1f, 0.4f, 0.9f);
+		std::int32_t charOffset = 0;
+		if (ControlScheme::MaxSupportedPlayers > 1) {
+			_root->DrawStringShadow(_f("Remap Controls for Player %i", _playerIndex + 1), charOffset, centerX, topLine - 21.0f, IMenuContainer::FontLayer,
+				Alignment::Center, Colorf(0.46f, 0.46f, 0.46f, 0.5f), 0.9f, 0.7f, 1.1f, 1.1f, 0.4f, 0.9f);
+		} else {
+			_root->DrawStringShadow(_("Remap Controls"), charOffset, centerX, topLine - 21.0f, IMenuContainer::FontLayer,
+				Alignment::Center, Colorf(0.46f, 0.46f, 0.46f, 0.5f), 0.9f, 0.7f, 1.1f, 1.1f, 0.4f, 0.9f);
+		}
 
 		if (_waitForInput) {
 			Colorf textColor = Font::DefaultColor;
@@ -177,14 +182,14 @@ namespace Jazz2::UI::Menu
 			_root->DrawStringShadow(_("Press any key or button to assign"), charOffset, centerX, contentBounds.Y + contentBounds.H - 18.0f * IMenuContainer::EaseOutCubic(_hintAnimation), IMenuContainer::FontLayer,
 				Alignment::Center, textColor, 0.7f, 0.4f, 0.0f, 0.0f, 0.0f, 0.9f);
 		} else {
-			auto& mapping = ControlScheme::_mappings[_currentPlayerIndex * (std::int32_t)PlayerActions::Count + _selectedIndex];
-			if ((_selectedColumn < mapping.Targets.size() || _selectedColumn == MaxTargetCount - 1) && !(_selectedIndex == (int32_t)PlayerActions::Menu && _selectedColumn == 0)) {
+			auto& mapping = ControlScheme::GetMappings(_playerIndex)[_selectedIndex];
+			if ((_selectedColumn < mapping.Targets.size() || _selectedColumn == MaxTargetCount - 1) && !(_selectedIndex == (std::int32_t)PlayerActions::Menu && _selectedColumn == 0)) {
 				char stringBuffer[64];
-				formatString(stringBuffer, sizeof(stringBuffer), "\f[c:0xd0705d]%s\f[c] %s ", _("Change Weapon").data(), _("or").data());
+				formatString(stringBuffer, sizeof(stringBuffer), "\f[c:#d0705d]%s\f[/c] %s ", _("Change Weapon").data(), _("or").data());
 
 				_root->DrawStringShadow(stringBuffer, charOffset, centerX - 10.0f, contentBounds.Y + contentBounds.H - 18.0f, IMenuContainer::FontLayer,
 					Alignment::Right, Font::DefaultColor, 0.7f, 0.4f, 0.0f, 0.0f, 0.0f, 0.9f);
-				_root->DrawElement(GetResourceForButtonName(ButtonName::Y), 0, centerX - 2.0f, contentBounds.Y + contentBounds.H - 19.0f, IMenuContainer::MainLayer, Alignment::Center, Colorf::White, 0.8f, 0.8f);
+				_root->DrawElement(GetResourceForButtonName(ButtonName::Y), 0, centerX - 2.0f, contentBounds.Y + contentBounds.H - 18.0f, IMenuContainer::MainLayer, Alignment::Center, Colorf::White, 0.8f, 0.8f);
 				// TRANSLATORS: Bottom hint in Options > Controls > Remap Controls section, prefixed with key/button to press
 				_root->DrawStringShadow(_("to remove assignment"), charOffset, centerX + 8.0f, contentBounds.Y + contentBounds.H - 18.0f, IMenuContainer::FontLayer,
 					Alignment::Left, Font::DefaultColor, 0.7f, 0.4f, 0.0f, 0.0f, 0.0f, 0.9f);
@@ -202,10 +207,14 @@ namespace Jazz2::UI::Menu
 		float centerX = canvas->ViewSize.X * 0.5f;
 		char stringBuffer[16];
 
-		auto& mapping = ControlScheme::_mappings[_currentPlayerIndex * (std::int32_t)PlayerActions::Count + (std::int32_t)item.Item.Type];
+		const auto& mapping = ControlScheme::GetMappings(_playerIndex)[(std::int32_t)item.Item.Type];
 
-		_root->DrawStringShadow(item.Item.DisplayName, charOffset, centerX * 0.3f, item.Y, IMenuContainer::FontLayer, Alignment::Left,
-			isSelected && _waitForInput ? Colorf(0.62f, 0.44f, 0.34f, 0.5f) : Font::DefaultColor, 0.8f);
+		if (isSelected) {
+			_root->DrawElement(MenuGlow, 0, centerX, item.Y, IMenuContainer::MainLayer - 200, Alignment::Center, Colorf(1.0f, 1.0f, 1.0f, 0.1f), 26.0f, 5.0f, true, true);
+		}
+
+		_root->DrawStringShadow(item.Item.DisplayName, charOffset, centerX * 0.3f, item.Y, IMenuContainer::MainLayer - 100, Alignment::Left,
+			isSelected && _waitForInput ? Colorf(0.62f, 0.44f, 0.34f, 0.5f) : (isSelected ? Colorf(0.48f, 0.48f, 0.48f, 0.5f) : Font::DefaultColor), 0.8f);
 
 		std::int32_t targetCount = (std::int32_t)mapping.Targets.size();
 		for (std::int32_t j = 0; j < targetCount; j++) {
@@ -225,7 +234,7 @@ namespace Jazz2::UI::Menu
 					if (axisAnim != AnimState::Default) {
 						_root->DrawElement(axisAnim, 0, centerX * (0.81f + j * 0.2f) + 2.0f, item.Y, IMenuContainer::MainLayer, Alignment::Center, Colorf::White);
 
-						for (int32_t i = 0; i < joyIdx + 1; i++) {
+						for (std::int32_t i = 0; i < joyIdx + 1; i++) {
 							stringBuffer[i] = '1';
 						}
 						stringBuffer[joyIdx + 1] = '\0';
@@ -271,7 +280,7 @@ namespace Jazz2::UI::Menu
 					if (_waitForInput) {
 						color = Colorf(0.62f, 0.44f, 0.34f, 0.5f);
 					} else {
-						color = (_selectedIndex == (int32_t)PlayerActions::Menu && _selectedColumn == 0 ? Font::TransparentRandomColor : Font::RandomColor);
+						color = (_selectedIndex == (std::int32_t)PlayerActions::Menu && _selectedColumn == 0 ? Font::TransparentRandomColor : Font::RandomColor);
 					}
 
 					_root->DrawStringShadow(value, charOffset, centerX * (0.81f + j * 0.2f), item.Y, IMenuContainer::MainLayer - 10,
@@ -299,7 +308,7 @@ namespace Jazz2::UI::Menu
 			return;
 		}
 
-		auto* mapping = &ControlScheme::_mappings[_currentPlayerIndex * (int32_t)PlayerActions::Count];
+		auto mapping = ControlScheme::GetMappings(_playerIndex);
 
 		if (_root->ActionHit(PlayerActions::Menu)) {
 			OnBackPressed();
@@ -311,7 +320,7 @@ namespace Jazz2::UI::Menu
 			}
 
 			if (_selectedColumn < mapping[_selectedIndex].Targets.size()) {
-				mapping[_selectedIndex].Targets.erase(mapping[_selectedIndex].Targets.begin() + _selectedColumn);
+				mapping[_selectedIndex].Targets.erase(_selectedColumn);
 
 				_isDirty = true;
 				_root->PlaySfx("MenuSelect"_s, 0.5f);
@@ -364,7 +373,7 @@ namespace Jazz2::UI::Menu
 
 	void RemapControlsSection::OnTouchUp(std::int32_t newIndex, const Vector2i& viewSize, const Vector2i& touchPos)
 	{
-		auto& mapping = ControlScheme::_mappings[_currentPlayerIndex * (std::int32_t)PlayerActions::Count + newIndex];
+		auto& mapping = ControlScheme::GetMappings(_playerIndex)[newIndex];
 
 		float centerX = viewSize.X / 2;
 		float firstColumnX = centerX * (0.81f - 0.1f);
@@ -384,7 +393,7 @@ namespace Jazz2::UI::Menu
 						}
 
 						if (_selectedColumn < mapping.Targets.size()) {
-							mapping.Targets.erase(mapping.Targets.begin() + _selectedColumn);
+							mapping.Targets.erase(_selectedColumn);
 
 							_isDirty = true;
 							_root->PlaySfx("MenuSelect"_s, 0.5f);
@@ -423,20 +432,20 @@ namespace Jazz2::UI::Menu
 
 	void RemapControlsSection::RefreshPreviousState()
 	{
-		auto& input = theApplication().inputManager();
+		auto& input = theApplication().GetInputManager();
 		auto& keyState = input.keyboardState();
 
-		_keysPressedLast.ClearAll();
+		_keysPressedLast.resetAll();
 
-		for (int32_t key = 0; key < (int32_t)KeySym::COUNT; key++) {
+		for (std::int32_t key = 0; key < (int32_t)KeySym::COUNT; key++) {
 			if (keyState.isKeyDown((KeySym)key)) {
-				_keysPressedLast.Set(key);
+				_keysPressedLast.set(key);
 			}
 		}
 
 		const JoyMappedState* joyStates[UI::ControlScheme::MaxConnectedGamepads];
 		std::int32_t joyStatesCount = 0;
-		for (std::int32_t i = 0; i < IInputManager::MaxNumJoysticks && joyStatesCount < countof(joyStates); i++) {
+		for (std::int32_t i = 0; i < IInputManager::MaxNumJoysticks && joyStatesCount < static_cast<std::int32_t>(arraySize(joyStates)); i++) {
 			if (input.isJoyMapped(i)) {
 				_joyStatesLast[joyStatesCount++] = input.joyMappedState(i);
 			}
@@ -446,7 +455,7 @@ namespace Jazz2::UI::Menu
 	bool RemapControlsSection::HasCollision(MappingTarget target, std::int32_t& collidingAction, std::int32_t& collidingAssignment)
 	{
 		for (std::int32_t i = 0; i < (std::int32_t)PlayerActions::Count; i++) {
-			auto& mapping = ControlScheme::_mappings[_currentPlayerIndex * (std::int32_t)PlayerActions::Count + i];
+			auto& mapping = ControlScheme::GetMappings(_playerIndex)[i];
 			std::int32_t targetCount = (std::int32_t)mapping.Targets.size();
 			for (std::int32_t j = 0; j < targetCount; j++) {
 				if (mapping.Targets[j].Data == target.Data) {

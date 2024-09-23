@@ -36,6 +36,12 @@ namespace Jazz2
 		Switch
 	};
 
+	enum class EpisodeEndOverwriteMode : std::uint8_t {
+		Always,
+		NoCheatsOnly,
+		HigherScoreOnly
+	};
+
 	enum class UnlockableEpisodes : std::uint32_t {
 		None = 0x00,
 
@@ -63,13 +69,13 @@ namespace Jazz2
 	// These structures are aligned manually, because they are serialized and it should work cross-platform
 	struct EpisodeContinuationState {
 		EpisodeContinuationFlags Flags;
-		uint8_t DifficultyAndPlayerType;
-		uint8_t Lives;
-		uint8_t Unused1;
-		int32_t Score;
-		uint16_t Unused2;
-		uint16_t Ammo[(int32_t)WeaponType::Count];
-		uint8_t WeaponUpgrades[(int32_t)WeaponType::Count];
+		std::uint8_t DifficultyAndPlayerType;
+		std::uint8_t Lives;
+		std::uint8_t Unused1;
+		std::int32_t Score;
+		std::uint16_t Unused2;
+		std::uint16_t Ammo[(std::int32_t)WeaponType::Count];
+		std::uint8_t WeaponUpgrades[(std::int32_t)WeaponType::Count];
 	};
 
 	struct EpisodeContinuationStateWithLevel {
@@ -100,6 +106,8 @@ namespace Jazz2
 		static bool ShowPlayerTrails;
 		static bool LowWaterQuality;
 		static bool UnalignedViewport;
+		static bool PreferVerticalSplitscreen;
+		static bool PreferZoomOut;
 
 		// Gameplay
 		static bool EnableReforgedGameplay;
@@ -115,6 +123,7 @@ namespace Jazz2
 		static bool AllowUnsignedScripts;
 		static bool ToggleRunAction;
 		static GamepadType GamepadButtonLabels;
+		static std::uint8_t GamepadRumble;
 		static bool UseNativeBackButton;
 		static bool EnableDiscordIntegration;
 		static bool TutorialCompleted;
@@ -122,6 +131,7 @@ namespace Jazz2
 		static bool AllowCheats;
 		static bool AllowCheatsLives;
 		static bool AllowCheatsUnlock;
+		static EpisodeEndOverwriteMode OverwriteEpisodeEnd;
 		static Vector2f TouchLeftPadding;
 		static Vector2f TouchRightPadding;
 		static char Language[6];
@@ -150,6 +160,8 @@ namespace Jazz2
 			ShowPlayerTrails = 0x08,
 			LowWaterQuality = 0x10,
 			UnalignedViewport = 0x20,
+			PreferVerticalSplitscreen = 0x40,
+			PreferZoomOut = 0x80,
 
 			EnableReforgedGameplay = 0x100,
 			EnableLedgeClimb = 0x200,
@@ -166,12 +178,13 @@ namespace Jazz2
 
 			EnableReforgedHUD = 0x100000,
 			EnableReforgedMainMenu = 0x200000,
-			ToggleRunAction = 0x400000
+			ToggleRunAction = 0x400000,
+			AllowCheats = 0x1000000
 		};
 
 		DEFINE_PRIVATE_ENUM_OPERATORS(BoolOptions);
 
-		static constexpr std::uint8_t FileVersion = 5;
+		static constexpr std::uint8_t FileVersion = 7;
 
 		static constexpr float TouchPaddingMultiplier = 0.003f;
 

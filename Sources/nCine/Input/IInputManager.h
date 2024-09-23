@@ -61,6 +61,8 @@ namespace nCine
 		static constexpr float LeftStickDeadZone = 7849 / 32767.0f;
 		static constexpr float RightStickDeadZone = 8689 / 32767.0f;
 		static constexpr float TriggerDeadZone = 30 / 32767.0f;
+		static constexpr float AnalogButtonDeadZone = 0.4f;
+		static constexpr float TriggerButtonDeadZone = 0.02f;
 
 		IInputManager() {}
 		virtual ~IInputManager() {}
@@ -103,9 +105,9 @@ namespace nCine
 		void deadZoneNormalize(Vector2f& joyVector, float deadZoneValue) const;
 
 		/// Adds joystick mapping configurations from a text file
-		void addJoyMappingsFromFile(const StringView& path);
-		/// Adds joystick mapping configurations from a strings array terminated by a `nullptr`
-		void addJoyMappingsFromStrings(const char** mappingStrings);
+		void addJoyMappingsFromFile(StringView path);
+		/// Adds joystick mapping configurations from a string
+		void addJoyMappingsFromString(StringView mappingStrings);
 		/// Returns the current number of valid joystick mappings
 		unsigned int numJoyMappings() const;
 		/// Returns true if mapping exists for specified joystick by GUID

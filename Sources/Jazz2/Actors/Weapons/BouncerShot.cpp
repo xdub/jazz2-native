@@ -11,10 +11,7 @@ using namespace Jazz2::Tiles;
 namespace Jazz2::Actors::Weapons
 {
 	BouncerShot::BouncerShot()
-		:
-		_fired(0),
-		_hitLimit(0.0f),
-		_targetSpeedX(0.0f)
+		: _fired(0), _hitLimit(0.0f), _targetSpeedX(0.0f)
 	{
 	}
 
@@ -92,7 +89,7 @@ namespace Jazz2::Actors::Weapons
 
 		_fired++;
 		if (_fired == 2) {
-			MoveInstantly(_gunspotPos, MoveType::Absolute | MoveType::Force);
+			MoveInstantly(_gunspotPos, MoveType::Absolute);
 			_renderer.setDrawEnabled(true);
 		}
 	}

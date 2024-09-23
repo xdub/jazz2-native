@@ -1377,7 +1377,7 @@
     <ClInclude Include="Jazz2\Multiplayer\Reason.h">
       <Filter>Header Files\Jazz2\Multiplayer</Filter>
     </ClInclude>
-    <ClInclude Include="$(ExtensionLibraryPath)\Base\Unaligned.h">
+    <ClInclude Include="$(ExtensionLibraryPath)\Base\Memory.h">
       <Filter>Header Files\Shared\Base</Filter>
     </ClInclude>
     <ClInclude Include="Jazz2\Multiplayer\ConnectionResult.h">
@@ -1478,6 +1478,30 @@
     </ClInclude>
     <ClInclude Include="$(ExtensionLibraryPath)\IO\PakFile.h">
       <Filter>Header Files\Shared\IO</Filter>
+    </ClInclude>
+    <ClInclude Include="$(ExtensionLibraryPath)\IO\FileAccess.h">
+      <Filter>Header Files\Shared\IO</Filter>
+    </ClInclude>
+    <ClInclude Include="$(ExtensionLibraryPath)\Base\IDisposable.h">
+      <Filter>Header Files\Shared\Base</Filter>
+    </ClInclude>
+    <ClInclude Include="Jazz2\UI\FormattedTextBlock.h">
+      <Filter>Header Files\Jazz2\UI</Filter>
+    </ClInclude>
+    <ClInclude Include="$(ExtensionLibraryPath)\Base\StackAlloc.h">
+      <Filter>Header Files\Shared\Base</Filter>
+    </ClInclude>
+    <ClInclude Include="Jazz2\PlayerViewport.h">
+      <Filter>Header Files\Jazz2</Filter>
+    </ClInclude>
+    <ClInclude Include="Jazz2\WarpFlags.h">
+      <Filter>Header Files\Jazz2</Filter>
+    </ClInclude>
+    <ClInclude Include="Jazz2\RumbleProcessor.h">
+      <Filter>Header Files\Jazz2</Filter>
+    </ClInclude>
+    <ClInclude Include="Jazz2\RumbleDescription.h">
+      <Filter>Header Files\Jazz2</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -2446,6 +2470,15 @@
     </ClCompile>
     <ClCompile Include="$(ExtensionLibraryPath)\IO\PakFile.cpp">
       <Filter>Source Files\Shared\IO</Filter>
+    </ClCompile>
+    <ClCompile Include="Jazz2\UI\FormattedTextBlock.cpp">
+      <Filter>Source Files\Jazz2\UI</Filter>
+    </ClCompile>
+    <ClCompile Include="Jazz2\PlayerViewport.cpp">
+      <Filter>Source Files\Jazz2</Filter>
+    </ClCompile>
+    <ClCompile Include="Jazz2\RumbleProcessor.cpp">
+      <Filter>Source Files\Jazz2</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

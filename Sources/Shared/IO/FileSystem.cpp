@@ -62,6 +62,10 @@ using namespace Death::Containers::Literals;
 namespace Death { namespace IO {
 //###==##====#=====--==~--~=~- --- -- -  -  -   -
 
+#if defined(DEATH_TARGET_WINDOWS)
+	const char* __GetWin32ErrorSuffix(DWORD error);
+#endif
+
 	namespace
 	{
 		static std::size_t GetPathRootLength(const StringView path)
@@ -156,9 +160,10 @@ namespace Death { namespace IO {
 
 					WIN32_FIND_DATA data;
 #	if defined(DEATH_TARGET_WINDOWS_RT)
-					HANDLE hFindFile = ::FindFirstFileExFromAppW(bufferExtended, FindExInfoBasic, &data, FindExSearchNameMatch, nullptr, 0);
+					HANDLE hFindFile = ::FindFirstFileExFromAppW(bufferExtended, FindExInfoBasic, &data, FindExSearchNameMatch, nullptr, FIND_FIRST_EX_LARGE_FETCH);
 #	else
-					HANDLE hFindFile = ::FindFirstFileExW(bufferExtended, Environment::IsWindows7() ? FindExInfoBasic : FindExInfoStandard, &data, FindExSearchNameMatch, nullptr, 0);
+					HANDLE hFindFile = ::FindFirstFileExW(bufferExtended, Environment::IsWindows7() ? FindExInfoBasic : FindExInfoStandard,
+						&data, FindExSearchNameMatch, nullptr, Environment::IsWindows7() ? FIND_FIRST_EX_LARGE_FETCH : 0);
 #	endif
 					if (hFindFile != NULL && hFindFile != INVALID_HANDLE_VALUE) {
 						do {
@@ -449,9 +454,10 @@ namespace Death { namespace IO {
 
 					WIN32_FIND_DATA data;
 #	if defined(DEATH_TARGET_WINDOWS_RT)
-					_hFindFile = ::FindFirstFileExFromAppW(bufferExtended, FindExInfoBasic, &data, FindExSearchNameMatch, nullptr, 0);
+					_hFindFile = ::FindFirstFileExFromAppW(bufferExtended, FindExInfoBasic, &data, FindExSearchNameMatch, nullptr, FIND_FIRST_EX_LARGE_FETCH);
 #	else
-					_hFindFile = ::FindFirstFileExW(bufferExtended, Environment::IsWindows7() ? FindExInfoBasic : FindExInfoStandard, &data, FindExSearchNameMatch, nullptr, 0);
+					_hFindFile = ::FindFirstFileExW(bufferExtended, Environment::IsWindows7() ? FindExInfoBasic : FindExInfoStandard,
+						&data, FindExSearchNameMatch, nullptr, Environment::IsWindows7() ? FIND_FIRST_EX_LARGE_FETCH : 0);
 #	endif
 					if (_hFindFile != NULL && _hFindFile != INVALID_HANDLE_VALUE) {
 						if ((data.cFileName[0] == L'.' && (data.cFileName[1] == L'\0' || (data.cFileName[1] == L'.' && data.cFileName[2] == L'\0'))) ||
@@ -1696,7 +1702,7 @@ namespace Death { namespace IO {
 #	endif
 						DWORD error = ::GetLastError();
 						if (error != ERROR_ALREADY_EXISTS) {
-							LOGW("Cannot create directory \"%s\" with error %u (0x%08x)", fullPath.data(), error, error);
+							LOGW("Cannot create directory \"%S\" with error 0x%08x%s", fullPath.data(), error, __GetWin32ErrorSuffix(error));
 							return false;
 						}
 					}
@@ -1716,7 +1722,7 @@ namespace Death { namespace IO {
 #	endif
 				DWORD error = ::GetLastError();
 				if (error != ERROR_ALREADY_EXISTS) {
-					LOGW("Cannot create directory \"%s\" with error %u (0x%08x)", fullPath.data(), error, error);
+					LOGW("Cannot create directory \"%S\" with error 0x%08x%s", fullPath.data(), error, __GetWin32ErrorSuffix(error));
 					return false;
 				}
 			}
@@ -1734,7 +1740,7 @@ namespace Death { namespace IO {
 		}
 #	endif
 
-		String fullPath = String { nullTerminatedPath };
+		String fullPath = String{nullTerminatedPath};
 		bool slashWasLast = true;
 		struct stat sb;
 		for (std::size_t i = 0; i < fullPath.size(); i++) {
@@ -1939,8 +1945,8 @@ namespace Death { namespace IO {
 			}
 			ssize_t sz = ::sendfile(destFd, sourceFd, nullptr, bytesToCopy);
 			if DEATH_UNLIKELY(sz < 0) {
-				std::int32_t err = errno;
-				if (errno == EINTR) {
+				std::int32_t error = errno;
+				if (error == EINTR) {
 					continue;
 				}
 
@@ -2373,11 +2379,11 @@ namespace Death { namespace IO {
 	}
 #endif
 
-	std::unique_ptr<Stream> FileSystem::Open(const String& path, FileAccessMode mode)
+	std::unique_ptr<Stream> FileSystem::Open(const String& path, FileAccess mode)
 	{
 #if defined(DEATH_TARGET_ANDROID)
-		const char* assetName = AndroidAssetStream::TryGetAssetPath(String::nullTerminatedView(path).data());
-		if (assetName != nullptr) {
+		StringView assetName = AndroidAssetStream::TryGetAssetPath(String::nullTerminatedView(path).data());
+		if (!assetName.empty()) {
 			return std::make_unique<AndroidAssetStream>(assetName, mode);
 		}
 #endif
@@ -2398,16 +2404,16 @@ namespace Death { namespace IO {
 #	endif
 	}
 
-	std::optional<Array<char, FileSystem::MapDeleter>> FileSystem::OpenAsMemoryMapped(const StringView path, FileAccessMode mode)
+	std::optional<Array<char, FileSystem::MapDeleter>> FileSystem::OpenAsMemoryMapped(const StringView path, FileAccess mode)
 	{
 #	if defined(DEATH_TARGET_UNIX)
 		int flags, prot;
 		switch (mode) {
-			case FileAccessMode::Read:
+			case FileAccess::Read:
 				flags = O_RDONLY;
 				prot = PROT_READ;
 				break;
-			case FileAccessMode::Read | FileAccessMode::Write:
+			case FileAccess::ReadWrite:
 				flags = O_RDWR;
 				prot = PROT_READ | PROT_WRITE;
 				break;
@@ -2448,13 +2454,13 @@ namespace Death { namespace IO {
 #	elif defined(DEATH_TARGET_WINDOWS) && !defined(DEATH_TARGET_WINDOWS_RT)
 		DWORD fileDesiredAccess, shareMode, protect, mapDesiredAccess;
 		switch (mode) {
-			case FileAccessMode::Read:
+			case FileAccess::Read:
 				fileDesiredAccess = GENERIC_READ;
 				shareMode = FILE_SHARE_READ;
 				protect = PAGE_READONLY;
 				mapDesiredAccess = FILE_MAP_READ;
 				break;
-			case FileAccessMode::Read | FileAccessMode::Write:
+			case FileAccess::ReadWrite:
 				fileDesiredAccess = GENERIC_READ | GENERIC_WRITE;
 				shareMode = FILE_SHARE_READ | FILE_SHARE_WRITE;
 				protect = PAGE_READWRITE;
@@ -2468,7 +2474,7 @@ namespace Death { namespace IO {
 		HANDLE hFile = ::CreateFileW(Utf8::ToUtf16(path), fileDesiredAccess, shareMode, nullptr, OPEN_EXISTING, 0, nullptr);
 		if (hFile == INVALID_HANDLE_VALUE) {
 			DWORD error = ::GetLastError();
-			LOGE("Cannot open file \"%s\" with error %u (0x%08x)", String::nullTerminatedView(path).data(), error, error);
+			LOGE("Cannot open file \"%s\" with error 0x%08x%s", String::nullTerminatedView(path).data(), error, __GetWin32ErrorSuffix(error));
 			return { };
 		}
 
@@ -2484,14 +2490,14 @@ namespace Death { namespace IO {
 		} else {
 			if (!(hMap = ::CreateFileMappingW(hFile, nullptr, protect, 0, 0, nullptr))) {
 				DWORD error = ::GetLastError();
-				LOGE("Cannot open file \"%s\" with error %u (0x%08x)", String::nullTerminatedView(path).data(), error, error);
+				LOGE("Cannot open file \"%s\" with error 0x%08x%s", String::nullTerminatedView(path).data(), error, __GetWin32ErrorSuffix(error));
 				::CloseHandle(hFile);
 				return { };
 			}
 
 			if (!(data = reinterpret_cast<char*>(::MapViewOfFile(hMap, mapDesiredAccess, 0, 0, 0)))) {
 				DWORD error = ::GetLastError();
-				LOGE("Cannot open file \"%s\" with error %u (0x%08x)", String::nullTerminatedView(path).data(), error, error);
+				LOGE("Cannot open file \"%s\" with error 0x%08x%s", String::nullTerminatedView(path).data(), error, __GetWin32ErrorSuffix(error));
 				::CloseHandle(hMap);
 				::CloseHandle(hFile);
 				return { };
@@ -2505,15 +2511,15 @@ namespace Death { namespace IO {
 
 	std::unique_ptr<Stream> FileSystem::CreateFromMemory(std::uint8_t* bufferPtr, std::int32_t bufferSize)
 	{
-		DEATH_ASSERT(bufferPtr != nullptr, nullptr, "bufferPtr is nullptr");
-		DEATH_ASSERT(bufferSize > 0, nullptr, "bufferSize is 0");
+		DEATH_ASSERT(bufferPtr != nullptr, "bufferPtr is null", nullptr);
+		DEATH_ASSERT(bufferSize > 0, "bufferSize is 0", nullptr);
 		return std::make_unique<MemoryStream>(bufferPtr, bufferSize);
 	}
 
 	std::unique_ptr<Stream> FileSystem::CreateFromMemory(const std::uint8_t* bufferPtr, std::int32_t bufferSize)
 	{
-		DEATH_ASSERT(bufferPtr != nullptr, nullptr, "bufferPtr is nullptr");
-		DEATH_ASSERT(bufferSize > 0, nullptr, "bufferSize is 0");
+		DEATH_ASSERT(bufferPtr != nullptr, "bufferPtr is null", nullptr);
+		DEATH_ASSERT(bufferSize > 0, "bufferSize is 0", nullptr);
 		return std::make_unique<MemoryStream>(bufferPtr, bufferSize);
 	}
 

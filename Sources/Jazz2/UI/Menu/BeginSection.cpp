@@ -126,10 +126,10 @@ namespace Jazz2::UI::Menu
 				ExecuteSelected();
 			} else if (_root->ActionHit(PlayerActions::Menu)) {
 #if !defined(DEATH_TARGET_EMSCRIPTEN) && !defined(DEATH_TARGET_IOS) && !defined(DEATH_TARGET_SWITCH)
-				if (_selectedIndex != (int32_t)_items.size() - 1) {
+				if (_selectedIndex != (std::int32_t)_items.size() - 1) {
 					_root->PlaySfx("MenuSelect"_s, 0.6f);
 					_animation = 0.0f;
-					_selectedIndex = (int32_t)_items.size() - 1;
+					_selectedIndex = (std::int32_t)_items.size() - 1;
 				}
 #endif
 			} else if (_root->ActionHit(PlayerActions::Up)) {
@@ -142,13 +142,13 @@ namespace Jazz2::UI::Menu
 						goto SkipDisabledOnUp;
 					}
 				} else {
-					_selectedIndex = (int32_t)_items.size() - 1;
+					_selectedIndex = (std::int32_t)_items.size() - 1;
 				}
 			} else if (_root->ActionHit(PlayerActions::Down)) {
 				_root->PlaySfx("MenuSelect"_s, 0.5f);
 				_animation = 0.0f;
 			SkipDisabledOnDown:
-				if (_selectedIndex < (int32_t)_items.size() - 1) {
+				if (_selectedIndex < (std::int32_t)_items.size() - 1) {
 					_selectedIndex++;
 					if (_items[_selectedIndex].Y <= DisabledItem) {
 						goto SkipDisabledOnDown;
@@ -168,8 +168,12 @@ namespace Jazz2::UI::Menu
 	void BeginSection::OnDraw(Canvas* canvas)
 	{
 		Recti contentBounds = _root->GetContentBounds();
-		Vector2f center = Vector2f(contentBounds.X + contentBounds.W * 0.5f, contentBounds.Y + contentBounds.H * 0.2f * (1.0f - 0.048f * (int32_t)_items.size()));
-		int32_t charOffset = 0;
+		Vector2f center = Vector2f(contentBounds.X + contentBounds.W * 0.5f, contentBounds.Y + contentBounds.H * 0.2f * (1.0f - 0.048f * (std::int32_t)_items.size()));
+		if (contentBounds.H < 230) {
+			center.Y *= 0.85f;
+		}
+
+		std::int32_t charOffset = 0;
 
 #if !defined(DEATH_TARGET_EMSCRIPTEN)
 		bool isPlayable = true;
@@ -188,12 +192,12 @@ namespace Jazz2::UI::Menu
 				if ((flags & (IRootController::Flags::HasExternalStoragePermission | IRootController::Flags::HasExternalStoragePermissionOnResume)) == IRootController::Flags::HasExternalStoragePermissionOnResume) {
 					_root->DrawStringShadow(_("Access to external storage has been granted!"), charOffset, center.X, center.Y * 0.96f, IMenuContainer::FontLayer,
 						Alignment::Bottom, Colorf(0.2f, 0.45f, 0.2f, 0.5f), 1.0f, 0.7f, 0.4f, 0.4f, 0.4f, 0.8f, 1.2f);
-					_root->DrawStringShadow(_("\f[c:0x337233]Restart the game to read \f[c:0x9e7056]Jazz Jackrabbit 2\f[c:0x337233] files correctly."), charOffset, center.X, center.Y * 0.96f + 10.0f, IMenuContainer::FontLayer,
+					_root->DrawStringShadow(_("\f[c:#337233]Restart the game to read \f[c:#9e7056]Jazz Jackrabbit 2\f[c:#337233] files correctly."), charOffset, center.X, center.Y * 0.96f + 10.0f, IMenuContainer::FontLayer,
 						Alignment::Center, Font::DefaultColor, 0.8f, 0.7f, 0.4f, 0.4f, 0.4f, 0.8f, 1.2f);
 				} else
 #	endif
 				{
-					_root->DrawStringShadow(_("\f[c:0x704a4a]This game requires original \f[c:0x9e7056]Jazz Jackrabbit 2\f[c:0x704a4a] files!"), charOffset, center.X, center.Y * 0.96f - 10.0f, IMenuContainer::FontLayer,
+					_root->DrawStringShadow(_("\f[c:#704a4a]This game requires original \f[c:#9e7056]Jazz Jackrabbit 2\f[c:#704a4a] files!"), charOffset, center.X, center.Y * 0.96f - 10.0f, IMenuContainer::FontLayer,
 						Alignment::Bottom, Font::DefaultColor, 1.0f, 0.7f, 0.4f, 0.4f, 0.4f, 0.8f, 1.2f);
 					_root->DrawStringShadow(_("Make sure Jazz Jackrabbit 2 files are present in following path:"), charOffset, center.X, center.Y * 0.96f, IMenuContainer::FontLayer,
 						Alignment::Center, Colorf(0.44f, 0.29f, 0.29f, 0.5f), 0.8f, 0.7f, 0.4f, 0.4f, 0.4f, 0.8f, 1.2f);
@@ -227,7 +231,7 @@ namespace Jazz2::UI::Menu
 		}
 #endif
 
-		for (int32_t i = 0; i < (int32_t)_items.size(); i++) {
+		for (std::int32_t i = 0; i < (std::int32_t)_items.size(); i++) {
 			_items[i].Y = center.Y;
 
 #if !defined(DEATH_TARGET_EMSCRIPTEN)
@@ -258,7 +262,7 @@ namespace Jazz2::UI::Menu
 					Alignment::Center, Font::DefaultColor, 0.9f);
 			}
 
-			center.Y += 34.0f + 32.0f * (1.0f - 0.15f * (int32_t)_items.size());
+			center.Y += (contentBounds.H >= 250 ? 34.0f : 26.0f) + 32.0f * (1.0f - 0.15f * (int32_t)_items.size());
 		}
 	}
 
@@ -290,7 +294,7 @@ namespace Jazz2::UI::Menu
 	void BeginSection::OnTouchEvent(const nCine::TouchEvent& event, const Vector2i& viewSize)
 	{
 		if (event.type == TouchEventType::Down) {
-			int32_t pointerIndex = event.findPointerIndex(event.actionIndex);
+			std::int32_t pointerIndex = event.findPointerIndex(event.actionIndex);
 			if (pointerIndex != -1) {
 				float x = event.pointers[pointerIndex].x;
 				float y = event.pointers[pointerIndex].y * (float)viewSize.Y;
@@ -303,7 +307,7 @@ namespace Jazz2::UI::Menu
 				}
 #endif
 
-				for (int32_t i = 0; i < (int32_t)_items.size(); i++) {
+				for (std::int32_t i = 0; i < (std::int32_t)_items.size(); i++) {
 					float itemHeight = (!isPlayable && i == 0 ? 60.0f : 22.0f);
 					if (std::abs(x - 0.5f) < 0.22f && std::abs(y - _items[i].Y) < itemHeight) {
 						if (_selectedIndex == i) {
@@ -401,7 +405,9 @@ namespace Jazz2::UI::Menu
 				_root->SwitchToSection<AboutSection>();
 				break;
 #if !defined(DEATH_TARGET_EMSCRIPTEN) && !defined(DEATH_TARGET_IOS) && !defined(DEATH_TARGET_SWITCH)
-			case Item::Quit: theApplication().quit(); break;
+			case Item::Quit:
+				theApplication().Quit();
+				break;
 #endif
 		}
 	}

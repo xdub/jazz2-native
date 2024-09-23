@@ -1,5 +1,6 @@
 ﻿#include "MainMenu.h"
 #include "MenuResources.h"
+#include "../../ContentResolver.h"
 #include "../../PreferencesCache.h"
 #include "../ControlScheme.h"
 #include "BeginSection.h"
@@ -23,9 +24,9 @@ namespace Jazz2::UI::Menu
 	MainMenu::MainMenu(IRootController* root, bool afterIntro)
 		: _root(root), _activeCanvas(ActiveCanvas::Background), _transitionWhite(afterIntro ? 1.0f : 0.0f),
 			_logoTransition(0.0f), _texturedBackgroundPass(this), _texturedBackgroundPhase(0.0f),
-			_pressedKeys((uint32_t)KeySym::COUNT), _pressedActions(0), _touchButtonsTimer(0.0f)
+			_pressedKeys(ValueInit, (std::size_t)KeySym::COUNT), _pressedActions(0), _touchButtonsTimer(0.0f)
 	{
-		theApplication().gfxDevice().setWindowTitle("Jazz² Resurrection"_s);
+		theApplication().GetGfxDevice().setWindowTitle("Jazz² Resurrection"_s);
 
 		_texturedBackgroundLayer.Visible = false;
 		_canvasBackground = std::make_unique<MenuBackgroundCanvas>(this);
@@ -57,6 +58,7 @@ namespace Jazz2::UI::Menu
 #if !defined(DEATH_TARGET_EMSCRIPTEN)
 		bool isPlayable = ((_root->GetFlags() & IRootController::Flags::IsPlayable) == IRootController::Flags::IsPlayable);
 		if (PreferencesCache::FirstRun && isPlayable) {
+			// Show intro section on the first run
 			SwitchToSection<FirstRunSection>();
 		}
 #endif
@@ -97,19 +99,22 @@ namespace Jazz2::UI::Menu
 
 	void MainMenu::OnBeginFrame()
 	{
-		float timeMult = theApplication().timeMult();
+		float timeMult = theApplication().GetTimeMult();
 
 		UpdatePressedActions();
 		UpdateDebris(timeMult);
 
+#if defined(WITH_AUDIO)
 		// Destroy stopped players
-		for (int32_t i = (int32_t)_playingSounds.size() - 1; i >= 0; i--) {
-			if (_playingSounds[i]->state() == IAudioPlayer::PlayerState::Stopped) {
-				_playingSounds.erase(&_playingSounds[i]);
-			} else {
-				break;
+		auto it = _playingSounds.begin();
+		while (it != _playingSounds.end()) {
+			if ((*it)->isStopped()) {
+				it = _playingSounds.eraseUnordered(it);
+				continue;
 			}
+			++it;
 		}
+#endif
 
 		_texturedBackgroundPos.X += timeMult * 1.2f;
 		_texturedBackgroundPos.Y += timeMult * -0.2f + timeMult * sinf(_texturedBackgroundPhase) * 0.6f;
@@ -137,18 +142,18 @@ namespace Jazz2::UI::Menu
 		}
 	}
 
-	void MainMenu::OnInitializeViewport(int32_t width, int32_t height)
+	void MainMenu::OnInitializeViewport(std::int32_t width, std::int32_t height)
 	{
 		constexpr float defaultRatio = (float)DefaultWidth / DefaultHeight;
 		float currentRatio = (float)width / height;
 
-		int32_t w, h;
+		std::int32_t w, h;
 		if (currentRatio > defaultRatio) {
 			w = std::min(DefaultWidth, width);
-			h = (int32_t)(w / currentRatio);
+			h = (std::int32_t)(w / currentRatio);
 		} else if (currentRatio < defaultRatio) {
 			h = std::min(DefaultHeight, height);
-			w = (int32_t)(h * currentRatio);
+			w = (std::int32_t)(h * currentRatio);
 		} else {
 			w = std::min(DefaultWidth, width);
 			h = std::min(DefaultHeight, height);
@@ -175,12 +180,12 @@ namespace Jazz2::UI::Menu
 
 	void MainMenu::OnKeyPressed(const KeyboardEvent& event)
 	{
-		_pressedKeys.Set((uint32_t)event.sym);
+		_pressedKeys.set((std::size_t)event.sym);
 	}
 
 	void MainMenu::OnKeyReleased(const KeyboardEvent& event)
 	{
-		_pressedKeys.Reset((uint32_t)event.sym);
+		_pressedKeys.reset((std::size_t)event.sym);
 	}
 
 	void MainMenu::OnTouchEvent(const nCine::TouchEvent& event)
@@ -206,29 +211,31 @@ namespace Jazz2::UI::Menu
 		}
 
 		Vector2i center = ViewSize / 2;
-		int32_t charOffset = 0;
-		int32_t charOffsetShadow = 0;
+		std::int32_t charOffset = 0;
+		std::int32_t charOffsetShadow = 0;
 
-		float titleY = _owner->_contentBounds.Y - 30.0f;
-		float logoScale = 1.0f + (1.0f - _owner->_logoTransition) * 7.0f;
-		float logoTextScale = 1.0f + (1.0f - _owner->_logoTransition) * 2.0f;
-		float logoTranslateX = 1.0f + (1.0f - _owner->_logoTransition) * 1.2f;
+		float titleY = _owner->_contentBounds.Y - (ViewSize.Y >= 300 ? 30.0f : 12.0f);
+		float logoBaseScale = (ViewSize.Y >= 300 ? 1.0f : 0.85f);
+		float logoScale = logoBaseScale + (1.0f - _owner->_logoTransition) * 7.0f;
+		float logoTextScale = logoBaseScale + (1.0f - _owner->_logoTransition) * 2.0f;
+		float logoTranslateX = logoBaseScale + (1.0f - _owner->_logoTransition) * 1.2f;
 		float logoTranslateY = (1.0f - _owner->_logoTransition) * 120.0f;
 		float logoTextTranslate = (1.0f - _owner->_logoTransition) * 60.0f;
 
 		if (_owner->_touchButtonsTimer > 0.0f && _owner->_sections.size() >= 2) {
-			_owner->DrawElement(MenuLineArrow, -1, static_cast<float>(center.X), titleY - 30.0f, ShadowLayer, Alignment::Center, Colorf::White);
+			float arrowScale = (ViewSize.Y >= 300 ? 1.0f : 0.7f);
+			_owner->DrawElement(MenuLineArrow, -1, static_cast<float>(center.X), titleY - (ViewSize.Y >= 300 ? 30.0f : 12.0f), ShadowLayer, Alignment::Center, Colorf::White, arrowScale, arrowScale);
 		}
 
 		// Title
 		_owner->DrawElement(MenuCarrot, -1, center.X - 76.0f * logoTranslateX, titleY - 6.0f + logoTranslateY + 2.0f, ShadowLayer + 200, Alignment::Center, Colorf(0.0f, 0.0f, 0.0f, 0.3f), 0.8f * logoScale, 0.8f * logoScale);
 		_owner->DrawElement(MenuCarrot, -1, center.X - 76.0f * logoTranslateX, titleY - 6.0f + logoTranslateY, MainLayer + 200, Alignment::Center, Colorf::White, 0.8f * logoScale, 0.8f * logoScale);
 
-		_owner->_mediumFont->DrawString(this, "Jazz"_s, charOffsetShadow, center.X - 63.0f, titleY + logoTranslateY + 2.0f, FontShadowLayer + 200,
+		_owner->_mediumFont->DrawString(this, "Jazz"_s, charOffsetShadow, center.X - 63.0f * logoTranslateX + logoTextTranslate, titleY + logoTranslateY + 2.0f, FontShadowLayer + 200,
 			Alignment::Left, Colorf(0.0f, 0.0f, 0.0f, 0.32f), 0.75f * logoTextScale, 1.65f, 3.0f, 3.0f, 0.0f, 0.92f);
-		_owner->_mediumFont->DrawString(this, "2"_s, charOffsetShadow, center.X - 19.0f, titleY - 8.0f + logoTranslateY + 2.0f, FontShadowLayer + 200,
+		_owner->_mediumFont->DrawString(this, "2"_s, charOffsetShadow, center.X - 19.0f * logoTranslateX + logoTextTranslate, titleY - 8.0f + logoTranslateY + 2.0f, FontShadowLayer + 200,
 			Alignment::Left, Colorf(0.0f, 0.0f, 0.0f, 0.32f), 0.5f * logoTextScale, 0.0f, 0.0f, 0.0f, 0.0f);
-		_owner->_mediumFont->DrawString(this, "Resurrection"_s, charOffsetShadow, center.X - 10.0f, titleY + 4.0f + logoTranslateY + 2.5f, FontShadowLayer + 200,
+		_owner->_mediumFont->DrawString(this, "Resurrection"_s, charOffsetShadow, center.X - 10.0f * logoTranslateX + logoTextTranslate, titleY + 4.0f + logoTranslateY + 2.5f, FontShadowLayer + 200,
 			Alignment::Left, Colorf(0.0f, 0.0f, 0.0f, 0.3f), 0.5f * logoTextScale, 0.4f, 1.2f, 1.2f, 0.46f, 0.8f);
 
 		_owner->_mediumFont->DrawString(this, "Jazz"_s, charOffset, center.X - 63.0f * logoTranslateX + logoTextTranslate, titleY + logoTranslateY, FontLayer + 200,
@@ -241,11 +248,11 @@ namespace Jazz2::UI::Menu
 		// Version
 		Vector2f bottomRight = Vector2f(ViewSize.X, ViewSize.Y);
 		bottomRight.X = ViewSize.X - 24.0f;
-		bottomRight.Y -= 10.0f;
+		bottomRight.Y -= (ViewSize.Y >= 300 ? 10.0f : 4.0f);
 
 		auto newestVersion = _owner->_root->GetNewestVersion();
 		if (!newestVersion.empty() && newestVersion != NCINE_VERSION) {
-			String newerVersion = "v" NCINE_VERSION "  › \f[c:0x9e7056]v" + newestVersion;
+			String newerVersion = "v" NCINE_VERSION "  › \f[c:#9e7056]v" + newestVersion;
 			_owner->DrawStringShadow(newerVersion, charOffset, bottomRight.X, bottomRight.Y, IMenuContainer::FontLayer,
 				Alignment::BottomRight, Font::DefaultColor, 0.7f, 0.4f, 1.2f, 1.2f, 0.46f, 0.8f);
 		} else {
@@ -393,15 +400,17 @@ namespace Jazz2::UI::Menu
 	{
 		if ((type & ChangedPreferencesType::Graphics) == ChangedPreferencesType::Graphics) {
 			Viewport::chain().clear();
-			Vector2i res = theApplication().resolution();
+			Vector2i res = theApplication().GetResolution();
 			OnInitializeViewport(res.X, res.Y);
 		}
 
+#if defined(WITH_AUDIO)
 		if ((type & ChangedPreferencesType::Audio) == ChangedPreferencesType::Audio) {
 			if (_music != nullptr) {
 				_music->setGain(PreferencesCache::MasterVolume * PreferencesCache::MusicVolume);
 			}
 		}
+#endif
 
 		if ((type & ChangedPreferencesType::Language) == ChangedPreferencesType::Language) {
 			// All sections have to be recreated to load new language
@@ -419,7 +428,7 @@ namespace Jazz2::UI::Menu
 		}
 	}
 
-	void MainMenu::DrawElement(AnimState state, int32_t frame, float x, float y, uint16_t z, Alignment align, const Colorf& color, float scaleX, float scaleY, bool additiveBlending, bool unaligned)
+	void MainMenu::DrawElement(AnimState state, std::int32_t frame, float x, float y, std::uint16_t z, Alignment align, const Colorf& color, float scaleX, float scaleY, bool additiveBlending, bool unaligned)
 	{
 		auto* res = _metadata->FindAnimation(state);
 		if (res == nullptr) {
@@ -427,7 +436,7 @@ namespace Jazz2::UI::Menu
 		}
 
 		if (frame < 0) {
-			frame = res->FrameOffset + ((int32_t)(_canvasBackground->AnimTime * res->FrameCount / res->AnimDuration) % res->FrameCount);
+			frame = res->FrameOffset + ((std::int32_t)(_canvasBackground->AnimTime * res->FrameCount / res->AnimDuration) % res->FrameCount);
 		}
 
 		Canvas* currentCanvas = GetActiveCanvas();
@@ -440,8 +449,8 @@ namespace Jazz2::UI::Menu
 		}
 
 		Vector2i texSize = base->TextureDiffuse->size();
-		int32_t col = frame % base->FrameConfiguration.X;
-		int32_t row = frame / base->FrameConfiguration.X;
+		std::int32_t col = frame % base->FrameConfiguration.X;
+		std::int32_t row = frame / base->FrameConfiguration.X;
 		Vector4f texCoords = Vector4f(
 			float(base->FrameDimensions.X) / float(texSize.X),
 			float(base->FrameDimensions.X * col) / float(texSize.X),
@@ -452,7 +461,7 @@ namespace Jazz2::UI::Menu
 		currentCanvas->DrawTexture(*base->TextureDiffuse.get(), adjustedPos, z, size, texCoords, color, additiveBlending);
 	}
 
-	void MainMenu::DrawElement(AnimState state, float x, float y, uint16_t z, Alignment align, const Colorf& color, const Vector2f& size, const Vector4f& texCoords, bool unaligned)
+	void MainMenu::DrawElement(AnimState state, float x, float y, std::uint16_t z, Alignment align, const Colorf& color, const Vector2f& size, const Vector4f& texCoords, bool unaligned)
 	{
 		auto* res = _metadata->FindAnimation(state);
 		if (res == nullptr) {
@@ -470,7 +479,7 @@ namespace Jazz2::UI::Menu
 		currentCanvas->DrawTexture(*base->TextureDiffuse.get(), adjustedPos, z, size, texCoords, color, false);
 	}
 
-	void MainMenu::DrawSolid(float x, float y, uint16_t z, Alignment align, const Vector2f& size, const Colorf& color, bool additiveBlending)
+	void MainMenu::DrawSolid(float x, float y, std::uint16_t z, Alignment align, const Vector2f& size, const Colorf& color, bool additiveBlending)
 	{
 		Canvas* currentCanvas = GetActiveCanvas();
 		Vector2f adjustedPos = Canvas::ApplyAlignment(align, Vector2f(x, y), size);
@@ -480,7 +489,7 @@ namespace Jazz2::UI::Menu
 		currentCanvas->DrawSolid(adjustedPos, z, size, color, additiveBlending);
 	}
 
-	void MainMenu::DrawTexture(const Texture& texture, float x, float y, uint16_t z, Alignment align, const Vector2f& size, const Colorf& color, bool unaligned)
+	void MainMenu::DrawTexture(const Texture& texture, float x, float y, std::uint16_t z, Alignment align, const Vector2f& size, const Colorf& color, bool unaligned)
 	{
 		Canvas* currentCanvas = GetActiveCanvas();
 		Vector2f adjustedPos = Canvas::ApplyAlignment(align, Vector2f(x, y), size);
@@ -497,7 +506,7 @@ namespace Jazz2::UI::Menu
 		return _smallFont->MeasureString(text, scale, charSpacing, lineSpacing);
 	}
 
-	void MainMenu::DrawStringShadow(const StringView text, int32_t& charOffset, float x, float y, uint16_t z, Alignment align, const Colorf& color, float scale,
+	void MainMenu::DrawStringShadow(const StringView text, int32_t& charOffset, float x, float y, std::uint16_t z, Alignment align, const Colorf& color, float scale,
 		float angleOffset, float varianceX, float varianceY, float speed, float charSpacing, float lineSpacing)
 	{
 		if (_logoTransition < 1.0f) {
@@ -509,7 +518,7 @@ namespace Jazz2::UI::Menu
 		}
 
 		Canvas* currentCanvas = GetActiveCanvas();
-		int32_t charOffsetShadow = charOffset;
+		std::int32_t charOffsetShadow = charOffset;
 		_smallFont->DrawString(currentCanvas, text, charOffsetShadow, x, y + 2.8f * scale, FontShadowLayer,
 			align, Colorf(0.0f, 0.0f, 0.0f, 0.29f), scale, angleOffset, varianceX, varianceY, speed, charSpacing, lineSpacing);
 		_smallFont->DrawString(currentCanvas, text, charOffset, x, y, z,
@@ -518,9 +527,10 @@ namespace Jazz2::UI::Menu
 
 	void MainMenu::PlaySfx(const StringView identifier, float gain)
 	{
+#if defined(WITH_AUDIO)
 		auto it = _metadata->Sounds.find(String::nullTerminatedView(identifier));
 		if (it != _metadata->Sounds.end()) {
-			int32_t idx = (it->second.Buffers.size() > 1 ? Random().Next(0, (int32_t)it->second.Buffers.size()) : 0);
+			std::int32_t idx = (it->second.Buffers.size() > 1 ? Random().Next(0, (std::int32_t)it->second.Buffers.size()) : 0);
 			auto& player = _playingSounds.emplace_back(std::make_shared<AudioBufferPlayer>(&it->second.Buffers[idx]->Buffer));
 			player->setPosition(Vector3f(0.0f, 0.0f, 100.0f));
 			player->setGain(gain * PreferencesCache::MasterVolume * PreferencesCache::SfxVolume);
@@ -530,21 +540,22 @@ namespace Jazz2::UI::Menu
 		} else {
 			LOGE("Sound effect \"%s\" was not found", identifier.data());
 		}
+#endif
 	}
 
 	bool MainMenu::ActionPressed(PlayerActions action)
 	{
-		return ((_pressedActions & (1 << (int32_t)action)) == (1 << (int32_t)action));
+		return ((_pressedActions & (1 << (std::int32_t)action)) == (1 << (std::int32_t)action));
 	}
 
 	bool MainMenu::ActionHit(PlayerActions action)
 	{
-		return ((_pressedActions & ((1 << (int32_t)action) | (1 << (16 + (int32_t)action)))) == (1 << (int32_t)action));
+		return ((_pressedActions & ((1 << (std::int32_t)action) | (1 << (16 + (std::int32_t)action)))) == (1 << (std::int32_t)action));
 	}
 
 	void MainMenu::PlayMenuMusic()
 	{
-#if defined(WITH_OPENMPT)
+#if defined(WITH_AUDIO) && defined(WITH_OPENMPT)
 		auto& resolver = ContentResolver::Get();
 
 		if (PreferencesCache::EnableReforgedMainMenu) {
@@ -568,18 +579,19 @@ namespace Jazz2::UI::Menu
 
 	void MainMenu::UpdateContentBounds(Vector2i viewSize)
 	{
-		float titleY = std::clamp((200.0f * viewSize.Y / viewSize.X) - 40.0f, 30.0f, 70.0f);
-		_contentBounds = Recti(0, titleY + 30, viewSize.X, viewSize.Y - (titleY + 30));
+		float headerY = (viewSize.Y >= 300 ? std::clamp((200.0f * viewSize.Y / viewSize.X) - 40.0f, 30.0f, 70.0f) : 8.0f);
+		float footerY = (viewSize.Y >= 300 ? 30.0f : 14.0f);
+		_contentBounds = Recti(0, headerY + 30, viewSize.X, viewSize.Y - (headerY + footerY));
 	}
 
 	void MainMenu::UpdatePressedActions()
 	{
-		auto& input = theApplication().inputManager();
+		auto& input = theApplication().GetInputManager();
 		_pressedActions = ((_pressedActions & 0xFFFF) << 16);
 
 		const JoyMappedState* joyStates[UI::ControlScheme::MaxConnectedGamepads];
 		std::int32_t joyStatesCount = 0;
-		for (std::int32_t i = 0; i < IInputManager::MaxNumJoysticks && joyStatesCount < countof(joyStates); i++) {
+		for (std::int32_t i = 0; i < IInputManager::MaxNumJoysticks && joyStatesCount < static_cast<std::int32_t>(arraySize(joyStates)); i++) {
 			if (input.isJoyMapped(i)) {
 				joyStates[joyStatesCount++] = &input.joyMappedState(i);
 			}
@@ -591,7 +603,7 @@ namespace Jazz2::UI::Menu
 			allowGamepads = lastSection->IsGamepadNavigationEnabled();
 		}
 
-		_pressedActions |= ControlScheme::FetchNativation(0, _pressedKeys, ArrayView(joyStates, joyStatesCount), allowGamepads);
+		_pressedActions |= ControlScheme::FetchNativation(_pressedKeys, ArrayView(joyStates, joyStatesCount), allowGamepads);
 	}
 
 	void MainMenu::UpdateRichPresence()
@@ -611,8 +623,8 @@ namespace Jazz2::UI::Menu
 	void MainMenu::UpdateDebris(float timeMult)
 	{
 		if (_preset == Preset::Xmas && PreferencesCache::EnableReforgedMainMenu) {
-			int32_t weatherIntensity = Random().Fast(0, (int32_t)(3 * timeMult) + 1);
-			for (int32_t i = 0; i < weatherIntensity; i++) {
+			std::int32_t weatherIntensity = Random().Fast(0, (std::int32_t)(3 * timeMult) + 1);
+			for (std::int32_t i = 0; i < weatherIntensity; i++) {
 				Vector2i viewSize = _canvasOverlay->ViewSize;
 				Vector2f debrisPos = Vector2f(Random().FastFloat(viewSize.X * -0.3f, viewSize.X * 1.3f),
 					Random().NextFloat(viewSize.Y * -0.5f, viewSize.Y * 0.5f));
@@ -642,9 +654,9 @@ namespace Jazz2::UI::Menu
 
 					debris.Time = 160.0f;
 
-					int32_t curAnimFrame = res->FrameOffset + Random().Next(0, res->FrameCount);
-					int32_t col = curAnimFrame % resBase->FrameConfiguration.X;
-					int32_t row = curAnimFrame / resBase->FrameConfiguration.X;
+					std::int32_t curAnimFrame = res->FrameOffset + Random().Next(0, res->FrameCount);
+					std::int32_t col = curAnimFrame % resBase->FrameConfiguration.X;
+					std::int32_t row = curAnimFrame / resBase->FrameConfiguration.X;
 					debris.TexScaleX = (float(resBase->FrameDimensions.X) / float(texSize.X));
 					debris.TexBiasX = (float(resBase->FrameDimensions.X * col) / float(texSize.X));
 					debris.TexScaleY = (float(resBase->FrameDimensions.Y) / float(texSize.Y));
@@ -657,8 +669,8 @@ namespace Jazz2::UI::Menu
 			}
 		}
 
-		int32_t size = (int32_t)_debrisList.size();
-		for (int32_t i = 0; i < size; i++) {
+		std::int32_t size = (std::int32_t)_debrisList.size();
+		for (std::int32_t i = 0; i < size; i++) {
 			Tiles::TileMap::DestructibleDebris& debris = _debrisList[i];
 
 			if (debris.Scale <= 0.0f || debris.Alpha <= 0.0f) {
@@ -694,7 +706,8 @@ namespace Jazz2::UI::Menu
 	{
 		for (auto& debris : _debrisList) {
 			auto command = _canvasOverlay->RentRenderCommand();
-			if (command->material().setShaderProgramType(Material::ShaderProgramType::SPRITE)) {
+			command->setType(RenderCommand::Type::Particle);
+			if (command->material().setShaderProgramType(Material::ShaderProgramType::Sprite)) {
 				command->material().reserveUniformsDataMemory();
 				command->geometry().setDrawParameters(GL_TRIANGLE_STRIP, 0, 4);
 				// Required to reset render command properly
@@ -730,10 +743,10 @@ namespace Jazz2::UI::Menu
 		time_t t = time(nullptr);
 #if defined(DEATH_TARGET_WINDOWS)
 		struct tm local; localtime_s(&local, &t);
-		int32_t month = local.tm_mon;
+		std::int32_t month = local.tm_mon;
 #else
 		struct tm* local = localtime(&t);
-		int32_t month = local->tm_mon;
+		std::int32_t month = local->tm_mon;
 #endif
 		bool hasXmas = ((month == 11 || month == 0) && TryLoadBackgroundPreset(Preset::Xmas));
 		if (!hasXmas &&
@@ -745,36 +758,36 @@ namespace Jazz2::UI::Menu
 			return;
 		}
 
-		constexpr int32_t Width = 8;
-		constexpr int32_t Height = 8;
+		constexpr std::int32_t Width = 8;
+		constexpr std::int32_t Height = 8;
 
-		constexpr int32_t StartIndexDefault = 360;
-		constexpr int32_t StartIndexXmas = 420;
-		constexpr int32_t StartIndexDemo = 240;
-		constexpr int32_t AdditionalIndexDemo = 451;
-		constexpr int32_t SplitRowDemo = 6;
+		constexpr std::int32_t StartIndexDefault = 360;
+		constexpr std::int32_t StartIndexXmas = 420;
+		constexpr std::int32_t StartIndexDemo = 240;
+		constexpr std::int32_t AdditionalIndexDemo = 451;
+		constexpr std::int32_t SplitRowDemo = 6;
 
 		std::unique_ptr<LayerTile[]> layout = std::make_unique<LayerTile[]>(Width * Height);
 
-		int32_t n = 0;
+		std::int32_t n = 0;
 		if (_preset == Preset::SharewareDemo) {
 			// Shareware Demo tileset is not contiguous for some reason
-			for (int32_t i = StartIndexDemo; i < StartIndexDemo + SplitRowDemo * 10; i += 10) {
-				for (int32_t j = 0; j < 8; j++) {
+			for (std::int32_t i = StartIndexDemo; i < StartIndexDemo + SplitRowDemo * 10; i += 10) {
+				for (std::int32_t j = 0; j < 8; j++) {
 					LayerTile& tile = layout[n++];
 					tile.TileID = i + j;
 				}
 			}
-			for (int32_t i = AdditionalIndexDemo; i < AdditionalIndexDemo + (Height - SplitRowDemo) * 10; i += 10) {
-				for (int32_t j = 0; j < 8; j++) {
+			for (std::int32_t i = AdditionalIndexDemo; i < AdditionalIndexDemo + (Height - SplitRowDemo) * 10; i += 10) {
+				for (std::int32_t j = 0; j < 8; j++) {
 					LayerTile& tile = layout[n++];
 					tile.TileID = i + j;
 				}
 			}
 		} else {
-			int32_t startIndex = (_preset == Preset::Xmas ? StartIndexXmas : StartIndexDefault);
-			for (int32_t i = startIndex; i < startIndex + Height * 10; i += 10) {
-				for (int32_t j = 0; j < 8; j++) {
+			std::int32_t startIndex = (_preset == Preset::Xmas ? StartIndexXmas : StartIndexDefault);
+			for (std::int32_t i = startIndex; i < startIndex + Height * 10; i += 10) {
+				for (std::int32_t j = 0; j < 8; j++) {
 					LayerTile& tile = layout[n++];
 					tile.TileID = i + j;
 				}
@@ -862,7 +875,8 @@ namespace Jazz2::UI::Menu
 			Vector2f size = base->FrameDimensions.As<float>() * scale;
 
 			auto command = _canvasBackground->RentRenderCommand();
-			if (command->material().setShaderProgramType(Material::ShaderProgramType::SPRITE)) {
+			command->setType(RenderCommand::Type::TileMap);
+			if (command->material().setShaderProgramType(Material::ShaderProgramType::Sprite)) {
 				command->material().reserveUniformsDataMemory();
 				command->geometry().setDrawParameters(GL_TRIANGLE_STRIP, 0, 4);
 				// Required to reset render command properly
@@ -907,7 +921,8 @@ namespace Jazz2::UI::Menu
 			centerBg.Y += 96.0f * cosf(animTime * 0.31f);
 
 			auto command = _canvasBackground->RentRenderCommand();
-			if (command->material().setShaderProgramType(Material::ShaderProgramType::SPRITE)) {
+			command->setType(RenderCommand::Type::TileMap);
+			if (command->material().setShaderProgramType(Material::ShaderProgramType::Sprite)) {
 				command->material().reserveUniformsDataMemory();
 				command->geometry().setDrawParameters(GL_TRIANGLE_STRIP, 0, 4);
 				// Required to reset render command properly
@@ -952,7 +967,8 @@ namespace Jazz2::UI::Menu
 			centerBg.Y += 64.0f * cosf(animTime * 0.32f);
 
 			auto command = _canvasBackground->RentRenderCommand();
-			if (command->material().setShaderProgramType(Material::ShaderProgramType::SPRITE)) {
+			command->setType(RenderCommand::Type::TileMap);
+			if (command->material().setShaderProgramType(Material::ShaderProgramType::Sprite)) {
 				command->material().reserveUniformsDataMemory();
 				command->geometry().setDrawParameters(GL_TRIANGLE_STRIP, 0, 4);
 				// Required to reset render command properly
@@ -993,8 +1009,8 @@ namespace Jazz2::UI::Menu
 
 		if (notInitialized) {
 			Vector2i layoutSize = _owner->_texturedBackgroundLayer.LayoutSize;
-			int32_t width = layoutSize.X * TileSet::DefaultTileSize;
-			int32_t height = layoutSize.Y * TileSet::DefaultTileSize;
+			std::int32_t width = layoutSize.X * TileSet::DefaultTileSize;
+			std::int32_t height = layoutSize.Y * TileSet::DefaultTileSize;
 
 			_camera = std::make_unique<Camera>();
 			_camera->setOrthoProjection(0, static_cast<float>(width), 0, static_cast<float>(height));
@@ -1008,11 +1024,11 @@ namespace Jazz2::UI::Menu
 			_target->setWrap(SamplerWrapping::Repeat);
 
 			// Prepare render commands
-			int32_t renderCommandCount = (width * height) / (TileSet::DefaultTileSize * TileSet::DefaultTileSize);
+			std::int32_t renderCommandCount = (width * height) / (TileSet::DefaultTileSize * TileSet::DefaultTileSize);
 			_renderCommands.reserve(renderCommandCount);
-			for (int32_t i = 0; i < renderCommandCount; i++) {
-				std::unique_ptr<RenderCommand>& command = _renderCommands.emplace_back(std::make_unique<RenderCommand>());
-				command->material().setShaderProgramType(Material::ShaderProgramType::SPRITE);
+			for (std::int32_t i = 0; i < renderCommandCount; i++) {
+				std::unique_ptr<RenderCommand>& command = _renderCommands.emplace_back(std::make_unique<RenderCommand>(RenderCommand::Type::TileMap));
+				command->material().setShaderProgramType(Material::ShaderProgramType::Sprite);
 				command->material().reserveUniformsDataMemory();
 				command->geometry().setDrawParameters(GL_TRIANGLE_STRIP, 0, 4);
 
@@ -1041,11 +1057,11 @@ namespace Jazz2::UI::Menu
 		TileMapLayer& layer = _owner->_texturedBackgroundLayer;
 		Vector2i layoutSize = layer.LayoutSize;
 
-		int32_t renderCommandIndex = 0;
+		std::int32_t renderCommandIndex = 0;
 		bool isAnimated = false;
 
-		for (int32_t y = 0; y < layoutSize.Y; y++) {
-			for (int32_t x = 0; x < layoutSize.X; x++) {
+		for (std::int32_t y = 0; y < layoutSize.Y; y++) {
+			for (std::int32_t x = 0; x < layoutSize.X; x++) {
 				LayerTile& tile = layer.Layout[y * layer.LayoutSize.X + x];
 
 				auto command = _renderCommands[renderCommandIndex++].get();
@@ -1070,7 +1086,7 @@ namespace Jazz2::UI::Menu
 
 		if (!isAnimated && _alreadyRendered) {
 			// If it's not animated, it can be rendered only once
-			for (int32_t i = Viewport::chain().size() - 1; i >= 0; i--) {
+			for (std::int32_t i = Viewport::chain().size() - 1; i >= 0; i--) {
 				auto& item = Viewport::chain()[i];
 				if (item == _view.get()) {
 					Viewport::chain().erase(&item);

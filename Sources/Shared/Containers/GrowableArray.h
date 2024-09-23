@@ -33,15 +33,15 @@
 #if !defined(DEATH_CONTAINERS_NO_SANITIZER_ANNOTATIONS)
 #	if defined(__has_feature)
 #		if __has_feature(address_sanitizer)
-#			define _DEATH_CONTAINERS_SANITIZER_ENABLED
+#			define __DEATH_CONTAINERS_SANITIZER_ENABLED
 #		endif
 #	endif
 #	if defined(__SANITIZE_ADDRESS__)
-#		define _DEATH_CONTAINERS_SANITIZER_ENABLED
+#		define __DEATH_CONTAINERS_SANITIZER_ENABLED
 #	endif
 #endif
 
-#if defined(_DEATH_CONTAINERS_SANITIZER_ENABLED)
+#if defined(__DEATH_CONTAINERS_SANITIZER_ENABLED)
 // https://github.com/llvm/llvm-project/blob/main/compiler-rt/include/sanitizer/common_interface_defs.h
 extern "C" void __sanitizer_annotate_contiguous_container(const void* beg, const void* end, const void* old_mid, const void* new_mid)
 	// Declaration of this function in <vector> in MSVC 2022 14.35 and earlier STL includes a noexcept for some strange unexplained reason,
@@ -76,30 +76,26 @@ namespace Death { namespace Containers {
 #endif
 		};
 
-		template<class T> inline void arrayConstruct(DefaultInitT, T*, T*, typename std::enable_if<
-			std::is_trivially_constructible<T>::value
-		>::type* = nullptr) {
+		template<class T, typename std::enable_if<std::is_trivially_constructible<T>::value, int>::type = 0>
+		inline void arrayConstruct(DefaultInitT, T*, T*) {
 			// Nothing to do
 		}
 
-		template<class T> inline void arrayConstruct(DefaultInitT, T* begin, T* const end, typename std::enable_if<!
-			std::is_trivially_constructible<T>::value
-		>::type* = nullptr) {
+		template<class T, typename std::enable_if<!std::is_trivially_constructible<T>::value, int>::type = 0>
+		inline void arrayConstruct(DefaultInitT, T* begin, T* const end) {
 			// Needs to be < because sometimes begin > end. No {}, we want trivial types non-initialized
 			for (; begin < end; ++begin) new(begin) T;
 		}
 
-		template<class T> inline void arrayConstruct(ValueInitT, T* const begin, T* const end, typename std::enable_if<
-			std::is_trivially_constructible<T>::value
-		>::type* = nullptr) {
+		template<class T, typename std::enable_if<std::is_trivially_constructible<T>::value, int>::type = 0>
+		inline void arrayConstruct(ValueInitT, T* const begin, T* const end) {
 			if (begin < end) std::memset(begin, 0, (end - begin) * sizeof(T));
 		}
 
-		template<class T> inline void arrayConstruct(ValueInitT, T* begin, T* const end, typename std::enable_if<!
-			std::is_trivially_constructible<T>::value
-		>::type* = nullptr) {
+		template<class T, typename std::enable_if<!std::is_trivially_constructible<T>::value, int>::type = 0>
+		inline void arrayConstruct(ValueInitT, T* begin, T* const end) {
 			// Needs to be < because sometimes begin > end
-			for (; begin < end; ++begin) new(begin) T {};
+			for (; begin < end; ++begin) new(begin) T{};
 		}
 
 		template<class T> struct AllocatorTraits {
@@ -254,7 +250,7 @@ namespace Death { namespace Containers {
 			// the array into a different type (as the deleter is a typeless std::free() in any case)
 			const std::size_t inBytes = capacity * sizeof(T) + AllocationOffset;
 			char* const memory = static_cast<char*>(std::malloc(inBytes));
-			DEATH_ASSERT(memory != nullptr, {}, "Containers::ArrayMallocAllocator: Can't allocate %zu bytes", inBytes);
+			DEATH_ASSERT(memory != nullptr, ("Can't allocate %zu bytes", inBytes), {});
 			reinterpret_cast<std::size_t*>(memory)[0] = inBytes;
 			return reinterpret_cast<T*>(memory + AllocationOffset);
 		}
@@ -364,11 +360,11 @@ namespace Death { namespace Containers {
 			return {};
 
 		// Unlike arrayInsert() etc, this is not called that often and should be as checked as possible, so it's not a debug assert
-		DEATH_ASSERT(array.deleter() == Allocator<T>::deleter && (std::is_base_of<ArrayMallocAllocator<T>, Allocator<T>>::value), {},
-			"Containers::arrayAllocatorCast(): The array has to use the ArrayMallocAllocator or a derivative");
+		DEATH_ASSERT(array.deleter() == Allocator<T>::deleter && (std::is_base_of<ArrayMallocAllocator<T>, Allocator<T>>::value),
+			"The array has to use the ArrayMallocAllocator or a derivative", {});
 		const std::size_t size = array.size() * sizeof(T) / sizeof(U);
-		DEATH_ASSERT(size * sizeof(U) == array.size() * sizeof(T), {},
-			"Containers::arrayAllocatorCast(): Can't reinterpret %zu %zu-byte items into a %zu-byte type", array.size(), sizeof(T), sizeof(U));
+		DEATH_ASSERT(size * sizeof(U) == array.size() * sizeof(T),
+			("Can't reinterpret %zu %zu-byte items into a %zu-byte type", array.size(), sizeof(T), sizeof(U)), {});
 		return Array<U>{reinterpret_cast<U*>(array.release()), size, Allocator<U>::deleter};
 	}
 
@@ -610,6 +606,12 @@ namespace Death { namespace Containers {
 		@ref ArrayAllocator) itself needs, @p T is required to be nothrow
 		move-constructible and copy-constructible.
 
+		To have the append operation as performant as possible, the @p value
+		reference is expected to *not* point inside @p array. If you need to append
+		values from within the array itself, use the list-taking
+		@ref arrayAppend(Array<T>&, typename std::common_type<ArrayView<const T>>::type)
+		overload, which handles this case.
+
 		This function is equivalent to calling @relativeref{std::vector,push_back()} on
 		a @ref std::vector.
 	*/
@@ -637,6 +639,16 @@ namespace Death { namespace Containers {
 		needs, @p T is required to be nothrow move-constructible and constructible from
 		provided @p args.
 
+		The behavior is undefined if any @p args are pointing inside the @p array
+		items or their internals as the implementation has no way to check for such
+		scenario. If you want to have robust checks against such cases, use the
+		@ref arrayAppend(Array<T>&, const typename std::common_type<T>::type&),
+		@ref arrayAppend(Array<T>&, typename std::common_type<T>::type&&)
+		overloads which perform a copy or move instead of an in-place construction,
+		or the list-taking @ref arrayAppend(Array<T>&, typename std::common_type<ArrayView<const T>>::type)
+		which detects and appropriately adjusts the view in case it's a
+		slice of the @p array itself.
+
 		This function is equivalent to calling @relativeref{std::vector,emplace_back()}
 		on a @ref std::vector.
 	*/
@@ -660,8 +672,15 @@ namespace Death { namespace Containers {
 		@return Reference to the newly appended item
 
 		Calls @ref arrayAppend(Array<T>&, InPlaceInitT, Args&&... args) with @p value.
+
+		To have the append operation as performant as possible, the @p value
+		reference is expected to *not* point inside @p array. If you need to
+		move-append values from within the array itself, move them to a temporary
+		location first.
 	*/
 	template<class T, class Allocator = ArrayAllocator<T>> inline T& arrayAppend(Array<T>& array, typename std::common_type<T>::type&& value) {
+		DEATH_DEBUG_ASSERT(std::size_t(&value - array.data()) >= (arrayCapacity<T, Allocator>(array)),
+			"Use the list variant to append values from within the array itself", *array.data());
 		return arrayAppend<T, Allocator>(array, InPlaceInit, std::move(value));
 	}
 
@@ -685,6 +704,11 @@ namespace Death { namespace Containers {
 		On top of what the @p Allocator (or the default @ref ArrayAllocator) itself
 		needs, @p T is required to be nothrow move-constructible and
 		copy-constructible.
+
+		Compared to the single-value @ref arrayAppend(Array<T>&, const typename std::common_type<T>::type&),
+		this function also handles the case where @p values are a slice of the @p array
+		itself. In particular, if the @p array needs to be reallocated in order to fit
+		the new items, the @p arrayvalues to append are then copied from the new location.
 	*/
 	template<class T, class Allocator = ArrayAllocator<T>> ArrayView<T> arrayAppend(Array<T>& array, typename std::common_type<ArrayView<const T>>::type values);
 
@@ -753,6 +777,12 @@ namespace Death { namespace Containers {
 		(or the default @ref ArrayAllocator) itself needs, @p T is required to be
 		nothrow move-constructible, nothrow move-assignable and copy-constructible.
 
+		To have the insert operation as performant as possible, the @p value
+		reference is expected to *not* point inside @p array. If you need to insert
+		values from within the array itself, use the list-taking
+		@ref arrayInsert(Array<T>&, std::size_t, typename std::common_type<ArrayView<const T>>::type)
+		overload, which handles this case.
+
 		This function is equivalent to calling @relativeref{std::vector,insert()} on
 		a @ref std::vector.
 	*/
@@ -780,6 +810,16 @@ namespace Death { namespace Containers {
 		needs, @p T is required to be nothrow move-constructible, nothrow
 		move-assignable and constructible from provided @p args.
 
+		The behavior is undefined if any @p args are pointing inside the @p array
+		items or their internals as the implementation has no way to check for such
+		scenario. If you want to have robust checks against such cases, use the
+		@ref arrayInsert(Array<T>&, std::size_t, const typename std::common_type<T>::type&),
+		@ref arrayInsert(Array<T>&, std::size_t, typename std::common_type<T>::type&&)
+		overloads which perform a copy or move instead of an in-place construction,
+		or the list-taking @ref arrayInsert(Array<T>&, std::size_t, typename std::common_type<ArrayView<const T>>::type)
+		which detects and appropriately adjusts the view in case it's a slice of
+		the @p array itself.
+
 		This function is equivalent to calling @relativeref{std::vector,emplace()}
 		on a @ref std::vector.
 	*/
@@ -804,8 +844,15 @@ namespace Death { namespace Containers {
 
 		Calls @ref arrayInsert(Array<T>&, std::size_t, InPlaceInitT, Args&&... args)
 		with @p value.
+
+		To have the insert operation as performant as possible, the @p value
+		reference is expected to *not* point inside @p array. If you need to
+		move-insert values from within the array itself, move them to a temporary
+		location first.
 	*/
 	template<class T, class Allocator = ArrayAllocator<T>> inline T& arrayInsert(Array<T>& array, std::size_t index, typename std::common_type<T>::type&& value) {
+		DEATH_DEBUG_ASSERT(std::size_t(&value - array.data()) >= (arrayCapacity<T, Allocator>(array)),
+			"Use the list variant to insert values from within the array itself", *array.data());
 		return arrayInsert<T, Allocator>(array, index, InPlaceInit, std::move(value));
 	}
 
@@ -831,6 +878,14 @@ namespace Death { namespace Containers {
 		of what the @p Allocator (or the default @ref ArrayAllocator) itself needs,
 		@p T is required to be nothrow move-constructible, nothrow move-assignable and
 		copy-constructible.
+
+		Compared to the single-value @ref arrayInsert(Array<T>&, std::size_t, const typename std::common_type<T>::type&),
+		this function also handles the case where @p values are a slice of the @p array
+		itself. In particular, if the @p array needs to be reallocated in order to fit
+		the new items, the @p values to insert are then copied from the new location.
+		It's however expected that the slice and @p index don't overlap --- in that
+		case the caller has to handle that on its own, such as by splitting the
+		insertion in two.
 	*/
 	template<class T, class Allocator = ArrayAllocator<T>> ArrayView<T> arrayInsert(Array<T>& array, std::size_t index, typename std::common_type<ArrayView<const T>>::type values);
 
@@ -1031,16 +1086,14 @@ namespace Death { namespace Containers {
 			void(*deleter)(T*, std::size_t);
 		};
 
-		template<class T> inline void arrayMoveConstruct(T* const src, T* const dst, const std::size_t count, typename std::enable_if<
-			std::is_trivially_copyable<T>::value
-		>::type* = nullptr) {
+		template<class T, typename std::enable_if<std::is_trivially_copyable<T>::value, int>::type = 0>
+		inline void arrayMoveConstruct(T* const src, T* const dst, const std::size_t count) {
 			// Apparently memcpy() can't be called with null pointers, even if size is zero. I call that bullying.
 			if (count != 0) std::memcpy(dst, src, count * sizeof(T));
 		}
 
-		template<class T> inline void arrayMoveConstruct(T* src, T* dst, const std::size_t count, typename std::enable_if<!
-			std::is_trivially_copyable<T>::value
-		>::type* = nullptr) {
+		template<class T, typename std::enable_if<!std::is_trivially_copyable<T>::value, int>::type = 0>
+		inline void arrayMoveConstruct(T* src, T* dst, const std::size_t count) {
 			static_assert(std::is_nothrow_move_constructible<T>::value,
 				"nothrow move-constructible type is required");
 			for (T* end = src + count; src != end; ++src, ++dst)
@@ -1052,32 +1105,28 @@ namespace Death { namespace Containers {
 #endif
 		}
 
-		template<class T> inline void arrayMoveAssign(T* const src, T* const dst, const std::size_t count, typename std::enable_if<
-			std::is_trivially_copyable<T>::value
-		>::type* = nullptr) {
+		template<class T, typename std::enable_if<std::is_trivially_copyable<T>::value, int>::type = 0>
+		inline void arrayMoveAssign(T* const src, T* const dst, const std::size_t count) {
 			// Apparently memcpy() can't be called with null pointers, even if size is zero. I call that bullying.
 			if (count != 0) std::memcpy(dst, src, count * sizeof(T));
 		}
 
-		template<class T> inline void arrayMoveAssign(T* src, T* dst, const std::size_t count, typename std::enable_if<!
-			std::is_trivially_copyable<T>::value
-		>::type* = nullptr) {
+		template<class T, typename std::enable_if<!std::is_trivially_copyable<T>::value, int>::type = 0>
+		inline void arrayMoveAssign(T* src, T* dst, const std::size_t count) {
 			static_assert(std::is_nothrow_move_assignable<T>::value,
 				"nothrow move-assignable type is required");
 			for (T* end = src + count; src != end; ++src, ++dst)
 				*dst = std::move(*src);
 		}
 
-		template<class T> inline void arrayCopyConstruct(const T* const src, T* const dst, const std::size_t count, typename std::enable_if<
-			std::is_trivially_copyable<T>::value
-		>::type* = nullptr) {
+		template<class T, typename std::enable_if<std::is_trivially_copyable<T>::value, int>::type = 0>
+		inline void arrayCopyConstruct(const T* const src, T* const dst, const std::size_t count) {
 			// Apparently memcpy() can't be called with null pointers, even if size is zero. I call that bullying.
 			if (count != 0) std::memcpy(dst, src, count * sizeof(T));
 		}
 
-		template<class T> inline void arrayCopyConstruct(const T* src, T* dst, const std::size_t count, typename std::enable_if<!
-			std::is_trivially_copyable<T>::value
-		>::type* = nullptr) {
+		template<class T, typename std::enable_if<!std::is_trivially_copyable<T>::value, int>::type = 0>
+		inline void arrayCopyConstruct(const T* src, T* dst, const std::size_t count) {
 			for (const T* end = src + count; src != end; ++src, ++dst)
 				// Can't use {}, see the GCC 4.8-specific overload for details
 #if defined(DEATH_TARGET_GCC) && !defined(DEATH_TARGET_CLANG) &&  __GNUC__ < 5
@@ -1087,11 +1136,11 @@ namespace Death { namespace Containers {
 #endif
 		}
 
-		template<class T> inline void arrayDestruct(T*, T*, typename std::enable_if<std::is_trivially_destructible<T>::value>::type* = nullptr) {
+		template<class T, typename std::enable_if<std::is_trivially_destructible<T>::value, int>::type = 0> inline void arrayDestruct(T*, T*) {
 			// Nothing to do
 		}
 
-		template<class T> inline void arrayDestruct(T* begin, T* const end, typename std::enable_if<!std::is_trivially_destructible<T>::value>::type* = nullptr) {
+		template<class T, typename std::enable_if<!std::is_trivially_destructible<T>::value, int>::type = 0> inline void arrayDestruct(T* begin, T* const end) {
 			// Needs to be < because sometimes begin > end
 			for (; begin < end; ++begin) begin->~T();
 		}
@@ -1134,7 +1183,7 @@ namespace Death { namespace Containers {
 	template<class T> void ArrayMallocAllocator<T>::reallocate(T*& array, std::size_t, const std::size_t newCapacity) {
 		const std::size_t inBytes = newCapacity * sizeof(T) + AllocationOffset;
 		char* const memory = static_cast<char*>(std::realloc(reinterpret_cast<char*>(array) - AllocationOffset, inBytes));
-		DEATH_ASSERT(memory != nullptr, , "Containers::ArrayMallocAllocator: Can't reallocate %zu bytes", inBytes);
+		DEATH_ASSERT(memory != nullptr, ("Can't reallocate %zu bytes", inBytes), );
 		reinterpret_cast<std::size_t*>(memory)[0] = inBytes;
 		array = reinterpret_cast<T*>(memory + AllocationOffset);
 	}
@@ -1174,7 +1223,7 @@ namespace Death { namespace Containers {
 			array = Array<T>{newArray, arrayGuts.size, Allocator::deleter};
 		} else Allocator::reallocate(arrayGuts.data, arrayGuts.size, capacity);
 
-#if defined(_DEATH_CONTAINERS_SANITIZER_ENABLED)
+#if defined(__DEATH_CONTAINERS_SANITIZER_ENABLED)
 		__sanitizer_annotate_contiguous_container(
 			Allocator::base(arrayGuts.data),
 			arrayGuts.data + capacity,
@@ -1202,7 +1251,7 @@ namespace Death { namespace Containers {
 				arrayGuts.size < size ? arrayGuts.size : size);
 			array = Array<T>{newArray, size, Allocator::deleter};
 
-#if defined(_DEATH_CONTAINERS_SANITIZER_ENABLED)
+#if defined(__DEATH_CONTAINERS_SANITIZER_ENABLED)
 			__sanitizer_annotate_contiguous_container(
 				Allocator::base(arrayGuts.data),
 				arrayGuts.data + arrayGuts.size,
@@ -1218,7 +1267,7 @@ namespace Death { namespace Containers {
 				arrayGuts.size < size ? arrayGuts.size : size, size);
 			arrayGuts.size = size;
 
-#if defined(_DEATH_CONTAINERS_SANITIZER_ENABLED)
+#if defined(__DEATH_CONTAINERS_SANITIZER_ENABLED)
 			__sanitizer_annotate_contiguous_container(
 				Allocator::base(arrayGuts.data),
 				arrayGuts.data + arrayGuts.size,
@@ -1231,7 +1280,7 @@ namespace Death { namespace Containers {
 		} else {
 			Implementation::arrayDestruct<T>(arrayGuts.data + size, arrayGuts.data + arrayGuts.size);
 			// This is a NoInit resize, so not constructing the new elements, only updating the size
-#if defined(_DEATH_CONTAINERS_SANITIZER_ENABLED)
+#if defined(__DEATH_CONTAINERS_SANITIZER_ENABLED)
 			__sanitizer_annotate_contiguous_container(
 				Allocator::base(arrayGuts.data),
 				arrayGuts.data + Allocator::capacity(array),
@@ -1281,7 +1330,7 @@ namespace Death { namespace Containers {
 			// know where the original memory comes from.
 			const std::size_t desiredCapacity = arrayGuts.size + count;
 			std::size_t capacity;
-#if defined(_DEATH_CONTAINERS_SANITIZER_ENABLED)
+#if defined(__DEATH_CONTAINERS_SANITIZER_ENABLED)
 			T* oldMid = nullptr;
 #endif
 			if (arrayGuts.deleter != Allocator::deleter) {
@@ -1297,7 +1346,7 @@ namespace Death { namespace Containers {
 					capacity = Allocator::grow(arrayGuts.data, desiredCapacity);
 					Allocator::reallocate(arrayGuts.data, arrayGuts.size, capacity);
 				} else {
-#if defined(_DEATH_CONTAINERS_SANITIZER_ENABLED)
+#if defined(__DEATH_CONTAINERS_SANITIZER_ENABLED)
 					oldMid = arrayGuts.data + arrayGuts.size;
 #endif
 				}
@@ -1305,7 +1354,7 @@ namespace Death { namespace Containers {
 
 			// Increase array size and return the previous end pointer
 			T* const it = arrayGuts.data + arrayGuts.size;
-#if defined(_DEATH_CONTAINERS_SANITIZER_ENABLED)
+#if defined(__DEATH_CONTAINERS_SANITIZER_ENABLED)
 			__sanitizer_annotate_contiguous_container(
 				Allocator::base(arrayGuts.data),
 				arrayGuts.data + capacity,
@@ -1320,6 +1369,8 @@ namespace Death { namespace Containers {
 	}
 
 	template<class T, class Allocator> inline T& arrayAppend(Array<T>& array, const typename std::common_type<T>::type& value) {
+		DEATH_DEBUG_ASSERT(std::size_t(&value - array.data()) >= arrayCapacity(array),
+			"Use the list variant to append values from within the array itself", *array.data());
 		T* const it = Implementation::arrayGrowBy<T, Allocator>(array, 1);
 		// Can't use {}, see the GCC 4.8-specific overload for details
 #if defined(DEATH_TARGET_GCC) && !defined(DEATH_TARGET_CLANG) &&  __GNUC__ < 5
@@ -1332,10 +1383,25 @@ namespace Death { namespace Containers {
 
 	template<class T, class Allocator> inline ArrayView<T> arrayAppend(Array<T>& array, const typename std::common_type<ArrayView<const T>>::type values) {
 		// Direct access & caching to speed up debug builds
+		const T* const valueData = values.data();
 		const std::size_t valueCount = values.size();
 
+		// If the values are actually a slice of the original array, we need to relocate the view after growing
+		// because it may point to a stale location afterwards. If the offset is outside of the [0, capacity) range
+		// of the original array, we don't relocate. Similar check is in arrayInsert(), where it additionally has
+		// to adjust the offset based on whether the values are before or after the insertion point.
+		std::size_t relocateOffset = std::size_t(valueData - array.data());
+		if (relocateOffset >= arrayCapacity<T, Allocator>(array))
+			relocateOffset = ~std::size_t{};
+
 		T* const it = Implementation::arrayGrowBy<T, Allocator>(array, valueCount);
-		Implementation::arrayCopyConstruct<T>(values.data(), it, valueCount);
+		Implementation::arrayCopyConstruct<T>(
+			// If values were a slice of the original array, relocate the view pointer relative to the (potentially reallocated)
+			// array. It may have pointed into the (potentially uninitialized) capacity, in which case we'll likely copy some
+			// garbage or we overwrite ourselves, but that's the user fault (and ASan would catch it). OTOH, if the capacity
+			// wouldn't be taken into account above, we may end up reading from freed memory, which is far worse.
+			relocateOffset != ~std::size_t{} ? array.data() + relocateOffset : valueData,
+			it, valueCount);
 		return { it, valueCount };
 	}
 
@@ -1358,18 +1424,16 @@ namespace Death { namespace Containers {
 
 	namespace Implementation
 	{
-		template<class T> inline void arrayShiftForward(T* const src, T* const dst, const std::size_t count, typename std::enable_if<
-			std::is_trivially_copyable<T>::value
-		>::type* = nullptr) {
+		template<class T, typename std::enable_if<std::is_trivially_copyable<T>::value, int>::type = 0>
+		inline void arrayShiftForward(T* const src, T* const dst, const std::size_t count) {
 			// Compared to the non-trivially-copyable variant below, just delegate to memmove() and assume it can figure
 			// out how to copy from back to front more efficiently that we ever could.
 			// Same as with memcpy(), apparently memmove() can't be called with null pointers, even if size is zero. I call that bullying.
 			if (count != 0) std::memmove(dst, src, count * sizeof(T));
 		}
 
-		template<class T> inline void arrayShiftForward(T* const src, T* const dst, const std::size_t count, typename std::enable_if<!
-			std::is_trivially_copyable<T>::value
-		>::type* = nullptr) {
+		template<class T, typename std::enable_if<!std::is_trivially_copyable<T>::value, int>::type = 0>
+		inline void arrayShiftForward(T* const src, T* const dst, const std::size_t count) {
 			static_assert(std::is_nothrow_move_constructible<T>::value && std::is_nothrow_move_assignable<T>::value,
 				"nothrow move-constructible and move-assignable type is required");
 
@@ -1402,7 +1466,7 @@ namespace Death { namespace Containers {
 		template<class T, class Allocator> T* arrayGrowAtBy(Array<T>& array, const std::size_t index, const std::size_t count) {
 			// Direct access & caching to speed up debug builds
 			auto& arrayGuts = reinterpret_cast<Implementation::ArrayGuts<T>&>(array);
-			DEATH_DEBUG_ASSERT(index <= arrayGuts.size, arrayGuts.data, "Containers::arrayInsert(): Can't insert at index %zu into an array of size %zu", index, arrayGuts.size);
+			DEATH_DEBUG_ASSERT(index <= arrayGuts.size, ("Can't insert at index %zu into an array of size %zu", index, arrayGuts.size), arrayGuts.data);
 
 			// No values to add, early exit
 			if (count == 0)
@@ -1412,7 +1476,7 @@ namespace Death { namespace Containers {
 			// index separately. Not using reallocate() as we don't know where the original memory comes from.
 			const std::size_t desiredCapacity = arrayGuts.size + count;
 			std::size_t capacity;
-#if defined(_DEATH_CONTAINERS_SANITIZER_ENABLED)
+#if defined(__DEATH_CONTAINERS_SANITIZER_ENABLED)
 			T* oldMid = nullptr;
 #endif
 			bool needsShiftForward = false;
@@ -1431,7 +1495,7 @@ namespace Death { namespace Containers {
 					capacity = Allocator::grow(arrayGuts.data, desiredCapacity);
 					Allocator::reallocate(arrayGuts.data, arrayGuts.size, capacity);
 				} else {
-#if defined(_DEATH_CONTAINERS_SANITIZER_ENABLED)
+#if defined(__DEATH_CONTAINERS_SANITIZER_ENABLED)
 					oldMid = arrayGuts.data + arrayGuts.size;
 #endif
 				}
@@ -1441,7 +1505,7 @@ namespace Death { namespace Containers {
 
 			// Increase array size and return the position at index
 			T* const it = arrayGuts.data + index;
-#if defined(_DEATH_CONTAINERS_SANITIZER_ENABLED)
+#if defined(__DEATH_CONTAINERS_SANITIZER_ENABLED)
 			__sanitizer_annotate_contiguous_container(
 				Allocator::base(arrayGuts.data),
 				arrayGuts.data + capacity,
@@ -1463,6 +1527,8 @@ namespace Death { namespace Containers {
 	}
 
 	template<class T, class Allocator> inline T& arrayInsert(Array<T>& array, std::size_t index, const typename std::common_type<T>::type& value) {
+		DEATH_DEBUG_ASSERT(std::size_t(&value - array.data()) >= arrayCapacity(array),
+			"Use the list variant to insert values from within the array itself", *array.data());
 		T* const it = Implementation::arrayGrowAtBy<T, Allocator>(array, index, 1);
 		// Can't use {}, see the GCC 4.8-specific overload for details
 #if defined(DEATH_TARGET_GCC) && !defined(DEATH_TARGET_CLANG) &&  __GNUC__ < 5
@@ -1475,10 +1541,31 @@ namespace Death { namespace Containers {
 
 	template<class T, class Allocator> inline ArrayView<T> arrayInsert(Array<T>& array, std::size_t index, const typename std::common_type<ArrayView<const T>>::type values) {
 		// Direct access & caching to speed up debug builds
+		const T* const valueData = values.data();
 		const std::size_t valueCount = values.size();
 
+		// If the values are actually a slice of the original array, we need to relocate the view after growing
+		// because it may point to a stale location afterwards. If the offset is outside of the [0, capacity)
+		// range of the original array, we don't relocate. Similar but simpler check is in arrayAppend().
+		std::size_t relocateOffset = std::size_t(valueData - array.data());
+		if (relocateOffset < arrayCapacity<T, Allocator>(array)) {
+			// If we're inserting before the original slice, the new offset has to include also the inserted size
+			if (index <= relocateOffset)
+				relocateOffset += valueCount;
+			// Otherwise the index should not point inside the slice, as we'd have to split the copy into two parts.
+			// The assumption is that this is a very rare scenario (with very questionable practical usefulness),
+			// and the caller should handle that on its own.
+			else DEATH_DEBUG_ASSERT(relocateOffset + valueCount <= index,
+				("Attempting to insert a slice [%zu:%zu] into itself at index %zu", relocateOffset, relocateOffset + valueCount, index), {});
+		} else relocateOffset = ~std::size_t{};
+
 		T* const it = Implementation::arrayGrowAtBy<T, Allocator>(array, index, valueCount);
-		Implementation::arrayCopyConstruct<T>(values.data(), it, valueCount);
+		Implementation::arrayCopyConstruct<T>(
+			// If values were a slice of the original array, relocate the view pointer relative to the (potentially
+			// reallocated) array. Similarly as with arrayAppend(), it may have pointed into the capacity, which
+			// we handle by copying potential garbage instead of accessing freed memory.
+			relocateOffset != ~std::size_t{} ? array.data() + relocateOffset : valueData,
+			it, valueCount);
 		return { it, valueCount };
 	}
 
@@ -1501,18 +1588,16 @@ namespace Death { namespace Containers {
 
 	namespace Implementation
 	{
-		template<class T> inline void arrayShiftBackward(T* const src, T* const dst, const std::size_t moveCount, std::size_t, typename std::enable_if<
-			std::is_trivially_copyable<T>::value
-		>::type* = nullptr) {
+		template<class T, typename std::enable_if<std::is_trivially_copyable<T>::value, int>::type = 0>
+		inline void arrayShiftBackward(T* const src, T* const dst, const std::size_t moveCount, std::size_t) {
 			// Compared to the non-trivially-copyable variant below, just delegate to memmove() and assume it can figure
 			// out how to copy from front to back more efficiently that we ever could.
 			// Same as with memcpy(), apparently memmove() can't be called with null pointers, even if size is zero. I call that bullying.
 			if (moveCount != 0) std::memmove(dst, src, moveCount * sizeof(T));
 		}
 
-		template<class T> inline void arrayShiftBackward(T* const src, T* const dst, const std::size_t moveCount, std::size_t destructCount, typename std::enable_if<!
-			std::is_trivially_copyable<T>::value
-		>::type* = nullptr) {
+		template<class T, typename std::enable_if<!std::is_trivially_copyable<T>::value, int>::type = 0>
+		inline void arrayShiftBackward(T* const src, T* const dst, const std::size_t moveCount, std::size_t destructCount) {
 			static_assert(std::is_nothrow_move_constructible<T>::value && std::is_nothrow_move_assignable<T>::value,
 				"nothrow move-constructible and move-assignable type is required");
 
@@ -1530,7 +1615,7 @@ namespace Death { namespace Containers {
 	template<class T, class Allocator> void arrayRemove(Array<T>& array, const std::size_t index, const std::size_t count) {
 		// Direct access to speed up debug builds
 		auto& arrayGuts = reinterpret_cast<Implementation::ArrayGuts<T>&>(array);
-		DEATH_DEBUG_ASSERT(index + count <= arrayGuts.size, , "Containers::arrayRemove(): Can't remove %zu elements at index %zu from an array of size %zu", count, index, arrayGuts.size);
+		DEATH_DEBUG_ASSERT(index + count <= arrayGuts.size, ("Can't remove %zu elements at index %zu from an array of size %zu", count, index, arrayGuts.size), );
 
 		// Nothing to remove, yay!
 		if (count == 0) return;
@@ -1544,7 +1629,7 @@ namespace Death { namespace Containers {
 			Implementation::arrayMoveConstruct<T>(arrayGuts.data + index + count, newArray + index, arrayGuts.size - index - count);
 			array = Array<T>{newArray, arrayGuts.size - count, Allocator::deleter};
 
-#if defined(_DEATH_CONTAINERS_SANITIZER_ENABLED)
+#if defined(__DEATH_CONTAINERS_SANITIZER_ENABLED)
 			__sanitizer_annotate_contiguous_container(
 				Allocator::base(arrayGuts.data),
 				arrayGuts.data + arrayGuts.size,
@@ -1555,7 +1640,7 @@ namespace Death { namespace Containers {
 		// Otherwise shift the elements after index backward
 		} else {
 			Implementation::arrayShiftBackward(arrayGuts.data + index + count, arrayGuts.data + index, arrayGuts.size - index - count, count);
-#if defined(_DEATH_CONTAINERS_SANITIZER_ENABLED)
+#if defined(__DEATH_CONTAINERS_SANITIZER_ENABLED)
 			__sanitizer_annotate_contiguous_container(
 				Allocator::base(arrayGuts.data),
 				arrayGuts.data + Allocator::capacity(arrayGuts.data),
@@ -1569,7 +1654,7 @@ namespace Death { namespace Containers {
 	template<class T, class Allocator> void arrayRemoveUnordered(Array<T>& array, const std::size_t index, const std::size_t count) {
 		// Direct access to speed up debug builds
 		auto& arrayGuts = reinterpret_cast<Implementation::ArrayGuts<T>&>(array);
-		DEATH_DEBUG_ASSERT(index + count <= arrayGuts.size, , "Containers::arrayRemoveUnordered(): Can't remove %zu elements at index %zu from an array of size %zu", count, index, arrayGuts.size);
+		DEATH_DEBUG_ASSERT(index + count <= arrayGuts.size, ("Can't remove %zu elements at index %zu from an array of size %zu", count, index, arrayGuts.size), );
 
 		// Nothing to remove, yay!
 		if (count == 0) return;
@@ -1583,7 +1668,7 @@ namespace Death { namespace Containers {
 			Implementation::arrayMoveConstruct<T>(arrayGuts.data + index + count, newArray + index, arrayGuts.size - index - count);
 			array = Array<T>{newArray, arrayGuts.size - count, Allocator::deleter};
 
-#if defined(_DEATH_CONTAINERS_SANITIZER_ENABLED)
+#if defined(__DEATH_CONTAINERS_SANITIZER_ENABLED)
 			__sanitizer_annotate_contiguous_container(
 				Allocator::base(arrayGuts.data),
 				arrayGuts.data + arrayGuts.size,
@@ -1595,7 +1680,7 @@ namespace Death { namespace Containers {
 		} else {
 			const std::size_t moveCount = std::min(count, arrayGuts.size - count - index);
 			Implementation::arrayShiftBackward(arrayGuts.data + arrayGuts.size - moveCount, arrayGuts.data + index, moveCount, count);
-#if defined(_DEATH_CONTAINERS_SANITIZER_ENABLED)
+#if defined(__DEATH_CONTAINERS_SANITIZER_ENABLED)
 			__sanitizer_annotate_contiguous_container(
 				Allocator::base(arrayGuts.data),
 				arrayGuts.data + Allocator::capacity(arrayGuts.data),
@@ -1609,7 +1694,7 @@ namespace Death { namespace Containers {
 	template<class T, class Allocator> void arrayRemoveSuffix(Array<T>& array, const std::size_t count) {
 		// Direct access to speed up debug builds
 		auto& arrayGuts = reinterpret_cast<Implementation::ArrayGuts<T>&>(array);
-		DEATH_DEBUG_ASSERT(count <= arrayGuts.size, , "Containers::arrayRemoveSuffix(): Can't remove %zu elements from an array of size %zu", count, arrayGuts.size);
+		DEATH_DEBUG_ASSERT(count <= arrayGuts.size, ("Can't remove %zu elements from an array of size %zu", count, arrayGuts.size), );
 
 		// Nothing to remove, yay!
 		if (count == 0) return;
@@ -1621,7 +1706,7 @@ namespace Death { namespace Containers {
 			Implementation::arrayMoveConstruct<T>(arrayGuts.data, newArray, arrayGuts.size - count);
 			array = Array<T>{newArray, arrayGuts.size - count, Allocator::deleter};
 
-#if defined(_DEATH_CONTAINERS_SANITIZER_ENABLED)
+#if defined(__DEATH_CONTAINERS_SANITIZER_ENABLED)
 			__sanitizer_annotate_contiguous_container(
 				Allocator::base(arrayGuts.data),
 				arrayGuts.data + arrayGuts.size,
@@ -1632,7 +1717,7 @@ namespace Death { namespace Containers {
 		// Otherwise call the destructor on the excessive elements and update the size
 		} else {
 			Implementation::arrayDestruct<T>(arrayGuts.data + arrayGuts.size - count, arrayGuts.data + arrayGuts.size);
-#if defined(_DEATH_CONTAINERS_SANITIZER_ENABLED)
+#if defined(__DEATH_CONTAINERS_SANITIZER_ENABLED)
 			__sanitizer_annotate_contiguous_container(
 				Allocator::base(arrayGuts.data),
 				arrayGuts.data + Allocator::capacity(arrayGuts.data),
@@ -1656,7 +1741,7 @@ namespace Death { namespace Containers {
 		Implementation::arrayMoveConstruct<T>(arrayGuts.data, newArray, arrayGuts.size);
 		array = std::move(newArray);
 
-#if defined(_DEATH_CONTAINERS_SANITIZER_ENABLED)
+#if defined(__DEATH_CONTAINERS_SANITIZER_ENABLED)
 		// Nothing to do (not annotating the arrays with default deleter)
 #endif
 	}
@@ -1674,12 +1759,12 @@ namespace Death { namespace Containers {
 		Implementation::arrayMoveAssign<T>(arrayGuts.data, newArray, arrayGuts.size);
 		array = std::move(newArray);
 
-#if defined(_DEATH_CONTAINERS_SANITIZER_ENABLED)
+#if defined(__DEATH_CONTAINERS_SANITIZER_ENABLED)
 		// Nothing to do (not annotating the arrays with default deleter)
 #endif
 	}
 }}
 
-#if defined(_DEATH_CONTAINERS_SANITIZER_ENABLED)
-#	undef _DEATH_CONTAINERS_SANITIZER_ENABLED
+#if defined(__DEATH_CONTAINERS_SANITIZER_ENABLED)
+#	undef __DEATH_CONTAINERS_SANITIZER_ENABLED
 #endif

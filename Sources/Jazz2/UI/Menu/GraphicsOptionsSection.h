@@ -6,14 +6,16 @@ namespace Jazz2::UI::Menu
 {
 	enum class GraphicsOptionsItemType {
 		RescaleMode,
-#if !defined(DEATH_TARGET_ANDROID) && !defined(DEATH_TARGET_IOS) && !defined(DEATH_TARGET_SWITCH)
+#if defined(NCINE_HAS_WINDOWS)
 		Fullscreen,
 #endif
 		Antialiasing,
 		LowWaterQuality,
 		ShowPlayerTrails,
-		UnalignedViewport,
+		PreferVerticalSplitscreen,
+		PreferZoomOut,
 		KeepAspectRatioInCinematics,
+		UnalignedViewport,
 		ShowPerformanceMetrics
 	};
 
@@ -36,7 +38,7 @@ namespace Jazz2::UI::Menu
 
 		void OnHandleInput() override;
 		void OnLayoutItem(Canvas* canvas, ListViewItem& item) override;
-		void OnDrawItem(Canvas* canvas, ListViewItem& item, int32_t& charOffset, bool isSelected) override;
+		void OnDrawItem(Canvas* canvas, ListViewItem& item, std::int32_t& charOffset, bool isSelected) override;
 		void OnExecuteSelected() override;
 	};
 }

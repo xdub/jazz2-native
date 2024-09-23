@@ -65,6 +65,38 @@ namespace nCine
 		{ "uk", "УКРАЇНСЬКА"_s }
 	};
 
+	struct MoFileHeader
+	{
+		std::uint32_t Signature;
+		/** @brief The revision number of the file format */
+		std::uint32_t Revision;
+
+		/** @brief The number of strings pairs */
+		std::uint32_t StringCount;
+		/** @brief Offset of table with start offsets of original strings */
+		std::uint32_t OrigTableOffset;
+		/** @brief Offset of table with start offsets of translated strings */
+		std::uint32_t TransTableOffset;
+		/** @brief Size of hash table */
+		std::uint32_t HashTableSize;
+		/** @brief Offset of first hash table entry */
+		std::uint32_t HashTableOffset;
+	};
+
+	struct I18n::StringDesc
+	{
+		/** @brief Length of addressed string, not including the trailing NULL */
+		std::uint32_t Length;
+		/** @brief Offset of string in file */
+		std::uint32_t Offset;
+	};
+
+	struct I18n::ExpressionToken
+	{
+		virtual ~ExpressionToken() { };
+		virtual std::int32_t operator()(std::int32_t n) const = 0;
+	};
+
 	struct ValueToken : public I18n::ExpressionToken
 	{
 		ValueToken(std::int32_t value)
@@ -305,6 +337,21 @@ namespace nCine
 		I18n::ExpressionToken* _right;
 	};
 
+	class I18n::Evaluator
+	{
+	public:
+		static const ExpressionToken* Parse(const char* s);
+
+	private:
+		static ExpressionToken* ParseNumber(const char*& s, bool negative);
+		static ExpressionToken* ParseAtom(const char*& s);
+		static ExpressionToken* ParseFactors(const char*& s);
+		static ExpressionToken* ParseSummands(const char*& s);
+		static ExpressionToken* ParseComparison(const char*& s);
+		static ExpressionToken* ParseCondition(const char*& s);
+		static ExpressionToken* ParseTernary(const char*& s);
+	};
+
 	I18n::ExpressionToken* I18n::Evaluator::ParseNumber(const char*& s, bool negative)
 	{
 		char* endPtr;
@@ -523,7 +570,7 @@ namespace nCine
 
 	bool I18n::LoadFromFile(const StringView path)
 	{
-		return LoadFromFile(fs::Open(path, FileAccessMode::Read));
+		return LoadFromFile(fs::Open(path, FileAccess::Read));
 	}
 
 	bool I18n::LoadFromFile(const std::unique_ptr<Stream>& fileHandle)
@@ -710,35 +757,35 @@ namespace nCine
 
 			for (std::int32_t i = 0; i < n; i++) {
 				CFTypeRef element = CFArrayGetValueAtIndex(prefArray, i);
-				if (element != nullptr && CFGetTypeID(element) == CFStringGetTypeID() && CFStringGetCString((CFStringRef)element, buffer, sizeof(buffer), kCFStringEncodingASCII)) {
-					String langId = String(buffer);
-					StringUtils::lowercaseInPlace(langId);
-					arrayAppend(preferred, std::move(langId));
-				} else {
+				if (element == nullptr || CFGetTypeID(element) != CFStringGetTypeID() || !CFStringGetCString((CFStringRef)element, buffer, sizeof(buffer), kCFStringEncodingASCII)) {
 					break;
 				}
+				String langId = String(buffer);
+				StringUtils::lowercaseInPlace(langId);
+				arrayAppend(preferred, std::move(langId));
 			}
 		}
 #elif defined(DEATH_TARGET_EMSCRIPTEN) || defined(DEATH_TARGET_UNIX)
 		char* langRaw = ::getenv("LANG");
-		if (langRaw == nullptr) {
+		if (langRaw == nullptr || langRaw[0] == '\0' || strcasecmp(langRaw, "C") == 0) {
 			langRaw = ::getenv("LC_ALL");
-			if (langRaw == nullptr) {
+			if (langRaw == nullptr || langRaw[0] == '\0' || strcasecmp(langRaw, "C") == 0) {
 				langRaw = ::getenv("LC_MESSAGES");
+				if (langRaw == nullptr || langRaw[0] == '\0' || strcasecmp(langRaw, "C") == 0) {
+					// No suitable environment variable is defined
+					return preferred;
+				}
 			}
 		}
-		if (langRaw != nullptr) {
-			String langId = langRaw;
-			StringView suffix = langId.findAny(".@"_s);
-			if (suffix != nullptr) {
-				langId = langId.prefix(suffix.begin());
-			}
-			for (char& c : langId) {
-				if (c == '_') c = '-';
-			}
-			StringUtils::lowercaseInPlace(langId);
-			arrayAppend(preferred, std::move(langId));
+
+		String langId = langRaw;
+		StringView suffix = langId.findAny(".@"_s);
+		if (suffix != nullptr) {
+			langId = langId.prefix(suffix.begin());
 		}
+		StringUtils::replaceAllInPlace(langId, '_', '-');
+		StringUtils::lowercaseInPlace(langId);
+		arrayAppend(preferred, std::move(langId));
 #elif defined(DEATH_TARGET_WINDOWS)
 		if (Environment::IsWindows10()) {
 			// Get list of all preferred UI languages on Windows 10
@@ -748,7 +795,7 @@ namespace nCine
 				Array<wchar_t> languages(NoInit, bufferSize);
 				if (::GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, &numberOfLanguages, languages.data(), &bufferSize)) {
 					wchar_t* buffer = languages.data();
-					for (ULONG k = 0; k < numberOfLanguages; ++k) {
+					for (ULONG k = 0; k < numberOfLanguages; k++) {
 						String langId = Utf8::FromUtf16(buffer);
 						StringUtils::lowercaseInPlace(langId);
 						arrayAppend(preferred, std::move(langId));

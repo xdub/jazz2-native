@@ -31,6 +31,21 @@ namespace Death { namespace Containers { namespace StringUtils {
 
 	namespace Implementation
 	{
+		extern const char* DEATH_CPU_DISPATCHED_DECLARATION(commonPrefix)(const char* a, const char* b, std::size_t sizeA, std::size_t sizeB);
+		DEATH_CPU_DISPATCHER_DECLARATION(commonPrefix)
+	}
+
+	/**
+		@brief Longest common prefix of two strings
+
+		The returned view is a prefix of @p a.
+	*/
+	inline StringView commonPrefix(StringView a, StringView b) {
+		return a.prefix(Implementation::commonPrefix(a.data(), b.data(), a.size(), b.size()));
+	}
+
+	namespace Implementation
+	{
 		extern void DEATH_CPU_DISPATCHED_DECLARATION(lowercaseInPlace)(char* data, std::size_t size);
 		DEATH_CPU_DISPATCHER_DECLARATION(lowercaseInPlace)
 		extern void DEATH_CPU_DISPATCHED_DECLARATION(uppercaseInPlace)(char* data, std::size_t size);
@@ -58,7 +73,7 @@ namespace Death { namespace Containers { namespace StringUtils {
 		supports only ASCII as Unicode-aware case conversion is a much more complex
 		topic.
 	*/
-	String lowercase(const StringView string);
+	String lowercase(StringView string);
 
 	/** @overload
 
@@ -87,7 +102,7 @@ namespace Death { namespace Containers { namespace StringUtils {
 		supports only ASCII as Unicode-aware case conversion is a much more complex
 		topic.
 	*/
-	String uppercase(const StringView string);
+	String uppercase(StringView string);
 
 	/** @overload
 
@@ -104,7 +119,7 @@ namespace Death { namespace Containers { namespace StringUtils {
 		Glagolitic, Coptic, Deseret, Osage, Old Hungarian, Warang Citi, Medefaidrin and Adlam characters.
 		Doesn't support locale-specific replacements.
 	*/
-	String lowercaseUnicode(const StringView string);
+	String lowercaseUnicode(StringView string);
 
 	/**
 		@brief Convert characters in a UTF-8 string to uppercase with slower Unicode-aware method
@@ -113,12 +128,12 @@ namespace Death { namespace Containers { namespace StringUtils {
 		Glagolitic, Coptic, Deseret, Osage, Old Hungarian, Warang Citi, Medefaidrin and Adlam characters.
 		Doesn't support locale-specific replacements.
 	*/
-	String uppercaseUnicode(const StringView string);
+	String uppercaseUnicode(StringView string);
 
 	/**
 		@brief Determine whether two strings have the same value, ignoring case (ASCII characters only)
 	*/
-	inline bool equalsIgnoreCase(const StringView string1, const StringView string2) {
+	inline bool equalsIgnoreCase(StringView string1, StringView string2) {
 		std::size_t size1 = string1.size();
 		std::size_t size2 = string2.size();
 		return (size1 == size2 && Implementation::equalsIgnoreCase(string1.data(), string2.data(), size1));
@@ -130,7 +145,7 @@ namespace Death { namespace Containers { namespace StringUtils {
 		Returns @p string unmodified if it doesn't contain @p search. Having empty
 		@p search causes @p replace to be prepended to @p string.
 	*/
-	String replaceFirst(const StringView string, const StringView search, const StringView replace);
+	String replaceFirst(StringView string, StringView search, StringView replace);
 
 	/**
 		@brief Replace all occurrences in a string
@@ -140,7 +155,7 @@ namespace Death { namespace Containers { namespace StringUtils {
 		a single character with another the @ref replaceAll(String, char, char)
 		variant is more optimal.
 	*/
-	String replaceAll(StringView string, const StringView search, const StringView replace);
+	String replaceAll(StringView string, StringView search, StringView replace);
 
 	/**
 		@brief Replace all occurrences of a character in a string with another character
@@ -153,9 +168,17 @@ namespace Death { namespace Containers { namespace StringUtils {
 	*/
 	String replaceAll(String string, char search, char replace);
 
+	namespace Implementation
+	{
+		extern void DEATH_CPU_DISPATCHED_DECLARATION(replaceAllInPlaceCharacter)(char* data, std::size_t size, char search, char replace);
+		DEATH_CPU_DISPATCHER_DECLARATION(replaceAllInPlaceCharacter)
+	}
+
 	/**
 		@brief Replace all occurrences of a character in a string with another character in-place
 	*/
-	void replaceAllInPlace(const MutableStringView string, char search, char replace);
+	inline void replaceAllInPlace(MutableStringView string, char search, char replace) {
+		Implementation::replaceAllInPlaceCharacter(string.data(), string.size(), search, replace);
+	}
 
 }}}

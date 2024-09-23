@@ -274,6 +274,11 @@ namespace nCine
 		return copyStringFirst(dest, size, source, count);
 	}
 
+	template <std::size_t size>
+	inline std::int32_t copyStringFirst(char(&dest)[size], Containers::StringView source) {
+		return copyStringFirst(dest, size, source.data(), (std::int32_t)source.size());
+	}
+
 	int formatString(char* buffer, std::size_t maxLen, const char* format, ...);
 
 	void u32tos(std::uint32_t value, char* buffer);
@@ -338,7 +343,7 @@ namespace nCine
 	float halfToFloat(std::uint16_t value);
 	std::uint16_t floatToHalf(float value);
 
-	constexpr std::uint64_t parseVersion(const Containers::StringView& version)
+	constexpr std::uint64_t parseVersion(Containers::StringView version)
 	{
 		std::size_t versionLength = version.size();
 		std::size_t dotIndices[3] { };
@@ -347,7 +352,7 @@ namespace nCine
 		for (std::size_t i = 0; i < versionLength; i++) {
 			if (version[i] == '.') {
 				dotIndices[foundCount++] = i;
-				if (foundCount >= countof(dotIndices) - 1) {
+				if (foundCount >= Containers::arraySize(dotIndices) - 1) {
 					// Save only indices of the first 2 dots and keep the last index for string length
 					break;
 				}

@@ -14,14 +14,24 @@ namespace Jazz2::UI::Menu
 	ControlsOptionsSection::ControlsOptionsSection()
 		: _isDirty(false)
 	{
-		// TRANSLATORS: Menu item in Options > Controls section
-		_items.emplace_back(ControlsOptionsItem { ControlsOptionsItemType::RemapControls, _("Remap Controls") });
+		if (ControlScheme::MaxSupportedPlayers > 1) {
+			for (std::int32_t i = 0; i < ControlScheme::MaxSupportedPlayers; i++) {
+				// TRANSLATORS: Menu item in Options > Controls section
+				_items.emplace_back(ControlsOptionsItem { ControlsOptionsItemType::RemapControls, _f("Remap Controls for Player %i", i + 1), false, i });
+			}
+		} else {
+			// TRANSLATORS: Menu item in Options > Controls section
+			_items.emplace_back(ControlsOptionsItem { ControlsOptionsItemType::RemapControls, _("Remap Controls") });
+		}
 		// TRANSLATORS: Menu item in Options > Controls section
 		_items.emplace_back(ControlsOptionsItem { ControlsOptionsItemType::TouchControls, _("Touch Controls") });
 		// TRANSLATORS: Menu item in Options > Controls section
 		_items.emplace_back(ControlsOptionsItem { ControlsOptionsItemType::ToggleRunAction, _("Toggle Run"), true });
 		_items.emplace_back(ControlsOptionsItem { ControlsOptionsItemType::EnableAltGamepad, _("Gamepad Button Labels"), true });
-#if defined(DEATH_TARGET_ANDROID)
+#if defined(NCINE_HAS_GAMEPAD_RUMBLE)
+		_items.emplace_back(ControlsOptionsItem { ControlsOptionsItemType::EnableGamepadRumble, _("Gamepad Rumble"), true });
+#endif
+#if defined(NCINE_HAS_NATIVE_BACK_BUTTON)
 		// TRANSLATORS: Menu item in Options > Controls section (Android only)
 		_items.emplace_back(ControlsOptionsItem { ControlsOptionsItemType::UseNativeBackButton, _("Native Back Button"), true });
 #endif
@@ -57,14 +67,14 @@ namespace Jazz2::UI::Menu
 		_root->DrawElement(MenuLine, 0, centerX, topLine, IMenuContainer::MainLayer, Alignment::Center, Colorf::White, 1.6f);
 		_root->DrawElement(MenuLine, 1, centerX, bottomLine, IMenuContainer::MainLayer, Alignment::Center, Colorf::White, 1.6f);
 
-		int32_t charOffset = 0;
+		std::int32_t charOffset = 0;
 		_root->DrawStringShadow(_("Controls"), charOffset, centerX, topLine - 21.0f, IMenuContainer::FontLayer,
 			Alignment::Center, Colorf(0.46f, 0.46f, 0.46f, 0.5f), 0.9f, 0.7f, 1.1f, 1.1f, 0.4f, 0.9f);
 	}
 
 	void ControlsOptionsSection::OnLayoutItem(Canvas* canvas, ListViewItem& item)
 	{
-		item.Height = (item.Item.HasBooleanValue ? 52 : ItemHeight * 8 / 7);
+		item.Height = (item.Item.HasBooleanValue ? 52 : (item.Item.Type == ControlsOptionsItemType::RemapControls ? (ItemHeight * 4 / 5) : (ItemHeight * 8 / 7)));
 	}
 
 	void ControlsOptionsSection::OnDrawItem(Canvas* canvas, ListViewItem& item, int32_t& charOffset, bool isSelected)
@@ -96,7 +106,18 @@ namespace Jazz2::UI::Menu
 			switch (item.Item.Type) {
 				case ControlsOptionsItemType::ToggleRunAction: enabled = PreferencesCache::ToggleRunAction; break;
 				case ControlsOptionsItemType::EnableAltGamepad: enabled = PreferencesCache::GamepadButtonLabels != GamepadType::Xbox; customText = (enabled ? "PlayStation™"_s : "Xbox"_s); break;
-#if defined(DEATH_TARGET_ANDROID)
+#if defined(NCINE_HAS_GAMEPAD_RUMBLE)
+				case ControlsOptionsItemType::EnableGamepadRumble:
+					customText = (PreferencesCache::GamepadRumble == 2
+						// TRANSLATORS: Option for Gamepad Rumble in Options > Controls section
+						? _("Strong")
+						: (PreferencesCache::GamepadRumble == 1
+							// TRANSLATORS: Option for Gamepad Rumble in Options > Controls section
+							? _("Weak")
+							: _("Disabled")));
+					break;
+#endif
+#if defined(NCINE_HAS_NATIVE_BACK_BUTTON)
 				case ControlsOptionsItemType::UseNativeBackButton: enabled = PreferencesCache::UseNativeBackButton; break;
 #endif
 				default: enabled = false; break;
@@ -112,7 +133,7 @@ namespace Jazz2::UI::Menu
 		_root->PlaySfx("MenuSelect"_s, 0.6f);
 
 		switch (_items[_selectedIndex].Item.Type) {
-			case ControlsOptionsItemType::RemapControls: _root->SwitchToSection<RemapControlsSection>(); break;
+			case ControlsOptionsItemType::RemapControls: _root->SwitchToSection<RemapControlsSection>(_items[_selectedIndex].Item.PlayerIndex); break;
 			case ControlsOptionsItemType::TouchControls: _root->SwitchToSection<TouchControlsOptionsSection>(); break;
 			case ControlsOptionsItemType::ToggleRunAction:
 				PreferencesCache::ToggleRunAction = !PreferencesCache::ToggleRunAction;
@@ -128,7 +149,16 @@ namespace Jazz2::UI::Menu
 				_isDirty = true;
 				_animation = 0.0f;
 				break;
-#if defined(DEATH_TARGET_ANDROID)
+#if defined(NCINE_HAS_GAMEPAD_RUMBLE)
+			case ControlsOptionsItemType::EnableGamepadRumble:
+				PreferencesCache::GamepadRumble = (PreferencesCache::GamepadRumble == 1
+					? 2
+					: (PreferencesCache::GamepadRumble == 2 ? 0 : 1));
+				_isDirty = true;
+				_animation = 0.0f;
+				break;
+#endif
+#if defined(NCINE_HAS_NATIVE_BACK_BUTTON)
 			case ControlsOptionsItemType::UseNativeBackButton:
 				PreferencesCache::UseNativeBackButton = !PreferencesCache::UseNativeBackButton;
 				_isDirty = true;

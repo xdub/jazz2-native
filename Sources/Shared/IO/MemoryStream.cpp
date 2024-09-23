@@ -16,21 +16,21 @@ namespace Death { namespace IO {
 		}
 	}
 
-	MemoryStream::MemoryStream(std::uint8_t* bufferPtr, std::int64_t bufferSize)
-		: _buffer(bufferPtr, bufferSize, [](std::uint8_t* data, std::size_t size) {}), _seekOffset(0), _mode(AccessMode::Writable)
+	MemoryStream::MemoryStream(void* bufferPtr, std::int64_t bufferSize)
+		: _buffer(static_cast<std::uint8_t*>(bufferPtr), bufferSize, [](std::uint8_t* data, std::size_t size) {}), _seekOffset(0), _mode(AccessMode::Writable)
 	{
 		_size = bufferSize;
 	}
 
-	MemoryStream::MemoryStream(const std::uint8_t* bufferPtr, std::int64_t bufferSize)
-		: _buffer(const_cast<std::uint8_t*>(bufferPtr), bufferSize, [](std::uint8_t* data, std::size_t size) {}), _seekOffset(0), _mode(AccessMode::ReadOnly)
+	MemoryStream::MemoryStream(const void* bufferPtr, std::int64_t bufferSize)
+		: _buffer(const_cast<std::uint8_t*>(static_cast<const std::uint8_t*>(bufferPtr)), bufferSize, [](std::uint8_t* data, std::size_t size) {}), _seekOffset(0), _mode(AccessMode::ReadOnly)
 	{
 		_size = bufferSize;
 	}
 
-	void MemoryStream::Close()
+	void MemoryStream::Dispose()
 	{
-		_size = ErrorInvalidStream;
+		_size = Stream::Invalid;
 		_seekOffset = 0;
 		_mode = AccessMode::None;
 	}
@@ -42,11 +42,11 @@ namespace Death { namespace IO {
 			case SeekOrigin::Begin: newPos = offset; break;
 			case SeekOrigin::Current: newPos = _seekOffset + offset; break;
 			case SeekOrigin::End: newPos = _size + offset; break;
-			default: return ErrorInvalidParameter;
+			default: return Stream::OutOfRange;
 		}
 
 		if (newPos < 0 || newPos > _size) {
-			newPos = ErrorInvalidParameter;
+			newPos = Stream::OutOfRange;
 		} else {
 			_seekOffset = newPos;
 		}
@@ -60,11 +60,11 @@ namespace Death { namespace IO {
 
 	std::int32_t MemoryStream::Read(void* buffer, std::int32_t bytes)
 	{
-		DEATH_ASSERT(buffer != nullptr, 0, "buffer is nullptr");
+		DEATH_ASSERT(buffer != nullptr, "buffer is null", 0);
 
 		std::int32_t bytesRead = 0;
 
-		if (_mode != AccessMode::None) {
+		if (bytes > 0 && _mode != AccessMode::None) {
 			bytesRead = (_seekOffset + bytes > _size ? static_cast<std::int32_t>(_size - _seekOffset) : bytes);
 			std::memcpy(buffer, _buffer.data() + _seekOffset, bytesRead);
 			_seekOffset += bytesRead;
@@ -75,11 +75,11 @@ namespace Death { namespace IO {
 
 	std::int32_t MemoryStream::Write(const void* buffer, std::int32_t bytes)
 	{
-		DEATH_ASSERT(buffer != nullptr, 0, "buffer is nullptr");
+		DEATH_ASSERT(buffer != nullptr, "buffer is null", 0);
 
 		std::int32_t bytesWritten = 0;
 
-		if (_mode == AccessMode::Writable || _mode == AccessMode::Growable) {
+		if (bytes > 0 && (_mode == AccessMode::Writable || _mode == AccessMode::Growable)) {
 			if (_mode == AccessMode::Growable && _size < _seekOffset + bytes) {
 				_size = _seekOffset + bytes;
 				Containers::arrayResize(_buffer, Containers::NoInit, _size);
@@ -93,9 +93,20 @@ namespace Death { namespace IO {
 		return bytesWritten;
 	}
 
+	bool MemoryStream::Flush()
+	{
+		// Not supported
+		return true;
+	}
+
 	bool MemoryStream::IsValid()
 	{
-		return true;
+		return (_mode != AccessMode::None);
+	}
+
+	std::int64_t MemoryStream::GetSize() const
+	{
+		return _size;
 	}
 
 	void MemoryStream::ReserveCapacity(std::int64_t bytes)

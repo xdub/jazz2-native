@@ -7,7 +7,7 @@ if(NCINE_DOWNLOAD_DEPENDENCIES AND NOT EMSCRIPTEN AND NOT NINTENDO_SWITCH)
 				set(NCINE_LIBS_URL "https://github.com/deathkiller/jazz2-libraries/raw/2.0.1-macos/jazz2-libraries-macos.tar.gz")
 			endif()
 		else()
-			set(NCINE_LIBS_URL "https://github.com/deathkiller/jazz2-libraries/archive/2.6.1.tar.gz")
+			set(NCINE_LIBS_URL "https://github.com/deathkiller/jazz2-libraries/archive/2.8.0.tar.gz")
 		endif()
 		message(STATUS "Downloading dependencies from \"${NCINE_LIBS_URL}\"...")
 
@@ -61,8 +61,12 @@ if(EMSCRIPTEN)
 
 	if(NCINE_PREFERRED_BACKEND STREQUAL "GLFW")
 		add_library(GLFW::GLFW INTERFACE IMPORTED)
+		#set_target_properties(GLFW::GLFW PROPERTIES
+		#	INTERFACE_LINK_OPTIONS "SHELL:-s USE_GLFW=3")
+		
+		# Newer GLFW implementation supported since Emscripten 3.1.55
 		set_target_properties(GLFW::GLFW PROPERTIES
-			INTERFACE_LINK_OPTIONS "SHELL:-s USE_GLFW=3")
+			INTERFACE_LINK_OPTIONS "SHELL:--use-port=contrib.glfw3")
 		set(GLFW_FOUND 1)
 	elseif(NCINE_PREFERRED_BACKEND STREQUAL "SDL2")
 		add_library(SDL2::SDL2 INTERFACE IMPORTED)
@@ -145,7 +149,7 @@ if(MSVC OR MINGW OR MSYS)
 		message(STATUS "MSVC libraries directory: ${EXTERNAL_MSVC_DIR}")
 	endif()
 
-    # TODO: Detect ARM64EC libraries
+	# TODO: Detect ARM64EC libraries
 	set(MSVC_ARCH_SUFFIX "x86")
 	if(MINGW OR MSYS)
 		if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "AMD64")
@@ -207,10 +211,13 @@ elseif(NOT ANDROID AND NOT NCINE_BUILD_ANDROID) # GCC and LLVM
 		find_package(GLEW)
 	endif()
 	if(NOT NINTENDO_SWITCH)
-		find_package(OpenGL REQUIRED)
+		set(OPENGL_USE_OPENGL ON)
+		find_package(OpenGL)
 	endif()
 	if(NCINE_ARM_PROCESSOR)
 		include(check_atomic)
+	endif()
+	if(NCINE_WITH_OPENGLES OR NINTENDO_SWITCH)
 		find_package(OpenGLES2)
 	endif()
 	# Look for both GLFW and SDL2 to make the fallback logic work
@@ -357,7 +364,6 @@ elseif(MSVC OR MINGW OR MSYS)
 	if(NCINE_WITH_ANGLE AND
 	   EXISTS "${MSVC_LIBDIR}/libEGL.lib" AND EXISTS "${MSVC_BINDIR}/libEGL.dll" AND
 	   EXISTS "${MSVC_LIBDIR}/libGLESv2.lib" AND EXISTS "${MSVC_BINDIR}/libGLESv2.dll")
-
 		add_library(EGL::EGL SHARED IMPORTED)
 		set_target_properties(EGL::EGL PROPERTIES
 			IMPORTED_IMPLIB "${MSVC_LIBDIR}/libEGL.lib"
@@ -370,6 +376,19 @@ elseif(MSVC OR MINGW OR MSYS)
 			IMPORTED_LOCATION "${MSVC_BINDIR}/libGLESv2.dll"
 			INTERFACE_INCLUDE_DIRECTORIES "${EXTERNAL_INCLUDES_DIR}")
 		set(ANGLE_FOUND 1)
+	elseif(WINDOWS_PHONE OR WINDOWS_STORE)
+		add_library(EGL::EGL SHARED IMPORTED)
+		set_target_properties(EGL::EGL PROPERTIES
+			IMPORTED_IMPLIB "${MSVC_WINRT_BINDIR}/Mesa/libEGL.lib"
+			IMPORTED_LOCATION "${MSVC_WINRT_BINDIR}/Mesa/libEGL.dll"
+			INTERFACE_INCLUDE_DIRECTORIES "${EXTERNAL_INCLUDES_DIR}")
+
+		add_library(OpenGLES2::GLES2 SHARED IMPORTED)
+		set_target_properties(OpenGLES2::GLES2 PROPERTIES
+			IMPORTED_IMPLIB "${MSVC_WINRT_BINDIR}/Mesa/libGLESv2.lib"
+			IMPORTED_LOCATION "${MSVC_WINRT_BINDIR}/Mesa/libGLESv2.dll"
+			INTERFACE_INCLUDE_DIRECTORIES "${EXTERNAL_INCLUDES_DIR}")
+		set(OPENGLES2_FOUND 1)
 	else()
 		if(EXISTS "${MSVC_LIBDIR}/glew32.lib" AND EXISTS "${MSVC_BINDIR}/glew32.dll")
 			add_library(GLEW::GLEW SHARED IMPORTED)

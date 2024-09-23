@@ -49,13 +49,13 @@ namespace Jazz2::UI::Menu
 		_root->DrawElement(MenuLine, 0, centerX, topLine, IMenuContainer::MainLayer, Alignment::Center, Colorf::White, 1.6f);
 		_root->DrawElement(MenuLine, 1, centerX, bottomLine, IMenuContainer::MainLayer, Alignment::Center, Colorf::White, 1.6f);
 
-		int32_t charOffset = 0;
+		std::int32_t charOffset = 0;
 		// TRANSLATORS: Header in First Run section
-		_root->DrawStringShadow(_("Welcome to \f[c:0x9e7056]Jazz Jackrabbit 2\f[c] reimplementation!"), charOffset, centerX, topLine - 66.0f - 21.0f, IMenuContainer::FontLayer,
+		_root->DrawStringShadow(_("Welcome to \f[c:#9e7056]Jazz Jackrabbit 2\f[/c] reimplementation!"), charOffset, centerX, topLine - 66.0f - 21.0f, IMenuContainer::FontLayer,
 			Alignment::Center, Font::DefaultColor, 0.9f, 0.7f, 1.1f, 1.1f, 0.4f, 0.9f);
 
 		// TRANSLATORS: Subheader in First Run section
-		_root->DrawStringShadow(_f("You can choose your preferred play style.\nThis option can be changed at any time in \f[c:0x707070]%s\f[c] > \f[c:0x707070]%s\f[c] > \f[c:0x707070]%s\f[c].\nFor more information, visit %s and \uE000 Discord!", _("Options").data(), _("Gameplay").data(), _("Enhancements").data(), "\f[c:0x707070]https://deat.tk/jazz2/\f[c]"),
+		_root->DrawStringShadow(_f("You can choose your preferred play style.\nThis option can be changed at any time in \f[c:#707070]%s\f[/c] > \f[c:#707070]%s\f[/c] > \f[c:#707070]%s\f[/c].\nFor more information, visit %s and \uE000 Discord!", _("Options").data(), _("Gameplay").data(), _("Enhancements").data(), "\f[c:#707070]https://deat.tk/jazz2/\f[/c]"),
 			charOffset, centerX, topLine - 40.0f, IMenuContainer::FontLayer - 2, Alignment::Center, Font::DefaultColor,
 			0.86f, 0.7f, 0.0f, 0.0f, 0.4f, 0.9f);
 	}
@@ -65,7 +65,7 @@ namespace Jazz2::UI::Menu
 		item.Height = 68;
 	}
 
-	void FirstRunSection::OnDrawItem(Canvas* canvas, ListViewItem& item, int32_t& charOffset, bool isSelected)
+	void FirstRunSection::OnDrawItem(Canvas* canvas, ListViewItem& item, std::int32_t& charOffset, bool isSelected)
 	{
 		float centerX = canvas->ViewSize.X * 0.5f;
 

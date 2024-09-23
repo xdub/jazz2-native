@@ -8,7 +8,7 @@
 #	define NCINE_APP_NAME "Jazz² Resurrection"
 #endif
 #if !defined(NCINE_VERSION)
-#	define NCINE_VERSION "2.6.0"
+#	define NCINE_VERSION "2.8.0"
 #endif
 #if !defined(NCINE_BUILD_YEAR)
 #	define NCINE_BUILD_YEAR "2024"
@@ -33,94 +33,66 @@
 
 #include <stdlib.h>
 
-// Return assert macros
-#define RETURN_ASSERT_MSG(x, fmt, ...) do { if (!(x)) { LOGE(fmt, ##__VA_ARGS__); return; } } while (false)
-#define RETURN_ASSERT(x) do { if (!(x)) { LOGE("RETURN_ASSERT(" #x ")"); return; } } while (false)
-
-// Return macros
-#define RETURN_MSG(fmt, ...) do { LOGE(fmt, ##__VA_ARGS__); return; } while (false)
-
-// Return false assert macros
-#define RETURNF_ASSERT_MSG(x, fmt, ...) do { if (!(x)) { LOGE(fmt, ##__VA_ARGS__); return false; } } while (false)
-#define RETURNF_ASSERT(x) do { if (!(x)) { LOGE("RETURNF_ASSERT(" #x ")"); return false; } } while (false)
-
-// Return false macros
-#define RETURNF_MSG(fmt, ...) do { LOGE(fmt, ##__VA_ARGS__); return false; } while (false)
-
-#if defined(DEATH_TRACE)
-#	if defined(_MSC_VER)
-#		define BREAK() __debugbreak()
-#	else
-#		if defined(__has_builtin)
-#			if __has_builtin(__builtin_trap)
-#				define __HAS_BUILTIN_TRAP
-#			endif
-#		endif
-#		if defined(__HAS_BUILTIN_TRAP)
-#			define BREAK() __builtin_trap()
-#		else
-#			define BREAK() ::abort()
-#		endif
-#	endif
-#else
-#	define BREAK() do { } while (false)
+// Check platform-specific capabilities
+#if defined(WITH_SDL) || defined(DEATH_TARGET_WINDOWS_RT)
+#	define NCINE_HAS_GAMEPAD_RUMBLE
+#endif
+#if defined(DEATH_TARGET_ANDROID)
+#	define NCINE_HAS_NATIVE_BACK_BUTTON
+#endif
+#if !defined(DEATH_TARGET_ANDROID) && !defined(DEATH_TARGET_IOS) && !defined(DEATH_TARGET_SWITCH)
+#	define NCINE_HAS_WINDOWS
 #endif
 
+// Return assert macros
+#define RETURN_MSG(fmt, ...) do { LOGE(fmt, ##__VA_ARGS__); return; } while (false)
+#define RETURN_ASSERT_MSG(x, fmt, ...) do { if DEATH_UNLIKELY(!(x)) { LOGE(fmt, ##__VA_ARGS__); return; } } while (false)
+#define RETURN_ASSERT(x) do { if DEATH_UNLIKELY(!(x)) { LOGE("RETURN_ASSERT(" #x ")"); return; } } while (false)
+
+// Return false assert macros
+#define RETURNF_MSG(fmt, ...) do { LOGE(fmt, ##__VA_ARGS__); return false; } while (false)
+#define RETURNF_ASSERT_MSG(x, fmt, ...) do { if DEATH_UNLIKELY(!(x)) { LOGE(fmt, ##__VA_ARGS__); return false; } } while (false)
+#define RETURNF_ASSERT(x) do { if DEATH_UNLIKELY(!(x)) { LOGE("RETURNF_ASSERT(" #x ")"); return false; } } while (false)
+
 // Fatal assert macros
-#define FATAL_ASSERT_MSG(x, fmt, ...) \
-	do \
-	{ \
-		if (!(x)) \
-		{ \
-			LOGF(fmt, ##__VA_ARGS__); \
-			BREAK(); \
-		} \
+#define FATAL_MSG(fmt, ...)					\
+	do {									\
+		LOGF(fmt, ##__VA_ARGS__);			\
+		__DEATH_ASSERT_BREAK();				\
 	} while (false)
 
-#define FATAL_ASSERT(x) \
-	do \
-	{ \
-		if (!(x)) \
-		{ \
-			LOGF("FATAL_ASSERT(" #x ")"); \
-			BREAK(); \
-		} \
+#define FATAL_ASSERT_MSG(x, fmt, ...)		\
+	do {									\
+		if DEATH_UNLIKELY(!(x)) {			\
+			LOGF(fmt, ##__VA_ARGS__);		\
+			__DEATH_ASSERT_BREAK();			\
+		}									\
 	} while (false)
 
-// Fatal macros
-#define FATAL_MSG(fmt, ...) \
-	do \
-	{ \
-		LOGF(fmt, ##__VA_ARGS__); \
-		BREAK(); \
-	} while (false)
-
-#define FATAL() \
-	do \
-	{ \
-		BREAK(); \
+#define FATAL_ASSERT(x)						\
+	do {									\
+		if DEATH_UNLIKELY(!(x)) {			\
+			LOGF("FATAL_ASSERT(" #x ")");	\
+			__DEATH_ASSERT_BREAK();			\
+		}									\
 	} while (false)
 
 // Non-fatal assert macros
 #if defined(DEATH_TRACE)
-#	define ASSERT_MSG(x, fmt, ...) \
-		do \
-		{ \
-			if (!(x)) \
-			{ \
-				LOGE(fmt, ##__VA_ARGS__); \
-				BREAK(); \
-			} \
+#	define ASSERT_MSG(x, fmt, ...)			\
+		do {								\
+			if DEATH_UNLIKELY(!(x)) {		\
+				__DEATH_ASSERT_TRACE(fmt, ##__VA_ARGS__);	\
+				__DEATH_ASSERT_BREAK();		\
+			}								\
 		} while (false)
 
-#	define ASSERT(x) \
-		do \
-		{ \
-			if (!(x)) \
-			{ \
-				LOGE("ASSERT(" #x ")"); \
-				BREAK(); \
-			} \
+#	define ASSERT(x)						\
+		do {								\
+			if DEATH_UNLIKELY(!(x)) {		\
+				__DEATH_ASSERT_TRACE("ASSERT(" #x ")");	\
+				__DEATH_ASSERT_BREAK();		\
+			}								\
 		} while (false)
 #else
 #	define ASSERT_MSG(x, fmt, ...) do { } while (false)

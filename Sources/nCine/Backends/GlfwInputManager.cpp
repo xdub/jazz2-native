@@ -41,13 +41,13 @@ namespace nCine
 
 	GlfwInputManager::GlfwInputManager()
 	{
-		GlfwGfxDevice& gfxDevice = static_cast<GlfwGfxDevice&>(theApplication().gfxDevice());
+		GlfwGfxDevice& gfxDevice = static_cast<GlfwGfxDevice&>(theApplication().GetGfxDevice());
 		preScalingWidth_ = gfxDevice.width_;
 		preScalingHeight_ = gfxDevice.height_;
 
 		glfwSetMonitorCallback(monitorCallback);
 		glfwSetWindowCloseCallback(GlfwGfxDevice::windowHandle(), windowCloseCallback);
-#if GLFW_VERSION_COKMBINED >= 3300
+#if GLFW_VERSION_COMBINED >= 3300
 		glfwSetWindowContentScaleCallback(GlfwGfxDevice::windowHandle(), windowContentScaleCallback);
 #endif
 		glfwSetWindowSizeCallback(GlfwGfxDevice::windowHandle(), windowSizeCallback);
@@ -59,7 +59,39 @@ namespace nCine
 		glfwSetScrollCallback(GlfwGfxDevice::windowHandle(), scrollCallback);
 		glfwSetJoystickCallback(joystickCallback);
 
-		joyMapping_.init(this);
+#if defined(DEATH_TRACE) && !defined(DEATH_TARGET_EMSCRIPTEN)
+		for (std::int32_t i = GLFW_JOYSTICK_1; i <= GLFW_JOYSTICK_LAST; i++) {
+			if (glfwJoystickPresent(i)) {
+				const int joyId = i - GLFW_JOYSTICK_1;
+
+				int numButtons = -1;
+				int numAxes = -1;
+				int numHats = -1;
+				glfwGetJoystickButtons(i, &numButtons);
+				glfwGetJoystickAxes(i, &numAxes);
+#	if GLFW_VERSION_COMBINED >= 3300
+				glfwGetJoystickHats(i, &numHats);
+#	else
+				numHats = 0;
+#	endif
+				if (numButtons <= 0 && numAxes <= 0 && numHats <= 0) {
+					LOGI("Gamepad %d has been connected, but reports no axes/buttons/hats - skipping", joyId);
+					continue;
+				}
+
+#	if GLFW_VERSION_COMBINED >= 3300
+				// It seems `glfwGetJoystickGUID` can cause crash if the gamepad is quickly disconnected
+				const char* guid = glfwGetJoystickGUID(i);
+#	else
+				const char* guid = "default";
+#	endif
+				LOGI("Gamepad %d \"%s\" [%s] has been connected - %d axes, %d buttons, %d hats",
+					   joyId, glfwGetJoystickName(i), guid, numAxes, numButtons, numHats);
+			}
+		}
+#endif
+
+		joyMapping_.Init(this);
 
 #if defined(DEATH_TARGET_EMSCRIPTEN)
 		emscripten_set_touchstart_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, this, false, GlfwInputManager::emscriptenHandleTouch);
@@ -112,7 +144,7 @@ namespace nCine
 		for (unsigned int joyId = 0; joyId < MaxNumJoysticks; joyId++) {
 			if (glfwJoystickPresent(GLFW_JOYSTICK_1 + joyId)) {
 				joystickStates_[joyId].buttons_ = glfwGetJoystickButtons(joyId, &joystickStates_[joyId].numButtons_);
-#if GLFW_VERSION_COKMBINED >= 3300
+#if GLFW_VERSION_COMBINED >= 3300
 				joystickStates_[joyId].hats_ = glfwGetJoystickHats(joyId, &joystickStates_[joyId].numHats_);
 #else
 				joystickStates_[joyId].hats_ = 0;
@@ -143,7 +175,7 @@ namespace nCine
 	{
 #if defined(DEATH_TARGET_EMSCRIPTEN)
 		return JoystickGuidType::Default;
-#elif GLFW_VERSION_COKMBINED >= 3300
+#elif GLFW_VERSION_COMBINED >= 3300
 		if (isJoyPresent(joyId)) {
 			static const char XinputPrefix[] = "78696e707574";
 			const char* guid = glfwGetJoystickGUID(joyId);
@@ -174,7 +206,7 @@ namespace nCine
 	{
 		int numHats = -1;
 		if (isJoyPresent(joyId)) {
-#if GLFW_VERSION_COKMBINED >= 3300
+#if GLFW_VERSION_COMBINED >= 3300
 			glfwGetJoystickHats(GLFW_JOYSTICK_1 + joyId, &numHats);
 #else
 			numHats = 0;
@@ -218,7 +250,7 @@ namespace nCine
 				case Cursor::HiddenLocked: glfwSetInputMode(GlfwGfxDevice::windowHandle(), GLFW_CURSOR, GLFW_CURSOR_DISABLED); break;
 			}
 
-#if GLFW_VERSION_COKMBINED >= 3300
+#if GLFW_VERSION_COMBINED >= 3300
 			// Enable raw mouse motion (if supported) when disabling the cursor
 			const bool enableRawMouseMotion = (cursor == Cursor::HiddenLocked && glfwRawMouseMotionSupported() == GLFW_TRUE);
 			glfwSetInputMode(GlfwGfxDevice::windowHandle(), GLFW_RAW_MOUSE_MOTION, enableRawMouseMotion ? GLFW_TRUE : GLFW_FALSE);
@@ -233,7 +265,7 @@ namespace nCine
 
 	void GlfwInputManager::monitorCallback(GLFWmonitor* monitor, int event)
 	{
-		GlfwGfxDevice& gfxDevice = static_cast<GlfwGfxDevice&>(theApplication().gfxDevice());
+		GlfwGfxDevice& gfxDevice = static_cast<GlfwGfxDevice&>(theApplication().GetGfxDevice());
 		gfxDevice.updateMonitors();
 	}
 
@@ -245,7 +277,7 @@ namespace nCine
 		}
 
 		if (shouldQuit) {
-			theApplication().quit();
+			theApplication().Quit();
 		} else {
 			glfwSetWindowShouldClose(window, GLFW_FALSE);
 		}
@@ -253,10 +285,10 @@ namespace nCine
 
 	void GlfwInputManager::windowContentScaleCallback(GLFWwindow* window, float xscale, float yscale)
 	{
-		GlfwGfxDevice& gfxDevice = static_cast<GlfwGfxDevice&>(theApplication().gfxDevice());
+		GlfwGfxDevice& gfxDevice = static_cast<GlfwGfxDevice&>(theApplication().GetGfxDevice());
 
 		// Revert the window size change if it happened the same frame its scale also changed
-		if (lastFrameWindowSizeChanged_ == theApplication().numFrames()) {
+		if (lastFrameWindowSizeChanged_ == theApplication().GetFrameCount()) {
 			gfxDevice.width_ = preScalingWidth_;
 			gfxDevice.height_ = preScalingHeight_;
 		}
@@ -266,12 +298,12 @@ namespace nCine
 
 	void GlfwInputManager::windowSizeCallback(GLFWwindow* window, int width, int height)
 	{
-		GlfwGfxDevice& gfxDevice = static_cast<GlfwGfxDevice&>(theApplication().gfxDevice());
+		GlfwGfxDevice& gfxDevice = static_cast<GlfwGfxDevice&>(theApplication().GetGfxDevice());
 
 		// Save previous resolution for if a content scale event is coming just after a resize
 		preScalingWidth_ = gfxDevice.width_;
 		preScalingHeight_ = gfxDevice.height_;
-		lastFrameWindowSizeChanged_ = theApplication().numFrames();
+		lastFrameWindowSizeChanged_ = theApplication().GetFrameCount();
 
 		gfxDevice.width_ = width;
 		gfxDevice.height_ = height;
@@ -285,11 +317,11 @@ namespace nCine
 
 	void GlfwInputManager::framebufferSizeCallback(GLFWwindow* window, int width, int height)
 	{
-		GlfwGfxDevice& gfxDevice = static_cast<GlfwGfxDevice&>(theApplication().gfxDevice());
+		GlfwGfxDevice& gfxDevice = static_cast<GlfwGfxDevice&>(theApplication().GetGfxDevice());
 		gfxDevice.drawableWidth_ = width;
 		gfxDevice.drawableHeight_ = height;
 
-		theApplication().resizeScreenViewport(width, height);
+		theApplication().ResizeScreenViewport(width, height);
 	}
 
 	void GlfwInputManager::keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
@@ -328,7 +360,7 @@ namespace nCine
 		}
 
 		mouseState_.x = static_cast<int>(x);
-		mouseState_.y = theApplication().height() - static_cast<int>(y);
+		mouseState_.y = theApplication().GetHeight() - static_cast<int>(y);
 		inputEventHandler_->OnMouseMove(mouseState_);
 	}
 
@@ -341,7 +373,7 @@ namespace nCine
 		double xCursor, yCursor;
 		glfwGetCursorPos(window, &xCursor, &yCursor);
 		mouseEvent_.x = static_cast<int>(xCursor);
-		mouseEvent_.y = theApplication().height() - static_cast<int>(yCursor);
+		mouseEvent_.y = theApplication().GetHeight() - static_cast<int>(yCursor);
 		mouseEvent_.button_ = button;
 
 		if (action == GLFW_PRESS) {
@@ -368,37 +400,43 @@ namespace nCine
 		joyConnectionEvent_.joyId = joyId;
 
 		if (event == GLFW_CONNECTED) {
-#if defined(DEATH_TRACE)
 			int numButtons = -1;
 			int numAxes = -1;
 			int numHats = -1;
 			glfwGetJoystickButtons(joy, &numButtons);
-#	if defined(DEATH_TARGET_EMSCRIPTEN)
-			numHats = 0;
-			const char* guid = "default";
-#	elif GLFW_VERSION_COKMBINED >= 3300
+			glfwGetJoystickAxes(joy, &numAxes);
+#if !defined(DEATH_TARGET_EMSCRIPTEN) && GLFW_VERSION_COMBINED >= 3300
 			glfwGetJoystickHats(joy, &numHats);
+#else
+			numHats = 0;
+#endif
+			if (numButtons <= 0 && numAxes <= 0 && numHats <= 0) {
+				LOGI("Gamepad %d has been connected, but reports no axes/buttons/hats - skipping", joyId);
+				return;
+			}
+
+#if defined(DEATH_TRACE)
+#	if !defined(DEATH_TARGET_EMSCRIPTEN) && GLFW_VERSION_COMBINED >= 3300
+			// It seems `glfwGetJoystickGUID` can cause crash if the gamepad is quickly disconnected
 			const char* guid = glfwGetJoystickGUID(joy);
 #	else
-			numHats = 0;
-			const char* guid = nullptr;
+			const char* guid = "default";
 #	endif
-			glfwGetJoystickAxes(joy, &numAxes);
-			LOGI("Joystick %d \"%s\" (%s) has been connected - %d axes, %d buttons, %d hats",
+			LOGI("Gamepad %d \"%s\" [%s] has been connected - %d axes, %d buttons, %d hats",
 			       joyId, glfwGetJoystickName(joy), guid, numAxes, numButtons, numHats);
 #endif
 			updateJoystickStates();
 			
 			if (inputEventHandler_ != nullptr) {
-				joyMapping_.onJoyConnected(joyConnectionEvent_);
+				joyMapping_.OnJoyConnected(joyConnectionEvent_);
 				inputEventHandler_->OnJoyConnected(joyConnectionEvent_);
 			}
 		} else if (event == GLFW_DISCONNECTED) {
 			joyEventsSimulator_.resetJoystickState(joyId);
-			LOGI("Joystick %d has been disconnected", joyId);
+			LOGI("Gamepad %d has been disconnected", joyId);
 			if (inputEventHandler_ != nullptr) {
 				inputEventHandler_->OnJoyDisconnected(joyConnectionEvent_);
-				joyMapping_.onJoyDisconnected(joyConnectionEvent_);
+				joyMapping_.OnJoyDisconnected(joyConnectionEvent_);
 			}
 		}
 	}
@@ -422,7 +460,7 @@ namespace nCine
 				touchEvent.type = TouchEventType::Move;
 				break;
 			default:
-				touchEvent.type = (touchEvent.count >= 0 ? TouchEventType::PointerUp : TouchEventType::Up);
+				touchEvent.type = (touchEvent.count >= 2 ? TouchEventType::PointerUp : TouchEventType::Up);
 				break;
 		}
 
@@ -438,8 +476,9 @@ namespace nCine
 			}
 
 			touchEvent.actionIndex = pointer.id;
-			inputManager->inputEventHandler_->OnTouchEvent(touchEvent);
 		}
+
+		inputManager->inputEventHandler_->OnTouchEvent(touchEvent);
 
 		return 1;
 	}
@@ -466,10 +505,10 @@ namespace nCine
 				joyButtonEvent_.joyId = joyId;
 				joyButtonEvent_.buttonId = buttonId;
 				if (joystickStates_[joyId].buttons_[buttonId] == GLFW_PRESS) {
-					joyMapping_.onJoyButtonPressed(joyButtonEvent_);
+					joyMapping_.OnJoyButtonPressed(joyButtonEvent_);
 					inputEventHandler_->OnJoyButtonPressed(joyButtonEvent_);
 				} else if (joystickStates_[joyId].buttons_[buttonId] == GLFW_RELEASE) {
-					joyMapping_.onJoyButtonReleased(joyButtonEvent_);
+					joyMapping_.OnJoyButtonReleased(joyButtonEvent_);
 					inputEventHandler_->OnJoyButtonReleased(joyButtonEvent_);
 				}
 			}
@@ -488,7 +527,7 @@ namespace nCine
 				joyHatEvent_.hatId = hatId;
 				joyHatEvent_.hatState = hats[hatId];
 
-				joyMapping_.onJoyHatMoved(joyHatEvent_);
+				joyMapping_.OnJoyHatMoved(joyHatEvent_);
 				inputEventHandler_->OnJoyHatMoved(joyHatEvent_);
 			}
 		}
@@ -505,7 +544,7 @@ namespace nCine
 				joyAxisEvent_.joyId = joyId;
 				joyAxisEvent_.axisId = axisId;
 				joyAxisEvent_.value = axesValues[axisId];
-				joyMapping_.onJoyAxisMoved(joyAxisEvent_);
+				joyMapping_.OnJoyAxisMoved(joyAxisEvent_);
 				inputEventHandler_->OnJoyAxisMoved(joyAxisEvent_);
 			}
 		}

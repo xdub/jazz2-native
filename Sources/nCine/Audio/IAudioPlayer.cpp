@@ -81,9 +81,8 @@ namespace nCine
 	{
 		position_ = position;
 		if (state_ == PlayerState::Playing) {
-			IAudioDevice& device = theServiceLocator().audioDevice();
-			Vector3f adjustedPos = getAdjustedPosition(device, position_, GetFlags(PlayerFlags::SourceRelative), GetFlags(PlayerFlags::As2D));
-			alSource3f(sourceId_, AL_POSITION, adjustedPos.X, adjustedPos.Y, adjustedPos.Z);
+			IAudioDevice& device = theServiceLocator().GetAudioDevice();
+			setPositionInternal(getAdjustedPosition(device, position_, GetFlags(PlayerFlags::SourceRelative), GetFlags(PlayerFlags::As2D)));
 		}
 	}
 
@@ -107,6 +106,11 @@ namespace nCine
 			alSourcei(sourceId_, AL_DIRECT_FILTER, 0);
 		}
 #endif
+	}
+
+	void IAudioPlayer::setPositionInternal(const Vector3f& position)
+	{
+		alSource3f(sourceId_, AL_POSITION, position.X, position.Y, position.Z);
 	}
 
 	Vector3f IAudioPlayer::getAdjustedPosition(IAudioDevice& device, const Vector3f& pos, bool isSourceRelative, bool isAs2D)
@@ -133,7 +137,7 @@ namespace nCine
 		adjustedPos.Z *= 0.5f;
 
 		// Normalize audio position for smooth panning when near. Do it in physical units, so this remains constant regardless of unit changes.
-		constexpr float SmoothPanRadius = 16.0f;
+		constexpr float SmoothPanRadius = 26.0f;
 		float listenerSpaceDist = adjustedPos.Length();
 		if (listenerSpaceDist < SmoothPanRadius) {
 			float panningActive = listenerSpaceDist / SmoothPanRadius;

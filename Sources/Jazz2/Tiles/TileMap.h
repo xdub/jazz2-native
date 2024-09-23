@@ -53,7 +53,7 @@ namespace Jazz2::Tiles
 		Vector4f Color;
 	};
 
-	enum class LayerTileFlags : uint8_t {
+	enum class LayerTileFlags : std::uint8_t {
 		None = 0x00,
 
 		FlipX = 0x01,
@@ -79,12 +79,10 @@ namespace Jazz2::Tiles
 	};
 
 	struct TileMapLayer {
-		bool Visible;
-
 		std::unique_ptr<LayerTile[]> Layout;
 		Vector2i LayoutSize;
-
 		LayerDescription Description;
+		bool Visible;
 	};
 
 	struct AnimatedTileFrame {
@@ -160,6 +158,7 @@ namespace Jazz2::Tiles
 		void SetPitType(PitType value);
 
 		void OnUpdate(float timeMult) override;
+		void OnEndFrame();
 		bool OnDraw(RenderQueue& renderQueue) override;
 
 		bool IsTileEmpty(std::int32_t tx, std::int32_t ty);
@@ -225,7 +224,6 @@ namespace Jazz2::Tiles
 			std::unique_ptr<Viewport> _view;
 			std::unique_ptr<Camera> _camera;
 			SmallVector<std::unique_ptr<RenderCommand>, 0> _renderCommands;
-			RenderCommand _outputRenderCommand;
 			bool _alreadyRendered;
 		};
 
@@ -247,7 +245,7 @@ namespace Jazz2::Tiles
 		std::int32_t _texturedBackgroundLayer;
 		TexturedBackgroundPass _texturedBackgroundPass;
 
-		void DrawLayer(RenderQueue& renderQueue, TileMapLayer& layer);
+		void DrawLayer(RenderQueue& renderQueue, TileMapLayer& layer, const Rectf& cullingRect, const Vector2f& viewCenter);
 		static float TranslateCoordinate(float coordinate, float speed, float offset, std::int32_t viewSize, bool isY);
 		RenderCommand* RentRenderCommand(LayerRendererType type);
 
@@ -258,7 +256,7 @@ namespace Jazz2::Tiles
 		void UpdateDebris(float timeMult);
 		void DrawDebris(RenderQueue& renderQueue);
 
-		void RenderTexturedBackground(RenderQueue& renderQueue, TileMapLayer& layer, float x, float y);
+		void RenderTexturedBackground(RenderQueue& renderQueue, const Rectf& cullingRect, const Vector2f& viewCenter, TileMapLayer& layer, float x, float y);
 
 		TileSet* ResolveTileSet(std::int32_t& tileId);
 		std::int32_t ResolveTileID(LayerTile& tile);

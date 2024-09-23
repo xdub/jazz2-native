@@ -105,8 +105,10 @@ list(APPEND SOURCES
 	${NCINE_SOURCE_DIR}/Main.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/ContentResolver.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/LevelHandler.cpp
+	${NCINE_SOURCE_DIR}/Jazz2/PlayerViewport.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/PreferencesCache.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/Resources.cpp
+	${NCINE_SOURCE_DIR}/Jazz2/RumbleProcessor.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/Actors/ActorBase.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/Actors/Player.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/Actors/PlayerCorpse.cpp
@@ -247,6 +249,7 @@ list(APPEND SOURCES
 	${NCINE_SOURCE_DIR}/Jazz2/UI/ControlScheme.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/UI/DiscordRpcClient.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/UI/Font.cpp
+	${NCINE_SOURCE_DIR}/Jazz2/UI/FormattedTextBlock.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/UI/HUD.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/UI/LoadingHandler.cpp
 	${NCINE_SOURCE_DIR}/Jazz2/UI/RgbLights.cpp

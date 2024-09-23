@@ -181,8 +181,8 @@ namespace Jazz2::Actors::Bosses
 		bool found = false;
 		Vector2f targetPos = Vector2f(FLT_MAX, FLT_MAX);
 
-		auto& players = _levelHandler->GetPlayers();
-		for (auto& player : players) {
+		auto players = _levelHandler->GetPlayers();
+		for (auto* player : players) {
 			Vector2f newPos = player->GetPos();
 			if ((_pos - newPos).SqrLength() < (_pos - targetPos).SqrLength()) {
 				targetPos = newPos;
@@ -204,10 +204,12 @@ namespace Jazz2::Actors::Bosses
 
 	TurtleBoss::Mace::~Mace()
 	{
+#if defined(WITH_AUDIO)
 		if (_sound != nullptr) {
 			_sound->stop();
 			_sound = nullptr;
 		}
+#endif
 	}
 
 	Task<bool> TurtleBoss::Mace::OnActivatedAsync(const ActorActivationDetails& details)
@@ -225,10 +227,12 @@ namespace Jazz2::Actors::Bosses
 
 		FollowNearestPlayer();
 
+#if defined(WITH_AUDIO)
 		_sound = PlaySfx("Mace"_s, 0.7f);
 		if (_sound != nullptr) {
 			_sound->setLooping(true);
 		}
+#endif
 
 		async_return true;
 	}
@@ -237,9 +241,11 @@ namespace Jazz2::Actors::Bosses
 	{
 		MoveInstantly(Vector2f(_speed.X * timeMult, _speed.Y * timeMult), MoveType::Relative | MoveType::Force);
 
+#if defined(WITH_AUDIO)
 		if (_sound != nullptr) {
 			_sound->setPosition(Vector3f(_pos.X, _pos.Y, 0.8f));
 		}
+#endif
 
 		if (_returning) {
 			Vector2f diff = (_targetSpeed - _speed);
@@ -269,8 +275,8 @@ namespace Jazz2::Actors::Bosses
 		bool found = false;
 		Vector2f targetPos = Vector2f(FLT_MAX, FLT_MAX);
 
-		auto& players = _levelHandler->GetPlayers();
-		for (auto player : players) {
+		auto players = _levelHandler->GetPlayers();
+		for (auto* player : players) {
 			Vector2f newPos = player->GetPos();
 			if ((_pos - newPos).SqrLength() < (_pos - targetPos).SqrLength()) {
 				targetPos = newPos;

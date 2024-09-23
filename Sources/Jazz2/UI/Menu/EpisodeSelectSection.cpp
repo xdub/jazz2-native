@@ -76,7 +76,7 @@ namespace Jazz2::UI::Menu
 						if (_selectedIndex > 0) {
 							_selectedIndex--;
 						} else {
-							_selectedIndex = (int32_t)(_items.size() - 1);
+							_selectedIndex = (std::int32_t)(_items.size() - 1);
 						}
 						EnsureVisibleSelected();
 					} else if (_root->ActionHit(PlayerActions::Down)) {
@@ -117,7 +117,7 @@ namespace Jazz2::UI::Menu
 		_root->DrawElement(MenuLine, 0, centerX, topLine, IMenuContainer::MainLayer, Alignment::Center, Colorf::White, 1.6f);
 		_root->DrawElement(MenuLine, 1, centerX, bottomLine, IMenuContainer::MainLayer, Alignment::Center, Colorf::White, 1.6f);
 
-		int32_t charOffset = 0;
+		std::int32_t charOffset = 0;
 		_root->DrawStringShadow(
 #if defined(WITH_MULTIPLAYER)
 			_multiplayer ? _("Play Story in Cooperation") : _("Play Story"),
@@ -128,7 +128,7 @@ namespace Jazz2::UI::Menu
 			Alignment::Center, Colorf(0.46f, 0.46f, 0.46f, 0.5f), 0.9f, 0.7f, 1.1f, 1.1f, 0.4f, 0.9f);
 	}
 
-	void EpisodeSelectSection::OnDrawEmptyText(Canvas* canvas, int32_t& charOffset)
+	void EpisodeSelectSection::OnDrawEmptyText(Canvas* canvas, std::int32_t& charOffset)
 	{
 		Vector2i viewSize = canvas->ViewSize;
 
@@ -136,7 +136,7 @@ namespace Jazz2::UI::Menu
 			Alignment::Center, Colorf(0.62f, 0.44f, 0.34f, 0.5f), 0.9f, 0.4f, 0.6f, 0.6f, 0.8f, 0.88f);
 	}
 
-	void EpisodeSelectSection::OnDrawItem(Canvas* canvas, ListViewItem& item, int32_t& charOffset, bool isSelected)
+	void EpisodeSelectSection::OnDrawItem(Canvas* canvas, ListViewItem& item, std::int32_t& charOffset, bool isSelected)
 	{
 		float centerX = canvas->ViewSize.X * 0.5f;
 
@@ -169,7 +169,7 @@ namespace Jazz2::UI::Menu
 				}
 
 				if (!_multiplayer && (item.Item.Flags & EpisodeDataFlags::CanContinue) == EpisodeDataFlags::CanContinue) {
-					float expandX = centerX + (item.Item.Description.DisplayName.size() + 3) * 2.8f * size + 40.0f;
+					float expandX = centerX + (item.Item.Description.DisplayName.size() + 3) * 2.8f * size + (canvas->ViewSize.X >= 400 ? 40.0f : 0.0f);
 					float moveX = expandedAnimation3 * -12.0f;
 					_root->DrawStringShadow(">"_s, charOffset, expandX + moveX, item.Y, IMenuContainer::FontLayer + 20,
 						Alignment::Right, Colorf(0.5f, 0.5f, 0.5f, 0.5f * std::min(1.0f, 0.6f + _animation)), 0.8f, 1.1f, 1.1f, 0.4f, 0.4f);
@@ -184,9 +184,9 @@ namespace Jazz2::UI::Menu
 					}
 				}
 			} else {
-				int32_t prevEpisodeIndex = -1;
+				std::int32_t prevEpisodeIndex = -1;
 				if (!item.Item.Description.PreviousEpisode.empty()) {
-					for (int32_t j = 0; j < _items.size(); j++) {
+					for (std::int32_t j = 0; j < _items.size(); j++) {
 						if (item.Item.Description.PreviousEpisode == _items[j].Item.Description.Name) {
 							prevEpisodeIndex = j;
 							break;
@@ -367,7 +367,7 @@ namespace Jazz2::UI::Menu
 
 		PlayerType players[] = { (PlayerType)((episodeContinue->State.DifficultyAndPlayerType >> 4) & 0x0f) };
 		LevelInitialization levelInit(selectedItem.Item.Description.Name, episodeContinue->LevelName, (GameDifficulty)(episodeContinue->State.DifficultyAndPlayerType & 0x0f),
-			PreferencesCache::EnableReforgedGameplay, false, players, countof(players));
+			PreferencesCache::EnableReforgedGameplay, false, players);
 
 		if ((episodeContinue->State.Flags & EpisodeContinuationFlags::CheatsUsed) == EpisodeContinuationFlags::CheatsUsed) {
 			levelInit.CheatsUsed = true;

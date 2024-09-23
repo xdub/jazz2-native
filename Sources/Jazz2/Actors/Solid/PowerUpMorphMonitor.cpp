@@ -40,8 +40,8 @@ namespace Jazz2::Actors::Solid
 
 		SetAnimation(AnimState::Default);
 
-		auto& players = _levelHandler->GetPlayers();
-		for (auto& player : players) {
+		auto players = _levelHandler->GetPlayers();
+		for (auto* player : players) {
 			std::optional<PlayerType> playerType = GetTargetType(player->GetPlayerType());
 			if (playerType) {
 				switch (*playerType) {
@@ -109,7 +109,9 @@ namespace Jazz2::Actors::Solid
 	{
 		std::optional<PlayerType> playerType = GetTargetType(player->GetPlayerType());
 		if (playerType) {
-			player->MorphTo(*playerType);
+			if (!player->MorphTo(*playerType)) {
+				player->MorphTo(PlayerType::Jazz);
+			}
 
 			DecreaseHealth(INT32_MAX, player);
 			PlaySfx("Break"_s);

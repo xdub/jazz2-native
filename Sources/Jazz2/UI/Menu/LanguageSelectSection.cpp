@@ -1,5 +1,4 @@
 ﻿#include "LanguageSelectSection.h"
-#include "MainMenu.h"
 #include "MenuResources.h"
 #include "../../PreferencesCache.h"
 #include "../../../nCine/I18n.h"
@@ -15,7 +14,7 @@ namespace Jazz2::UI::Menu
 		auto& resolver = ContentResolver::Get();
 
 		auto& defaultLanguage = _items.emplace_back();
-		defaultLanguage.Item.DisplayName = "English \f[c:0x707070]· en"_s;
+		defaultLanguage.Item.DisplayName = "English \f[c:#707070]· en"_s;
 
 		// Search both "Content/Translations/" and "Cache/Translations/"
 		for (auto item : fs::Directory(fs::CombinePath(resolver.GetContentPath(), "Translations"_s), fs::EnumerationOptions::SkipDirectories)) {
@@ -39,19 +38,19 @@ namespace Jazz2::UI::Menu
 		_root->DrawElement(MenuLine, 0, centerX, topLine, IMenuContainer::MainLayer, Alignment::Center, Colorf::White, 1.6f);
 		_root->DrawElement(MenuLine, 1, centerX, bottomLine, IMenuContainer::MainLayer, Alignment::Center, Colorf::White, 1.6f);
 
-		int32_t charOffset = 0;
+		std::int32_t charOffset = 0;
 		_root->DrawStringShadow(_("Language"), charOffset, centerX, topLine - 21.0f, IMenuContainer::FontLayer,
 			Alignment::Center, Colorf(0.46f, 0.46f, 0.46f, 0.5f), 0.9f, 0.7f, 1.1f, 1.1f, 0.4f, 0.9f);
 	}
 
-	void LanguageSelectSection::OnDrawItem(Canvas* canvas, ListViewItem& item, int32_t& charOffset, bool isSelected)
+	void LanguageSelectSection::OnDrawItem(Canvas* canvas, ListViewItem& item, std::int32_t& charOffset, bool isSelected)
 	{
 		float centerX = canvas->ViewSize.X * 0.5f;
 
 		if (isSelected) {
 			float size = 0.5f + IMenuContainer::EaseOutElastic(_animation) * 0.6f;
 
-			size_t realNameLength;
+			std::size_t realNameLength;
 			StringView realNameEnd = item.Item.DisplayName.find('\f');
 			if (realNameEnd != nullptr) {
 				realNameLength = realNameEnd.data() - item.Item.DisplayName.data() + 4;
@@ -114,6 +113,6 @@ namespace Jazz2::UI::Menu
 
 		auto& episode = _items.emplace_back();
 		episode.Item.FileName = languageFile;
-		episode.Item.DisplayName = I18n::GetLanguageName(language) + " \f[c:0x707070]· "_s + language;
+		episode.Item.DisplayName = I18n::GetLanguageName(language) + " \f[c:#707070]· "_s + language;
 	}
 }

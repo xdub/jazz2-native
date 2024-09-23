@@ -34,7 +34,7 @@ namespace Jazz2::Collisions
 	using nCine::AABBf;
 	using nCine::Vector2f;
 
-	constexpr int32_t NullNode = -1;
+	constexpr std::int32_t NullNode = -1;
 	constexpr float LengthUnitsPerMeter = 1.0f;
 	constexpr float AabbExtension = 0.1f * LengthUnitsPerMeter;
 	constexpr float AabbMultiplier = 4.0f;
@@ -42,29 +42,29 @@ namespace Jazz2::Collisions
 	/// A node in the dynamic tree. The client does not interact with this directly.
 	struct TreeNode
 	{
-		bool IsLeaf() const
-		{
-			return (child1 == NullNode);
-		}
-
 		/// Enlarged AABB
-		AABBf aabb;
+		AABBf Aabb;
 
-		void* userData;
+		void* UserData;
 
 		union
 		{
-			int32_t parent;
-			int32_t next;
+			std::int32_t Parent;
+			std::int32_t Next;
 		};
 
-		int32_t child1;
-		int32_t child2;
+		std::int32_t Child1;
+		std::int32_t Child2;
 
 		// leaf = 0, free node = -1
-		int32_t height;
+		std::int32_t Height;
 
-		bool moved;
+		bool Moved;
+
+		bool IsLeaf() const
+		{
+			return (Child1 == NullNode);
+		}
 	};
 
 	/// A dynamic AABB tree broad-phase, inspired by Nathanael Presson's btDbvt.
@@ -85,26 +85,26 @@ namespace Jazz2::Collisions
 		~DynamicTree();
 
 		/// Create a proxy. Provide a tight fitting AABB and a userData pointer.
-		int32_t CreateProxy(const AABBf& aabb, void* userData);
+		std::int32_t CreateProxy(const AABBf& aabb, void* userData);
 
 		/// Destroy a proxy. This asserts if the id is invalid.
-		void DestroyProxy(int32_t proxyId);
+		void DestroyProxy(std::int32_t proxyId);
 
 		/// Move a proxy with a swepted AABB. If the proxy has moved outside of its fattened AABB,
 		/// then the proxy is removed from the tree and re-inserted. Otherwise
 		/// the function returns immediately.
 		/// @return true if the proxy was re-inserted.
-		bool MoveProxy(int32_t proxyId, const AABBf& aabb1, const Vector2f& displacement);
+		bool MoveProxy(std::int32_t proxyId, const AABBf& aabb1, const Vector2f& displacement);
 
 		/// Get proxy user data.
 		/// @return the proxy user data or 0 if the id is invalid.
-		void* GetUserData(int32_t proxyId) const;
+		void* GetUserData(std::int32_t proxyId) const;
 
-		bool WasMoved(int32_t proxyId) const;
-		void ClearMoved(int32_t proxyId);
+		bool WasMoved(std::int32_t proxyId) const;
+		void ClearMoved(std::int32_t proxyId);
 
 		/// Get the fat AABB for a proxy.
-		const AABBf& GetFatAABB(int32_t proxyId) const;
+		const AABBf& GetFatAABB(std::int32_t proxyId) const;
 
 		/// Query an AABB for overlapping proxies. The callback class
 		/// is called for each proxy that overlaps the supplied AABB.
@@ -126,11 +126,11 @@ namespace Jazz2::Collisions
 
 		/// Compute the height of the binary tree in O(N) time. Should not be
 		/// called often.
-		int32_t GetHeight() const;
+		std::int32_t GetHeight() const;
 
 		/// Get the maximum balance of an node in the tree. The balance is the difference
 		/// in height of the two children of a node.
-		int32_t GetMaxBalance() const;
+		std::int32_t GetMaxBalance() const;
 
 		/// Get the ratio of the sum of the node areas to the root area.
 		float GetAreaRatio() const;
@@ -141,82 +141,83 @@ namespace Jazz2::Collisions
 		/// Shift the world origin. Useful for large worlds.
 		/// The shift formula is: position -= newOrigin
 		/// @param newOrigin the new origin with respect to the old origin
-		void ShiftOrigin(const Vector2f& newOrigin);
+		void ShiftOrigin(Vector2f newOrigin);
 
 	private:
+		static constexpr std::int32_t DefaultNodeCapacity = /*16*/128;
 
-		int32_t AllocateNode();
-		void FreeNode(int32_t node);
+		std::int32_t AllocateNode();
+		void FreeNode(std::int32_t node);
 
-		void InsertLeaf(int32_t node);
-		void RemoveLeaf(int32_t node);
+		void InsertLeaf(std::int32_t node);
+		void RemoveLeaf(std::int32_t node);
 
-		int32_t Balance(int32_t index);
+		std::int32_t Balance(std::int32_t index);
 
-		int32_t ComputeHeight() const;
-		int32_t ComputeHeight(int32_t nodeId) const;
+		std::int32_t ComputeHeight() const;
+		std::int32_t ComputeHeight(std::int32_t nodeId) const;
 
-		void ValidateStructure(int32_t index) const;
-		//void ValidateMetrics(int32_t index) const;
+		void ValidateStructure(std::int32_t index) const;
+		//void ValidateMetrics(std::int32_t index) const;
 
-		int32_t m_root;
+		std::int32_t _root;
 
-		TreeNode* m_nodes;
-		int32_t m_nodeCount;
-		int32_t m_nodeCapacity;
+		TreeNode* _nodes;
+		std::int32_t _nodeCount;
+		std::int32_t _nodeCapacity;
 
-		int32_t m_freeList;
+		std::int32_t _freeList;
 
-		int32_t m_insertionCount;
+		std::int32_t _insertionCount;
 	};
 
-	inline void* DynamicTree::GetUserData(int32_t proxyId) const
+	inline void* DynamicTree::GetUserData(std::int32_t proxyId) const
 	{
 		//b2Assert(0 <= proxyId && proxyId < m_nodeCapacity);
-		return m_nodes[proxyId].userData;
+		return _nodes[proxyId].UserData;
 	}
 
-	inline bool DynamicTree::WasMoved(int32_t proxyId) const
+	inline bool DynamicTree::WasMoved(std::int32_t proxyId) const
 	{
 		//b2Assert(0 <= proxyId && proxyId < m_nodeCapacity);
-		return m_nodes[proxyId].moved;
+		return _nodes[proxyId].Moved;
 	}
 
-	inline void DynamicTree::ClearMoved(int32_t proxyId)
+	inline void DynamicTree::ClearMoved(std::int32_t proxyId)
 	{
 		//b2Assert(0 <= proxyId && proxyId < m_nodeCapacity);
-		m_nodes[proxyId].moved = false;
+		_nodes[proxyId].Moved = false;
 	}
 
-	inline const AABBf& DynamicTree::GetFatAABB(int32_t proxyId) const
+	inline const AABBf& DynamicTree::GetFatAABB(std::int32_t proxyId) const
 	{
 		//b2Assert(0 <= proxyId && proxyId < m_nodeCapacity);
-		return m_nodes[proxyId].aabb;
+		return _nodes[proxyId].Aabb;
 	}
 
 	template<typename T>
 	inline void DynamicTree::Query(T* callback, const AABBf& aabb) const
 	{
-		SmallVector<int32_t, 256> stack;
-		stack.push_back(m_root);
+		SmallVector<std::int32_t, 256> stack;
+		stack.push_back(_root);
 
 		while (!stack.empty()) {
-			int32_t nodeId = stack.pop_back_val();
+			std::int32_t nodeId = stack.pop_back_val();
 			if (nodeId == NullNode) {
 				continue;
 			}
 
-			const TreeNode* node = m_nodes + nodeId;
+			const TreeNode* node = &_nodes[nodeId];
 
-			if (node->aabb.Overlaps(aabb)) {
+			if (node->Aabb.Overlaps(aabb)) {
 				if (node->IsLeaf()) {
 					bool proceed = callback->OnCollisionQuery(nodeId);
 					if (!proceed) {
 						return;
 					}
 				} else {
-					stack.push_back(node->child1);
-					stack.push_back(node->child2);
+					stack.push_back(node->Child1);
+					stack.push_back(node->Child2);
 				}
 			}
 		}

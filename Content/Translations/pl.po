@@ -1,17 +1,17 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: jazz2-resurrection\n"
-"POT-Creation-Date: 2024-04-04 21:45+0200\n"
+"POT-Creation-Date: 2024-08-19 20:14+0200\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
-"Language-Team: Przetłumaczone na język polski: Patrxgt\n"
+"Language-Team: Patrxgt & Klodizaur\n"
 "Language: pl\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=3; plural=(n==1 ? 0 : n%10>=2 && n%10<=4 && (n%100<12 "
 "|| n%100>14) ? 1 : 2);\n"
-"X-Generator: Poedit 3.4.2\n"
+"X-Generator: Poedit 3.5\n"
 "X-Poedit-Basepath: ../..\n"
 "X-Poedit-KeywordsList: _;_n:1,2;_x:1c,2;_nx:1c,2,3;_f;_fn:1,2\n"
 "X-Poedit-SearchPath-0: Sources/Jazz2\n"
@@ -237,7 +237,7 @@ msgid ""
 "You found a secret area."
 msgstr ""
 "\n"
-"Znalazłeś sekretny pokój."
+"Znalazłeś sekretną okolicę."
 
 #: .fake/Translations/prince/01_castle1.j2l.h:3
 msgctxt "prince/01_castle1"
@@ -649,7 +649,7 @@ msgid ""
 msgstr ""
 "\n"
 "Nie ma nagrody dla tych,\n"
-"co sięgają do kabury lekką ręką."
+"których swędzą paluszki."
 
 #: .fake/Translations/secretf/01_easter1.j2l.h:3
 msgctxt "secretf/01_easter1"
@@ -809,7 +809,7 @@ msgid ""
 "Water Level control crate above."
 msgstr ""
 "\n"
-"Skrzynia kontrolująca poziom wody nad tobą."
+"Skrzynia kontrolująca poziom wody znajduje się nad tobą."
 
 #: .fake/Translations/secretf/04_haunted1.j2l.h:5
 msgctxt "secretf/04_haunted1"
@@ -818,7 +818,7 @@ msgid ""
 "Stomping crates can be good and bad..."
 msgstr ""
 "\n"
-"Rozwalanie skrzyń może być obosieczne..."
+"Rozwalanie skrzyń ma swoje plusy i minusy..."
 
 #: .fake/Translations/secretf/04_haunted1.j2l.h:7
 msgctxt "secretf/04_haunted1"
@@ -910,7 +910,7 @@ msgid ""
 "Find the crate and the gems are yours!"
 msgstr ""
 "\n"
-"Znajdź skrzynkę, a skarby będą twoje!"
+"Znajdź skrzynkę, a klejnoty będą twoje!"
 
 #: .fake/Translations/secretf/08_town2.j2l.h:2
 msgctxt "secretf/08_town2"
@@ -928,7 +928,7 @@ msgid ""
 "Collecting 20 coins is more rewarding..."
 msgstr ""
 "\n"
-"Za 20 monet czeka cię większa nagroda..."
+"Za zebranie 20 monet czeka cię większa nagroda..."
 
 #: .fake/Translations/secretf/09_town3.j2l.h:1
 msgctxt "secretf/09_town3"
@@ -1020,7 +1020,7 @@ msgid ""
 "the secret metal crate."
 msgstr ""
 "\n"
-"Aby przejść tą część uderz\n"
+"Aby przejść tę część uderz\n"
 "w sekretną, metalową skrzynkę."
 
 #: .fake/Translations/share/01_share1.j2l.h:4
@@ -1252,7 +1252,7 @@ msgstr ""
 "Wejście do Szlaku Klejnotów.\n"
 "Wspinaj się na wierzchołki drzew, \n"
 "aby znaleźć i walnąć zadkiem\n"
-"w skrzynie wejściowe."
+"w skrzynię wejściową."
 
 #: .fake/Translations/xmas99/02_xmas2.j2l.h:14
 msgctxt "xmas99/02_xmas2"
@@ -1379,48 +1379,56 @@ msgstr ""
 "Proszę, odwiedź\n"
 "www.project2.com"
 
-#. TRANSLATORS: Main information in About section
-#: Sources/Jazz2/UI/Menu/AboutSection.cpp:141
-#, c-format
+#. TRANSLATORS: Header text in About section
+#: Sources/Jazz2/UI/Menu/AboutSection.cpp:134
 msgid ""
-"Reimplementation of the game \f[c:0x9e7056]Jazz Jackrabbit 2\f[c] released "
-"in 1998. Supports various\n"
-"versions of the game (Shareware Demo, Holiday Hare '98, The Secret Files "
-"and\n"
-"Christmas Chronicles). Also, it partially supports some features of JJ2+ "
-"extension.\n"
-"For more information, visit the official website: %s"
+"Reimplementation of the game \f[c:#9e7056]Jazz Jackrabbit 2\f[/c] released "
+"in 1998. Supports various versions of the game (Shareware Demo, Holiday Hare "
+"'98, The Secret Files and Christmas Chronicles). Also, it partially supports "
+"some features of JJ2+ extension."
 msgstr ""
-"Reimplementacja gry \f[c:0x9e7056]Jazz Jackrabbit 2\f[c] wydanej w 1998 "
-"roku. \n"
-"Wspiera różne wersje gry (Demo, Holiday Hare '98, The Secret Files i "
-"Christmas Chronicles)\n"
-"oraz (częściowo) niektóre funkcje fanowskiego rozszerzenia JJ2+.\n"
+"Reimplementacja gry \f[c:#9e7056]Jazz Jackrabbit 2\f[/c] wydanej w 1998 "
+"roku. Wspiera różne wersje gry (Demo, Holiday Hare '98, The Secret Files i "
+"Christmas Chronicles) oraz (częściowo) niektóre funkcje fanowskiego "
+"rozszerzenia JJ2+."
+
+#. TRANSLATORS: Link to website under header text in About section
+#: Sources/Jazz2/UI/Menu/AboutSection.cpp:136
+#, c-format
+msgid "For more information, visit the official website: %s"
+msgstr ""
 "Po więcej informacji, odwiedź naszą oficjalną stronę internetową:\n"
 "%s"
 
-#. TRANSLATORS: Header in About section
-#: Sources/Jazz2/UI/Menu/AboutSection.cpp:146
-msgid "Created By"
-msgstr "Stworzone przez"
+#. TRANSLATORS: Label in About section
+#: Sources/Jazz2/UI/Menu/AboutSection.cpp:138
+msgid "Developers"
+msgstr "Autorzy"
 
-#. TRANSLATORS: Bottom information in About section
-#: Sources/Jazz2/UI/Menu/AboutSection.cpp:159
-#, c-format
+#. TRANSLATORS: Label in About section
+#: Sources/Jazz2/UI/Menu/AboutSection.cpp:140
+msgid "Contributors"
+msgstr "Współautorzy"
+
+#. TRANSLATORS: Label in About section
+#: Sources/Jazz2/UI/Menu/AboutSection.cpp:142
+msgid "Translators"
+msgstr "Tłumacze"
+
+#. TRANSLATORS: Footer text in About section
+#: Sources/Jazz2/UI/Menu/AboutSection.cpp:144
 msgid ""
-"This project uses modified \f[c:0x9e7056]nCine\f[c] game engine and "
-"following libraries:\n"
-"%s"
+"This project uses modified \f[c:#9e7056]nCine\f[/c] game engine and "
+"following libraries:"
 msgstr ""
-"Ten projekt używa zmodyfikowanego silnika \f[c:0x9e7056]nCine\f[c] oraz "
-"następujących bibliotek:\n"
-"%s"
+"Ten projekt używa zmodyfikowanego silnika \f[c:#9e7056]nCine\f[/c] oraz "
+"następujących bibliotek:"
 
 #. TRANSLATORS: Menu item in main menu
 #: Sources/Jazz2/UI/Menu/BeginSection.cpp:58
 #: Sources/Jazz2/UI/Menu/BeginSection.cpp:75
-#: Sources/Jazz2/UI/Menu/EpisodeSelectSection.cpp:135
-#: Sources/Jazz2/UI/Menu/EpisodeSelectSection.cpp:137
+#: Sources/Jazz2/UI/Menu/EpisodeSelectSection.cpp:123
+#: Sources/Jazz2/UI/Menu/EpisodeSelectSection.cpp:125
 msgid "Play Story"
 msgstr "Tryb fabularny"
 
@@ -1458,7 +1466,7 @@ msgstr "Poziomy społeczności"
 #. TRANSLATORS: Menu item in main menu
 #: Sources/Jazz2/UI/Menu/BeginSection.cpp:86
 #: Sources/Jazz2/UI/Menu/FirstRunSection.cpp:58
-#: Sources/Jazz2/UI/Menu/OptionsSection.cpp:39
+#: Sources/Jazz2/UI/Menu/OptionsSection.cpp:41
 #: Sources/Jazz2/UI/Menu/PauseSection.cpp:15
 msgid "Options"
 msgstr "Opcje"
@@ -1473,94 +1481,115 @@ msgstr "O grze"
 msgid "Quit"
 msgstr "Wyjdź"
 
-#: Sources/Jazz2/UI/Menu/BeginSection.cpp:189
+#: Sources/Jazz2/UI/Menu/BeginSection.cpp:193
 msgid "Access to external storage has been granted!"
 msgstr "Dostęp do pamięci zewnętrznej został udzielony!"
 
-#: Sources/Jazz2/UI/Menu/BeginSection.cpp:191
+#: Sources/Jazz2/UI/Menu/BeginSection.cpp:195
 msgid ""
-"\f[c:0x337233]Restart the game to read \f[c:0x9e7056]Jazz Jackrabbit "
-"2\f[c:0x337233] files correctly."
+"\f[c:#337233]Restart the game to read \f[c:#9e7056]Jazz Jackrabbit 2\f[c:"
+"#337233] files correctly."
 msgstr ""
-"\f[c:0x337233]Zresetuj grę, aby prawidłowo załadować pliki "
-"\f[c:0x9e7056]Jazz Jackrabbit 2\f[c:0x337233]."
+"\f[c:#337233]Zresetuj grę, aby prawidłowo załadować pliki \f[c:#9e7056]Jazz "
+"Jackrabbit 2\f[c:#337233]."
 
-#: Sources/Jazz2/UI/Menu/BeginSection.cpp:196
+#: Sources/Jazz2/UI/Menu/BeginSection.cpp:200
 msgid ""
-"\f[c:0x704a4a]This game requires original \f[c:0x9e7056]Jazz Jackrabbit "
-"2\f[c:0x704a4a] files!"
+"\f[c:#704a4a]This game requires original \f[c:#9e7056]Jazz Jackrabbit 2\f[c:"
+"#704a4a] files!"
 msgstr ""
-"\f[c:0x704a4a]Ta gra wymaga oryginalnych plików \f[c:0x9e7056]Jazz "
-"Jackrabbit 2\f[c:0x704a4a]!"
+"\f[c:#704a4a]Ta gra wymaga oryginalnych plików \f[c:#9e7056]Jazz Jackrabbit "
+"2\f[c:#704a4a]!"
 
-#: Sources/Jazz2/UI/Menu/BeginSection.cpp:198
+#: Sources/Jazz2/UI/Menu/BeginSection.cpp:202
 msgid "Make sure Jazz Jackrabbit 2 files are present in following path:"
 msgstr "Upewnij się, że pliki Jazz Jackrabbit 2 znajdują się w:"
 
 #. TRANSLATORS: Menu item in main menu (Android 11+ only)
-#: Sources/Jazz2/UI/Menu/BeginSection.cpp:206
+#: Sources/Jazz2/UI/Menu/BeginSection.cpp:210
 msgid "Allow access to external storage"
 msgstr "Zezwól na dostęp do pamięci zewnętrznej"
 
 #. TRANSLATORS: Menu item in Options > Controls section
-#: Sources/Jazz2/UI/Menu/ControlsOptionsSection.cpp:18
-#: Sources/Jazz2/UI/Menu/RemapControlsSection.cpp:152
-msgid "Remap Controls"
-msgstr "Zmień mapowanie przycisków"
+#: Sources/Jazz2/UI/Menu/ControlsOptionsSection.cpp:20
+#: Sources/Jazz2/UI/Menu/RemapControlsSection.cpp:171
+#, c-format
+msgid "Remap Controls for Player %i"
+msgstr "Skonfiguruj sterowanie gracza %i"
 
 #. TRANSLATORS: Menu item in Options > Controls section
-#: Sources/Jazz2/UI/Menu/ControlsOptionsSection.cpp:20
-#: Sources/Jazz2/UI/Menu/TouchControlsOptionsSection.cpp:46
+#: Sources/Jazz2/UI/Menu/ControlsOptionsSection.cpp:24
+#: Sources/Jazz2/UI/Menu/RemapControlsSection.cpp:174
+msgid "Remap Controls"
+msgstr "Skonfiguruj sterowanie"
+
+#. TRANSLATORS: Menu item in Options > Controls section
+#: Sources/Jazz2/UI/Menu/ControlsOptionsSection.cpp:27
+#: Sources/Jazz2/UI/Menu/TouchControlsOptionsSection.cpp:45
 msgid "Touch Controls"
 msgstr "Sterowanie dotykowe"
 
 #. TRANSLATORS: Menu item in Options > Controls section
-#: Sources/Jazz2/UI/Menu/ControlsOptionsSection.cpp:22
+#: Sources/Jazz2/UI/Menu/ControlsOptionsSection.cpp:29
 msgid "Toggle Run"
 msgstr "Przełączanie biegu"
 
-#: Sources/Jazz2/UI/Menu/ControlsOptionsSection.cpp:23
+#: Sources/Jazz2/UI/Menu/ControlsOptionsSection.cpp:30
 msgid "Gamepad Button Labels"
-msgstr ""
+msgstr "Oznaczenia przycisków kontrolera"
+
+#: Sources/Jazz2/UI/Menu/ControlsOptionsSection.cpp:32
+msgid "Gamepad Rumble"
+msgstr "Wibracje kontrolera"
 
 #. TRANSLATORS: Menu item in Options > Controls section (Android only)
-#: Sources/Jazz2/UI/Menu/ControlsOptionsSection.cpp:26
+#: Sources/Jazz2/UI/Menu/ControlsOptionsSection.cpp:36
 msgid "Native Back Button"
 msgstr "Natywny przycisk \"Wstecz\""
 
-#: Sources/Jazz2/UI/Menu/ControlsOptionsSection.cpp:28
+#: Sources/Jazz2/UI/Menu/ControlsOptionsSection.cpp:38
 #: Sources/Jazz2/UI/Menu/InputDiagnosticsSection.cpp:72
 msgid "Input Diagnostics"
 msgstr "Diagnostyka sterowania"
 
 #. TRANSLATORS: Menu item in Options section
-#: Sources/Jazz2/UI/Menu/ControlsOptionsSection.cpp:61
-#: Sources/Jazz2/UI/Menu/OptionsSection.cpp:23
+#: Sources/Jazz2/UI/Menu/ControlsOptionsSection.cpp:71
+#: Sources/Jazz2/UI/Menu/OptionsSection.cpp:25
 msgid "Controls"
 msgstr "Sterowanie"
 
-#: Sources/Jazz2/UI/Menu/ControlsOptionsSection.cpp:105
-#: Sources/Jazz2/UI/Menu/GameplayEnhancementsSection.cpp:125
-#: Sources/Jazz2/UI/Menu/GameplayEnhancementsSection.cpp:130
-#: Sources/Jazz2/UI/Menu/GameplayOptionsSection.cpp:127
-#: Sources/Jazz2/UI/Menu/GameplayOptionsSection.cpp:130
-#: Sources/Jazz2/UI/Menu/GameplayOptionsSection.cpp:135
-#: Sources/Jazz2/UI/Menu/GraphicsOptionsSection.cpp:121
-msgid "Enabled"
-msgstr "Włączono"
+#. TRANSLATORS: Option for Gamepad Rumble in Options > Controls section
+#: Sources/Jazz2/UI/Menu/ControlsOptionsSection.cpp:113
+msgid "Strong"
+msgstr "Mocne"
 
-#: Sources/Jazz2/UI/Menu/ControlsOptionsSection.cpp:105
+#. TRANSLATORS: Option for Gamepad Rumble in Options > Controls section
+#: Sources/Jazz2/UI/Menu/ControlsOptionsSection.cpp:116
+msgid "Weak"
+msgstr "Słabe"
+
+#: Sources/Jazz2/UI/Menu/ControlsOptionsSection.cpp:117
+#: Sources/Jazz2/UI/Menu/ControlsOptionsSection.cpp:126
 #: Sources/Jazz2/UI/Menu/GameplayEnhancementsSection.cpp:125
 #: Sources/Jazz2/UI/Menu/GameplayEnhancementsSection.cpp:130
-#: Sources/Jazz2/UI/Menu/GameplayOptionsSection.cpp:135
-#: Sources/Jazz2/UI/Menu/GraphicsOptionsSection.cpp:116
-#: Sources/Jazz2/UI/Menu/GraphicsOptionsSection.cpp:121
+#: Sources/Jazz2/UI/Menu/GameplayOptionsSection.cpp:167
+#: Sources/Jazz2/UI/Menu/GraphicsOptionsSection.cpp:123
+#: Sources/Jazz2/UI/Menu/GraphicsOptionsSection.cpp:127
 msgid "Disabled"
 msgstr "Wyłączono"
 
+#: Sources/Jazz2/UI/Menu/ControlsOptionsSection.cpp:126
+#: Sources/Jazz2/UI/Menu/GameplayEnhancementsSection.cpp:125
+#: Sources/Jazz2/UI/Menu/GameplayEnhancementsSection.cpp:130
+#: Sources/Jazz2/UI/Menu/GameplayOptionsSection.cpp:159
+#: Sources/Jazz2/UI/Menu/GameplayOptionsSection.cpp:162
+#: Sources/Jazz2/UI/Menu/GameplayOptionsSection.cpp:167
+#: Sources/Jazz2/UI/Menu/GraphicsOptionsSection.cpp:127
+msgid "Enabled"
+msgstr "Włączono"
+
 #. TRANSLATORS: Menu item to select player character (Jazz, Spaz, Lori)
 #: Sources/Jazz2/UI/Menu/CreateServerOptionsSection.cpp:31
-#: Sources/Jazz2/UI/Menu/StartGameOptionsSection.cpp:18
 msgid "Character"
 msgstr "Bohater"
 
@@ -1579,29 +1608,29 @@ msgid "No custom level found!"
 msgstr "Nie znaleziono żadnych poziomów społeczności!"
 
 #. TRANSLATORS: Menu item in Play Custom Game section
-#: Sources/Jazz2/UI/Menu/EpisodeSelectSection.cpp:135
+#: Sources/Jazz2/UI/Menu/EpisodeSelectSection.cpp:123
 #: Sources/Jazz2/UI/Menu/PlayCustomSection.cpp:21
 msgid "Play Story in Cooperation"
 msgstr "Graj w kooperacji"
 
-#: Sources/Jazz2/UI/Menu/EpisodeSelectSection.cpp:147
+#: Sources/Jazz2/UI/Menu/EpisodeSelectSection.cpp:135
 msgid "No episode found!"
 msgstr "Nie znaleziono żadnych epizodów!"
 
 #. TRANSLATORS: Menu subitem in Play Story section
-#: Sources/Jazz2/UI/Menu/EpisodeSelectSection.cpp:193
-#: Sources/Jazz2/UI/Menu/EpisodeSelectSection.cpp:194
+#: Sources/Jazz2/UI/Menu/EpisodeSelectSection.cpp:181
+#: Sources/Jazz2/UI/Menu/EpisodeSelectSection.cpp:182
 msgid "Restart episode"
 msgstr "Zresetuj epizod"
 
 #. TRANSLATORS: Information in Play Story section that episode is locked because the previous episode is not complete
-#: Sources/Jazz2/UI/Menu/EpisodeSelectSection.cpp:216
+#: Sources/Jazz2/UI/Menu/EpisodeSelectSection.cpp:204
 #, c-format
 msgid "You must complete \"%s\" first!"
 msgstr "Najpierw musisz ukończyć \"%s\"!"
 
 #. TRANSLATORS: Information in Play Story section that episode is locked
-#: Sources/Jazz2/UI/Menu/EpisodeSelectSection.cpp:220
+#: Sources/Jazz2/UI/Menu/EpisodeSelectSection.cpp:208
 msgid "Episode is locked!"
 msgstr "Ten epizod jest zablokowany!"
 
@@ -1625,12 +1654,12 @@ msgstr "Chcę zagrać w grę z jakimiś nowościami."
 
 #. TRANSLATORS: Header in First Run section
 #: Sources/Jazz2/UI/Menu/FirstRunSection.cpp:54
-msgid "Welcome to \f[c:0x9e7056]Jazz Jackrabbit 2\f[c] reimplementation!"
-msgstr "Witaj w reimplementacji \f[c:0x9e7056]Jazz Jackrabbit 2\f[c]!"
+msgid "Welcome to \f[c:#9e7056]Jazz Jackrabbit 2\f[/c] reimplementation!"
+msgstr "Witaj w reimplementacji \f[c:#9e7056]Jazz Jackrabbit 2\f[/c]!"
 
 #. TRANSLATORS: Menu item in Options section
 #: Sources/Jazz2/UI/Menu/FirstRunSection.cpp:58
-#: Sources/Jazz2/UI/Menu/GameplayOptionsSection.cpp:78
+#: Sources/Jazz2/UI/Menu/GameplayOptionsSection.cpp:97
 #: Sources/Jazz2/UI/Menu/OptionsSection.cpp:17
 msgid "Gameplay"
 msgstr "Rozgrywka"
@@ -1638,7 +1667,7 @@ msgstr "Rozgrywka"
 #. TRANSLATORS: Menu item in Options > Gameplay section
 #: Sources/Jazz2/UI/Menu/FirstRunSection.cpp:58
 #: Sources/Jazz2/UI/Menu/GameplayEnhancementsSection.cpp:70
-#: Sources/Jazz2/UI/Menu/GameplayOptionsSection.cpp:23
+#: Sources/Jazz2/UI/Menu/GameplayOptionsSection.cpp:42
 msgid "Enhancements"
 msgstr "Ulepszenia"
 
@@ -1647,14 +1676,14 @@ msgstr "Ulepszenia"
 #, c-format
 msgid ""
 "You can choose your preferred play style.\n"
-"This option can be changed at any time in \f[c:0x707070]%s\f[c] > "
-"\f[c:0x707070]%s\f[c] > \f[c:0x707070]%s\f[c].\n"
+"This option can be changed at any time in \f[c:#707070]%s\f[/c] > \f[c:"
+"#707070]%s\f[/c] > \f[c:#707070]%s\f[/c].\n"
 "For more information, visit %s and  Discord!"
 msgstr ""
 "Możesz wybrać preferowany przez siebie styl rozgrywki.\n"
 "To ustawienie może zostać zmienione,\n"
-"kiedy tylko ci się spodoba w \f[c:0x707070]%s\f[c] > \f[c:0x707070]%s\f[c] > "
-"\f[c:0x707070]%s\f[c].\n"
+"kiedy tylko ci się spodoba w \f[c:#707070]%s\f[/c] > \f[c:#707070]%s\f[/c] > "
+"\f[c:#707070]%s\f[/c].\n"
 "Po więcej informacji, odwiedź %s oraz serwer  Discord!"
 
 #. TRANSLATORS: Menu item in Options > Gameplay > Enhancements section
@@ -1693,36 +1722,70 @@ msgid "Enabled With Ammo Count"
 msgstr "Włączono + Wyświetlanie ilości amunicji"
 
 #. TRANSLATORS: Menu item in Options > Gameplay section
-#: Sources/Jazz2/UI/Menu/GameplayOptionsSection.cpp:25
-#: Sources/Jazz2/UI/Menu/LanguageSelectSection.cpp:55
+#: Sources/Jazz2/UI/Menu/GameplayOptionsSection.cpp:44
+#: Sources/Jazz2/UI/Menu/LanguageSelectSection.cpp:42
 msgid "Language"
 msgstr "Język"
 
 #. TRANSLATORS: Menu item in Options > Gameplay section
-#: Sources/Jazz2/UI/Menu/GameplayOptionsSection.cpp:28
-msgid "Discord Integration"
-msgstr "Integracja z platformą Discord"
-
-#. TRANSLATORS: Menu item in Options > Gameplay section
-#: Sources/Jazz2/UI/Menu/GameplayOptionsSection.cpp:32
-msgid "Razer Chroma™"
-msgstr "Razer Chroma™"
-
-#. TRANSLATORS: Menu item in Options > Gameplay section
-#: Sources/Jazz2/UI/Menu/GameplayOptionsSection.cpp:36
+#: Sources/Jazz2/UI/Menu/GameplayOptionsSection.cpp:48
 msgid "Scripting"
 msgstr "Skrypty"
 
 #. TRANSLATORS: Menu item in Options > Gameplay section
-#: Sources/Jazz2/UI/Menu/GameplayOptionsSection.cpp:40
+#: Sources/Jazz2/UI/Menu/GameplayOptionsSection.cpp:50
+msgid "Allow Cheats"
+msgstr ""
+
+#. TRANSLATORS: Menu item in Options > Gameplay section
+#: Sources/Jazz2/UI/Menu/GameplayOptionsSection.cpp:52
+msgid "Overwrite Episode Completion"
+msgstr ""
+
+#. TRANSLATORS: Menu item in Options > Gameplay section
+#: Sources/Jazz2/UI/Menu/GameplayOptionsSection.cpp:57
+msgid "Discord Integration"
+msgstr "Integracja z platformą Discord"
+
+#. TRANSLATORS: Menu item in Options > Gameplay section
+#: Sources/Jazz2/UI/Menu/GameplayOptionsSection.cpp:61
+msgid "Razer Chroma™"
+msgstr "Razer Chroma™"
+
+#. TRANSLATORS: Menu item in Options > Gameplay section
+#: Sources/Jazz2/UI/Menu/GameplayOptionsSection.cpp:65
 msgid "Browse \"Source\" Directory"
 msgstr "Przeglądaj katalog z danymi gry"
 
 #. TRANSLATORS: Menu item in Options > Gameplay section
-#: Sources/Jazz2/UI/Menu/GameplayOptionsSection.cpp:44
+#: Sources/Jazz2/UI/Menu/GameplayOptionsSection.cpp:70
 #: Sources/Jazz2/UI/Menu/RefreshCacheSection.cpp:77
 msgid "Refresh Cache"
 msgstr "Odśwież pamięć podręczną"
+
+#. TRANSLATORS: Option for Allow Cheats in Options > Gameplay section
+#: Sources/Jazz2/UI/Menu/GameplayOptionsSection.cpp:143
+msgid "\f[c:#d86664]Yes\f[/c]"
+msgstr "\f[c:#d86664]Tak\f[/c]"
+
+#: Sources/Jazz2/UI/Menu/GameplayOptionsSection.cpp:143
+msgid "No"
+msgstr "Nie"
+
+#. TRANSLATORS: Option for Overwrite Episode Completion in Options > Gameplay section
+#: Sources/Jazz2/UI/Menu/GameplayOptionsSection.cpp:147
+msgid "No Cheats Only"
+msgstr "Tylko bez cheatów"
+
+#. TRANSLATORS: Option for Overwrite Episode Completion in Options > Gameplay section
+#: Sources/Jazz2/UI/Menu/GameplayOptionsSection.cpp:150
+msgid "Higher Score Only"
+msgstr "Tylko wyższy wynik"
+
+#. TRANSLATORS: Option for Overwrite Episode Completion in Options > Gameplay section
+#: Sources/Jazz2/UI/Menu/GameplayOptionsSection.cpp:152
+msgid "Always"
+msgstr "Zawsze"
 
 #. TRANSLATORS: Menu item in Options > Graphics section
 #: Sources/Jazz2/UI/Menu/GraphicsOptionsSection.cpp:19
@@ -1751,36 +1814,54 @@ msgstr "Pokazuj ślady gracza"
 
 #. TRANSLATORS: Menu item in Options > Graphics section
 #: Sources/Jazz2/UI/Menu/GraphicsOptionsSection.cpp:37
-msgid "Unaligned Viewport"
-msgstr "Zmiennoprzecinkowa precyzja"
+msgid "Preferred Splitscreen"
+msgstr "Dzielenie ekranu"
 
 #. TRANSLATORS: Menu item in Options > Graphics section
 #: Sources/Jazz2/UI/Menu/GraphicsOptionsSection.cpp:39
+msgid "Prefer Zoom Out"
+msgstr "Preferuj oddalenie kamery"
+
+#. TRANSLATORS: Menu item in Options > Graphics section
+#: Sources/Jazz2/UI/Menu/GraphicsOptionsSection.cpp:41
 msgid "Keep Aspect Ratio In Cinematics"
 msgstr "Zachowaj proporcje w przerywnikach"
 
 #. TRANSLATORS: Menu item in Options > Graphics section
-#: Sources/Jazz2/UI/Menu/GraphicsOptionsSection.cpp:41
+#: Sources/Jazz2/UI/Menu/GraphicsOptionsSection.cpp:43
+msgid "Unaligned Viewport"
+msgstr "Zmiennoprzecinkowa precyzja"
+
+#. TRANSLATORS: Menu item in Options > Graphics section
+#: Sources/Jazz2/UI/Menu/GraphicsOptionsSection.cpp:45
 msgid "Performance Metrics"
 msgstr "Statystyki wydajności"
 
 #. TRANSLATORS: Menu item in Options section
-#: Sources/Jazz2/UI/Menu/GraphicsOptionsSection.cpp:74
+#: Sources/Jazz2/UI/Menu/GraphicsOptionsSection.cpp:78
 #: Sources/Jazz2/UI/Menu/OptionsSection.cpp:19
 msgid "Graphics"
 msgstr "Grafika"
 
-#: Sources/Jazz2/UI/Menu/GraphicsOptionsSection.cpp:114
+#: Sources/Jazz2/UI/Menu/GraphicsOptionsSection.cpp:118
 msgid "Low"
-msgstr "Brzydka"
+msgstr "Niski"
 
-#: Sources/Jazz2/UI/Menu/GraphicsOptionsSection.cpp:114
+#: Sources/Jazz2/UI/Menu/GraphicsOptionsSection.cpp:118
 msgid "High"
-msgstr "Ładna"
+msgstr "Wysoki"
 
-#: Sources/Jazz2/UI/Menu/GraphicsOptionsSection.cpp:116
-msgid "Enabled \f[c:0xd0705d](Experimental)\f[c]"
-msgstr "Włączono \f[c:0xd0705d](Eksperymentalne)\f[c]"
+#: Sources/Jazz2/UI/Menu/GraphicsOptionsSection.cpp:120
+msgid "Vertical"
+msgstr "Pionowe"
+
+#: Sources/Jazz2/UI/Menu/GraphicsOptionsSection.cpp:120
+msgid "Horizontal"
+msgstr "Poziome"
+
+#: Sources/Jazz2/UI/Menu/GraphicsOptionsSection.cpp:123
+msgid "Enabled \f[c:#d0705d](Experimental)\f[/c]"
+msgstr "Włączono \f[c:#d0705d](Eksperymentalne)\f[/c]"
 
 #. TRANSLATORS: Header in Import Episodes section
 #: Sources/Jazz2/UI/Menu/ImportSection.cpp:70
@@ -1842,7 +1923,7 @@ msgid "Select Game Mode"
 msgstr "Wybierz tryb gry"
 
 #. TRANSLATORS: Menu item in Options section
-#: Sources/Jazz2/UI/Menu/OptionsSection.cpp:21
+#: Sources/Jazz2/UI/Menu/OptionsSection.cpp:22
 #: Sources/Jazz2/UI/Menu/SoundsOptionsSection.cpp:106
 msgid "Sounds"
 msgstr "Dźwięki"
@@ -1868,8 +1949,8 @@ msgid "Connect To Server"
 msgstr "Połącz z serwerem"
 
 #: Sources/Jazz2/UI/Menu/RefreshCacheSection.cpp:80
-msgid "Processing of files in \f[c:0x9e7056]\"Source\"\f[c] directory..."
-msgstr "Przetwarzanie plików z katalogu \f[c:0x9e7056]\"Źródło\"\f[c]"
+msgid "Processing of files in \f[c:#9e7056]\"Source\"\f[/c] directory..."
+msgstr "Przetwarzanie plików z katalogu \f[c:#9e7056]\"Źródło\"\f[/c]"
 
 #: Sources/Jazz2/UI/Menu/RefreshCacheSection.cpp:83
 msgid "Newly added levels and episodes will be available soon."
@@ -1912,7 +1993,7 @@ msgstr "Bieg"
 
 #. TRANSLATORS: Menu item in Options > Controls > Remap Controls section
 #: Sources/Jazz2/UI/Menu/RemapControlsSection.cpp:31
-#: Sources/Jazz2/UI/Menu/RemapControlsSection.cpp:165
+#: Sources/Jazz2/UI/Menu/RemapControlsSection.cpp:188
 msgid "Change Weapon"
 msgstr "Zmień broń"
 
@@ -1928,16 +2009,16 @@ msgid "Weapon %i"
 msgstr "Broń %i"
 
 #. TRANSLATORS: Bottom hint in Options > Controls > Remap Controls section
-#: Sources/Jazz2/UI/Menu/RemapControlsSection.cpp:159
+#: Sources/Jazz2/UI/Menu/RemapControlsSection.cpp:182
 msgid "Press any key or button to assign"
 msgstr "Naciśnij dowolny przycisk, aby przypisać"
 
-#: Sources/Jazz2/UI/Menu/RemapControlsSection.cpp:165
+#: Sources/Jazz2/UI/Menu/RemapControlsSection.cpp:188
 msgid "or"
 msgstr "lub"
 
 #. TRANSLATORS: Bottom hint in Options > Controls > Remap Controls section, prefixed with key/button to press
-#: Sources/Jazz2/UI/Menu/RemapControlsSection.cpp:171
+#: Sources/Jazz2/UI/Menu/RemapControlsSection.cpp:194
 msgid "to remove assignment"
 msgstr "aby usunąć przypisanie"
 
@@ -1993,6 +2074,11 @@ msgstr "Głośność efektów dźwiękowych"
 msgid "Music Volume"
 msgstr "Głośność muzyki"
 
+#. TRANSLATORS: Menu item to select number of players
+#: Sources/Jazz2/UI/Menu/StartGameOptionsSection.cpp:18
+msgid "Number of Local Players"
+msgstr "Liczba graczy lokalnych"
+
 #. TRANSLATORS: Menu item to select difficulty
 #: Sources/Jazz2/UI/Menu/StartGameOptionsSection.cpp:20
 msgid "Difficulty"
@@ -2003,176 +2089,169 @@ msgstr "Poziom trudności"
 msgid "Start"
 msgstr "Start"
 
-#: Sources/Jazz2/UI/Menu/StartGameOptionsSection.cpp:200
+#: Sources/Jazz2/UI/Menu/StartGameOptionsSection.cpp:294
 msgid "Easy"
 msgstr "Łatwy"
 
-#: Sources/Jazz2/UI/Menu/StartGameOptionsSection.cpp:200
+#: Sources/Jazz2/UI/Menu/StartGameOptionsSection.cpp:294
 msgid "Medium"
 msgstr "Średni"
 
-#: Sources/Jazz2/UI/Menu/StartGameOptionsSection.cpp:200
+#: Sources/Jazz2/UI/Menu/StartGameOptionsSection.cpp:294
 msgid "Hard"
 msgstr "Trudny"
 
 #. TRANSLATORS: Header in Options > Controls > Touch Controls section
-#: Sources/Jazz2/UI/Menu/TouchControlsOptionsSection.cpp:50
+#: Sources/Jazz2/UI/Menu/TouchControlsOptionsSection.cpp:49
 msgid "You can adjust position of the touch zones by drag and drop."
 msgstr ""
 "Możesz dostosować położenie miejsc dotykowych poprzez przeciągnięcie i "
 "puszczenie."
 
-#: Sources/Main.cpp:302 Sources/Main.cpp:362
+#: Sources/Main.cpp:271 Sources/Main.cpp:326
 #, c-format
 msgid "Connecting to %s:%u..."
 msgstr "Łączenie z %s:%u..."
 
-#: Sources/Main.cpp:349
+#: Sources/Main.cpp:313
 msgid "Creating server..."
 msgstr "Tworzenie serwera..."
 
-#: Sources/Main.cpp:547 Sources/Main.cpp:583
+#: Sources/Main.cpp:520 Sources/Main.cpp:554
 msgid ""
-"\f[c:0x704a4a]Cannot load specified level!\f[c]\n"
+"\f[c:#704a4a]Cannot load specified level!\f[/c]\n"
 "\n"
 "\n"
 "Make sure all necessary files\n"
 "are accessible and try it again."
 msgstr ""
-"\f[c:0x704a4a]Nie można załadować tego poziomu!\f[c]\n"
+"\f[c:#704a4a]Nie można załadować tego poziomu!\f[/c]\n"
 "\n"
 "\n"
 "Upewnij się, że wszystkie potrzebne pliki\n"
 "są na swoim miejscu i spróbuj ponownie."
 
-#: Sources/Main.cpp:631
+#: Sources/Main.cpp:604
 msgid ""
-"\f[c:0x704a4a]Cannot resume saved state!\f[c]\n"
+"\f[c:#704a4a]Cannot resume saved state!\f[/c]\n"
 "\n"
 "\n"
 "Make sure all necessary files\n"
 "are accessible and try it again."
 msgstr ""
-"\f[c:0x704a4a]Nie można wznowić zapisanego stanu gry!\f[c]\n"
+"\f[c:#704a4a]Nie można wznowić zapisanego stanu gry!\f[/c]\n"
 "\n"
 "\n"
 "Upewnij się, że wszystkie niezbędne pliki\n"
 "są na swoim miejscu i spróbuj ponownie."
 
-#: Sources/Main.cpp:744
+#: Sources/Main.cpp:739
 msgid ""
-"\f[c:0x704a4a]Cannot connect to the server!\f[c]\n"
+"\f[c:#704a4a]Cannot connect to the server!\f[/c]\n"
 "\n"
 "\n"
 "Your client version is not compatible with the server."
 msgstr ""
-"\f[c:0x704a4a]Nie można połączyć z serwerem!\f[c]\n"
+"\f[c:#704a4a]Nie można połączyć z serwerem!\f[/c]\n"
 "\n"
 "\n"
 "Wersja klienta nie jest kompatybilna z serwerem."
 
-#: Sources/Main.cpp:745
+#: Sources/Main.cpp:740
 msgid ""
-"\f[c:0x704a4a]Cannot connect to the server!\f[c]\n"
+"\f[c:#704a4a]Cannot connect to the server!\f[/c]\n"
 "\n"
 "\n"
 "Server capacity is full.\n"
 "Please try it later."
 msgstr ""
-"\f[c:0x704a4a]Nie można połączyć z serwerem!\f[c]\n"
+"\f[c:#704a4a]Nie można połączyć z serwerem!\f[/c]\n"
 "\n"
 "\n"
 "Serwer jest pełny.\n"
 "Spróbuj ponownie później."
 
-#: Sources/Main.cpp:746
+#: Sources/Main.cpp:741
 msgid ""
-"\f[c:0x704a4a]Cannot connect to the server!\f[c]\n"
+"\f[c:#704a4a]Cannot connect to the server!\f[/c]\n"
 "\n"
 "\n"
 "Server is not in a state where it can process your request.\n"
 "Please try again in a few seconds."
 msgstr ""
-"\f[c:0x704a4a]Nie można połączyć z serwerem!\f[c]\n"
+"\f[c:#704a4a]Nie można połączyć z serwerem!\f[/c]\n"
 "\n"
 "\n"
 "Serwer nie jest w stanie przetworzyć żądania.\n"
 "Spróbuj ponownie za kilka sekund."
 
-#: Sources/Main.cpp:747
+#: Sources/Main.cpp:742
 msgid ""
-"\f[c:0x704a4a]Connection has been closed!\f[c]\n"
+"\f[c:#704a4a]Connection has been closed!\f[/c]\n"
 "\n"
 "\n"
 "Server is shutting down.\n"
 "Please try it later."
 msgstr ""
-"\f[c:0x704a4a]Połączenie zostało zerwane!\f[c]\n"
+"\f[c:#704a4a]Połączenie zostało zerwane!\f[/c]\n"
 "\n"
 "\n"
 "Serwer jest zamykany.\n"
 "Spróbuj ponownie później."
 
-#: Sources/Main.cpp:748
+#: Sources/Main.cpp:743
 msgid ""
-"\f[c:0x704a4a]Connection has been lost!\f[c]\n"
+"\f[c:#704a4a]Connection has been lost!\f[/c]\n"
 "\n"
 "\n"
 "Please try it again and if the problem persists,\n"
 "check your network connection."
 msgstr ""
-"\f[c:0x704a4a]Połączenie zostało zerwane!\f[c]\n"
+"\f[c:#704a4a]Połączenie zostało zerwane!\f[/c]\n"
 "\n"
 "\n"
 "Spróbuj ponownie i sprawdź, czy problem nadal występuje.\n"
 "Sprawdź swoje połączenie sieciowe."
 
-#: Sources/Main.cpp:749
+#: Sources/Main.cpp:744
 msgid ""
-"\f[c:0x704a4a]Cannot connect to the server!\f[c]\n"
+"\f[c:#704a4a]Cannot connect to the server!\f[/c]\n"
 "\n"
 "\n"
 "The server is not responding for connection request."
 msgstr ""
-"\f[c:0x704a4a]Nie można połączyć z serwerem!\f[c]\n"
+"\f[c:#704a4a]Nie można połączyć z serwerem!\f[/c]\n"
 "\n"
 "\n"
 "Serwer nie odpowiada na żądanie połączenia."
 
-#: Sources/Main.cpp:750
+#: Sources/Main.cpp:745
 msgid ""
-"\f[c:0x704a4a]Connection has been closed!\f[c]\n"
+"\f[c:#704a4a]Connection has been closed!\f[/c]\n"
 "\n"
 "\n"
-"You have been \f[c:0x907050]kicked\f[c] off the server.\n"
+"You have been \f[c:#907050]kicked\f[/c] off the server.\n"
 "Contact server administrators for more information."
 msgstr ""
-"\f[c:0x704a4a]Połączenie zostało zerwane!\f[c]\n"
+"\f[c:#704a4a]Połączenie zostało zerwane!\f[/c]\n"
 "\n"
 "\n"
-"Zostałeś/aś \f[c:0x907050]wykopany/a\f[c] z serwera.\n"
+"Zostałeś/aś \f[c:#907050]wykopany/a\f[/c] z serwera.\n"
 "Skontaktuj się z administratorem serwera po więcej informacji."
 
-#: Sources/Main.cpp:751
+#: Sources/Main.cpp:746
 msgid ""
-"\f[c:0x704a4a]Connection has been closed!\f[c]\n"
+"\f[c:#704a4a]Connection has been closed!\f[/c]\n"
 "\n"
 "\n"
-"You have been \f[c:0x725040]banned\f[c] off the server.\n"
+"You have been \f[c:#725040]banned\f[/c] off the server.\n"
 "Contact server administrators for more information."
 msgstr ""
-"\f[c:0x704a4a]Połączenie zostało zerwane!\f[c]\n"
+"\f[c:#704a4a]Połączenie zostało zerwane!\f[/c]\n"
 "\n"
 "\n"
-"Zostałeś/aś \f[c:0x907050]skazany/a na banicję\f[c] z serwera.\n"
+"Zostałeś/aś \f[c:#907050]skazany/a na banicję\f[/c] z serwera.\n"
 "Skontaktuj się z administratorem serwera po więcej informacji."
-
-#, c-format
-#~ msgid "Key %i"
-#~ msgstr "Przycisk %i"
-
-#~ msgid "Gamepad"
-#~ msgstr "Kontroler"
 
 #~ msgid "Error"
 #~ msgstr "Błąd"

@@ -11,8 +11,10 @@ set(HEADERS
 	${NCINE_SOURCE_DIR}/Shared/IntrinsicsSse4.h
 	${NCINE_SOURCE_DIR}/Shared/IntrinsicsSsse3.h
 	${NCINE_SOURCE_DIR}/Shared/Utf8.h
+	${NCINE_SOURCE_DIR}/Shared/Base/IDisposable.h
+	${NCINE_SOURCE_DIR}/Shared/Base/Memory.h
+	${NCINE_SOURCE_DIR}/Shared/Base/StackAlloc.h
 	${NCINE_SOURCE_DIR}/Shared/Base/TypeInfo.h
-	${NCINE_SOURCE_DIR}/Shared/Base/Unaligned.h
 	${NCINE_SOURCE_DIR}/Shared/Containers/Array.h
 	${NCINE_SOURCE_DIR}/Shared/Containers/ArrayView.h
 	${NCINE_SOURCE_DIR}/Shared/Containers/DateTime.h
@@ -31,6 +33,7 @@ set(HEADERS
 	${NCINE_SOURCE_DIR}/Shared/Containers/Tags.h
 	${NCINE_SOURCE_DIR}/Shared/IO/AndroidAssetStream.h
 	${NCINE_SOURCE_DIR}/Shared/IO/DeflateStream.h
+	${NCINE_SOURCE_DIR}/Shared/IO/FileAccess.h
 	${NCINE_SOURCE_DIR}/Shared/IO/FileStream.h
 	${NCINE_SOURCE_DIR}/Shared/IO/FileSystem.h
 	${NCINE_SOURCE_DIR}/Shared/IO/HttpRequest.h
@@ -178,11 +181,15 @@ list(APPEND HEADERS
 	${NCINE_SOURCE_DIR}/Jazz2/LightEmitter.h
 	${NCINE_SOURCE_DIR}/Jazz2/PitType.h
 	${NCINE_SOURCE_DIR}/Jazz2/PlayerActions.h
+	${NCINE_SOURCE_DIR}/Jazz2/PlayerViewport.h
 	${NCINE_SOURCE_DIR}/Jazz2/PlayerType.h
 	${NCINE_SOURCE_DIR}/Jazz2/PreferencesCache.h
 	${NCINE_SOURCE_DIR}/Jazz2/Resources.h
+	${NCINE_SOURCE_DIR}/Jazz2/RumbleDescription.h
+	${NCINE_SOURCE_DIR}/Jazz2/RumbleProcessor.h
 	${NCINE_SOURCE_DIR}/Jazz2/ShieldType.h
 	${NCINE_SOURCE_DIR}/Jazz2/SuspendType.h
+	${NCINE_SOURCE_DIR}/Jazz2/WarpFlags.h
 	${NCINE_SOURCE_DIR}/Jazz2/WeaponType.h
 	${NCINE_SOURCE_DIR}/Jazz2/WeatherType.h
 	${NCINE_SOURCE_DIR}/Jazz2/Actors/ActorBase.h
@@ -331,6 +338,7 @@ list(APPEND HEADERS
 	${NCINE_SOURCE_DIR}/Jazz2/UI/ControlScheme.h
 	${NCINE_SOURCE_DIR}/Jazz2/UI/DiscordRpcClient.h
 	${NCINE_SOURCE_DIR}/Jazz2/UI/Font.h
+	${NCINE_SOURCE_DIR}/Jazz2/UI/FormattedTextBlock.h
 	${NCINE_SOURCE_DIR}/Jazz2/UI/HUD.h
 	${NCINE_SOURCE_DIR}/Jazz2/UI/LoadingHandler.h
 	${NCINE_SOURCE_DIR}/Jazz2/UI/RgbLights.h

@@ -512,19 +512,19 @@ namespace Death { namespace Containers {
 						bool success2 = false;
 #if defined(DEATH_TARGET_WINDOWS)
 						wchar_t buffer[64];
-						std::int32_t bufferLength = ::GetLocaleInfoEx(LOCALE_NAME_USER_DEFAULT, LOCALE_SSHORTDATE, buffer, countof(buffer));
+						std::int32_t bufferLength = ::GetLocaleInfoEx(LOCALE_NAME_USER_DEFAULT, LOCALE_SSHORTDATE, buffer, static_cast<int>(arraySize(buffer)));
 						if (bufferLength > 0) {
 							if (buffer[bufferLength - 1] == '\0') {
 								bufferLength--;
 							}
 							buffer[bufferLength++] = ' ';
-							std::int32_t timeLength = ::GetLocaleInfoEx(LOCALE_NAME_USER_DEFAULT, LOCALE_STIMEFORMAT, buffer + bufferLength, countof(buffer) - bufferLength);
+							std::int32_t timeLength = ::GetLocaleInfoEx(LOCALE_NAME_USER_DEFAULT, LOCALE_STIMEFORMAT, buffer + bufferLength, static_cast<int>(arraySize(buffer)) - bufferLength);
 							if (timeLength > 0) {
 								bufferLength += timeLength;
 								if (buffer[bufferLength - 1] == '\0') {
 									bufferLength--;
 								}
-								std::size_t format2Length = TranslateFromUnicodeFormat(format2, countof(format2), buffer, bufferLength);
+								std::size_t format2Length = TranslateFromUnicodeFormat(format2, arraySize(format2), buffer, bufferLength);
 								if (format2Length > 0) {
 									success2 = TryParseFormat(dt, input + j, inputLength - j, format2, format2Length, endIndex);
 								}
@@ -660,21 +660,21 @@ namespace Death { namespace Containers {
 						bool success2 = false;
 #if defined(DEATH_TARGET_WINDOWS)
 						wchar_t buffer[64];
-						std::int32_t bufferLength = ::GetLocaleInfoEx(LOCALE_NAME_USER_DEFAULT, LOCALE_SSHORTDATE, buffer, countof(buffer));
+						std::int32_t bufferLength = ::GetLocaleInfoEx(LOCALE_NAME_USER_DEFAULT, LOCALE_SSHORTDATE, buffer, static_cast<int>(arraySize(buffer)));
 						if (bufferLength > 0) {
 							if (buffer[bufferLength - 1] == '\0') {
 								bufferLength--;
 							}
-							std::size_t format2Length = TranslateFromUnicodeFormat(format2, countof(format2), buffer, bufferLength);
+							std::size_t format2Length = TranslateFromUnicodeFormat(format2, arraySize(format2), buffer, bufferLength);
 							if (format2Length > 0) {
 								success2 = TryParseFormat(dt, input + j, inputLength - j, format2, format2Length, endIndex);
 								if (!success2) {
-									std::int32_t bufferLength = ::GetLocaleInfoEx(LOCALE_NAME_USER_DEFAULT, LOCALE_SLONGDATE, buffer, countof(buffer));
+									std::int32_t bufferLength = ::GetLocaleInfoEx(LOCALE_NAME_USER_DEFAULT, LOCALE_SLONGDATE, buffer, static_cast<int>(arraySize(buffer)));
 									if (bufferLength > 0) {
 										if (buffer[bufferLength - 1] == '\0') {
 											bufferLength--;
 										}
-										format2Length = TranslateFromUnicodeFormat(format2, countof(format2), buffer, bufferLength);
+										format2Length = TranslateFromUnicodeFormat(format2, arraySize(format2), buffer, bufferLength);
 										if (format2Length > 0) {
 											success2 = TryParseFormat(dt, input + j, inputLength - j, format2, format2Length, endIndex);
 										}
@@ -710,12 +710,12 @@ namespace Death { namespace Containers {
 						bool success2 = false;
 #if defined(DEATH_TARGET_WINDOWS)
 						wchar_t buffer[64];
-						std::int32_t bufferLength = ::GetLocaleInfoEx(LOCALE_NAME_USER_DEFAULT, LOCALE_STIMEFORMAT, buffer, countof(buffer));
+						std::int32_t bufferLength = ::GetLocaleInfoEx(LOCALE_NAME_USER_DEFAULT, LOCALE_STIMEFORMAT, buffer, static_cast<int>(arraySize(buffer)));
 						if (bufferLength > 0) {
 							if (buffer[bufferLength - 1] == '\0') {
 								bufferLength--;
 							}
-							std::size_t format2Length = TranslateFromUnicodeFormat(format2, countof(format2), buffer, bufferLength);
+							std::size_t format2Length = TranslateFromUnicodeFormat(format2, arraySize(format2), buffer, bufferLength);
 							if (format2Length > 0) {
 								success2 = TryParseFormat(dt, input + j, inputLength - j, format2, format2Length, endIndex);
 							}
@@ -1103,7 +1103,7 @@ namespace Death { namespace Containers {
 	{
 		DEATH_ASSERT(month >= 0 && month < 12 && day > 0 && day <= Implementation::GetNumberOfDaysInMonth(month, year) &&
 			hour >= 0 && hour < 24 && minute >= 0 && minute < 60 && second >= 0 && second < 61 /* with leap second */ &&
-			millisec >= 0 && millisec < 1000, *this, "Invalid date in DateTime::Set()");
+			millisec >= 0 && millisec < 1000, "Invalid date specified", *this);
 
 		// The range of time_t type (inclusive)
 		constexpr std::int32_t YearMinInRange = 1970;

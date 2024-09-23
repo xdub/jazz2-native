@@ -128,10 +128,13 @@
 
 #if defined(_MSC_VER)
 #	define DEATH_TARGET_MSVC
-#	if _MSC_VER <= 1900
+#	if _MSC_VER < 1910
 #		define DEATH_MSVC2015_COMPATIBILITY
 #	endif
-#	if _MSC_VER <= 1930
+#	if _MSC_VER < 1920
+#		define DEATH_MSVC2017_COMPATIBILITY
+#	endif
+#	if _MSC_VER < 1930
 #		define DEATH_MSVC2019_COMPATIBILITY
 #	endif
 #endif
@@ -316,12 +319,12 @@
 #if defined(DEATH_CPU_USE_IFUNC)
 #	if defined(__has_feature)
 #		if __has_feature(address_sanitizer) || __has_feature(thread_sanitizer) || __has_feature(memory_sanitizer) || __has_feature(undefined_behavior_sanitizer)
-#			define _DEATH_SANITIZER_IFUNC_DETECTED
+#			define __DEATH_SANITIZER_IFUNC_DETECTED
 #		endif
 #	elif defined(__SANITIZE_ADDRESS__) || defined(__SANITIZE_THREAD__)
-#		define _DEATH_SANITIZER_IFUNC_DETECTED
+#		define __DEATH_SANITIZER_IFUNC_DETECTED
 #	endif
-#	if defined(_DEATH_SANITIZER_IFUNC_DETECTED)
+#	if defined(__DEATH_SANITIZER_IFUNC_DETECTED)
 #		 error The library was built with DEATH_CPU_USE_IFUNC, which is incompatible with sanitizers. Rebuild without this option or disable sanitizers.
 #	endif
 #endif

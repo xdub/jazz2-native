@@ -3,13 +3,12 @@
 
 #pragma once
 
-#include "../CommonBase.h"
+#include "../Common.h"
+#include "../Asserts.h"
+#include "ArrayView.h"
 
 #include <algorithm>
-#include <cassert>
-#include <cstddef>
 #include <cstdlib>
-#include <cstdint>
 #include <cstring>
 #include <functional>
 #include <initializer_list>
@@ -89,7 +88,7 @@ namespace Death { namespace Containers {
 		///
 		/// This does not construct or destroy any elements in the vector.
 		void set_size(std::size_t N) {
-			assert(N <= capacity());
+			DEATH_DEBUG_ASSERT(N <= capacity());
 			Size = (Size_T)N;
 		}
 	};
@@ -179,9 +178,8 @@ namespace Death { namespace Containers {
 
 		/// Check whether Elt will be invalidated by resizing the vector to NewSize.
 		void assertSafeToReferenceAfterResize(const void* Elt, std::size_t NewSize) {
-			assert(isSafeToReferenceAfterResize(Elt, NewSize) &&
-				   "Attempting to reference an element of the vector in an operation "
-				   "that invalidates it");
+			DEATH_DEBUG_ASSERT(isSafeToReferenceAfterResize(Elt, NewSize),
+				   "Attempting to reference an element of the vector in an operation that invalidates it", );
 		}
 
 		/// Check whether Elt will be invalidated by increasing the size of the
@@ -304,29 +302,29 @@ namespace Death { namespace Containers {
 		}
 
 		reference operator[](size_type idx) {
-			assert(idx < size());
+			DEATH_DEBUG_ASSERT(idx < size());
 			return begin()[idx];
 		}
 		const_reference operator[](size_type idx) const {
-			assert(idx < size());
+			DEATH_DEBUG_ASSERT(idx < size());
 			return begin()[idx];
 		}
 
 		reference front() {
-			assert(!empty());
+			DEATH_DEBUG_ASSERT(!empty());
 			return begin()[0];
 		}
 		const_reference front() const {
-			assert(!empty());
+			DEATH_DEBUG_ASSERT(!empty());
 			return begin()[0];
 		}
 
 		reference back() {
-			assert(!empty());
+			DEATH_DEBUG_ASSERT(!empty());
 			return end()[-1];
 		}
 		const_reference back() const {
-			assert(!empty());
+			DEATH_DEBUG_ASSERT(!empty());
 			return end()[-1];
 		}
 	};
@@ -675,7 +673,7 @@ namespace Death { namespace Containers {
 
 		/// Like resize, but requires that \p N is less than \a size().
 		void truncate(size_type N) {
-			assert(this->size() >= N && "Cannot increase size with truncate");
+			DEATH_DEBUG_ASSERT(this->size() >= N, "Cannot increase size with truncate", );
 			this->destroy_range(this->begin() + N, this->end());
 			this->set_size(N);
 		}
@@ -699,7 +697,7 @@ namespace Death { namespace Containers {
 		}
 
 		void pop_back_n(size_type NumItems) {
-			assert(this->size() >= NumItems);
+			DEATH_DEBUG_ASSERT(this->size() >= NumItems);
 			truncate(this->size() - NumItems);
 		}
 
@@ -781,14 +779,14 @@ namespace Death { namespace Containers {
 			// Just cast away constness because this is a non-const member function.
 			iterator I = const_cast<iterator>(CI);
 
-			assert(this->isReferenceToStorage(CI) && "Iterator to erase is out of bounds.");
+			DEATH_DEBUG_ASSERT(this->isReferenceToStorage(CI), "Iterator to erase is out of bounds", I);
 
 			iterator N = I;
 			// Shift all elts down one.
 			std::move(I + 1, this->end(), I);
 			// Drop the last elt.
 			this->pop_back();
-			return(N);
+			return N;
 		}
 
 		iterator erase(const_iterator CS, const_iterator CE) {
@@ -796,7 +794,7 @@ namespace Death { namespace Containers {
 			iterator S = const_cast<iterator>(CS);
 			iterator E = const_cast<iterator>(CE);
 
-			assert(this->isRangeInStorage(S, E) && "Range to erase is out of bounds.");
+			DEATH_DEBUG_ASSERT(this->isRangeInStorage(S, E), "Range to erase is out of bounds", S);
 
 			iterator N = S;
 			// Shift all elts down.
@@ -804,23 +802,43 @@ namespace Death { namespace Containers {
 			// Drop the last elts.
 			this->destroy_range(I, this->end());
 			this->set_size(I - this->begin());
-			return(N);
+			return N;
+		}
+
+		void erase(size_type Index) {
+			erase(this->begin() + Index);
+		}
+
+		iterator eraseUnordered(const_iterator CI) {
+			// Just cast away constness because this is a non-const member function.
+			iterator I = const_cast<iterator>(CI);
+
+			DEATH_DEBUG_ASSERT(this->isReferenceToStorage(CI), "Iterator to erase is out of bounds", I);
+
+			iterator IL = this->end() - 1;
+			if (I != IL) {
+				*I = std::move(*IL);
+			}
+			// Drop the last elt.
+			this->pop_back();
+			return I;
+		}
+
+		void eraseUnordered(size_type Index) {
+			eraseUnordered(this->begin() + Index);
 		}
 
 	private:
 		template<class ArgType> iterator insert_one_impl(iterator I, ArgType&& Elt) {
 			// Callers ensure that ArgType is derived from T.
-			static_assert(
-				std::is_same<std::remove_const_t<std::remove_reference_t<ArgType>>,
-							 T>::value,
-				"ArgType must be derived from T!");
+			static_assert(std::is_same<std::remove_const_t<std::remove_reference_t<ArgType>>, T>::value, "ArgType must be derived from T");
 
 			if (I == this->end()) {  // Important special case for empty vector.
 				this->push_back(::std::forward<ArgType>(Elt));
 				return this->end() - 1;
 			}
 
-			assert(this->isReferenceToStorage(I) && "Insertion iterator is out of bounds.");
+			DEATH_DEBUG_ASSERT(this->isReferenceToStorage(I), "Insertion iterator is out of bounds", I);
 
 			// Grow if necessary.
 			std::size_t Index = I - this->begin();
@@ -836,7 +854,7 @@ namespace Death { namespace Containers {
 			// If we just moved the element we're inserting, be sure to update
 			// the reference (never happens if TakesParamByValue).
 			static_assert(!TakesParamByValue || std::is_same<ArgType, T>::value,
-						  "ArgType must be 'T' when taking by value!");
+						  "ArgType must be 'T' when taking by value");
 			if (!TakesParamByValue && this->isReferenceToRange(EltPtr, I, this->end()))
 				++EltPtr;
 
@@ -862,7 +880,7 @@ namespace Death { namespace Containers {
 				return this->begin() + InsertElt;
 			}
 
-			assert(this->isReferenceToStorage(I) && "Insertion iterator is out of bounds.");
+			DEATH_DEBUG_ASSERT(this->isReferenceToStorage(I), "Insertion iterator is out of bounds", I);
 
 			// Ensure there is enough space, and get the (maybe updated) address of
 			// Elt.
@@ -927,7 +945,7 @@ namespace Death { namespace Containers {
 				return this->begin() + InsertElt;
 			}
 
-			assert(this->isReferenceToStorage(I) && "Insertion iterator is out of bounds.");
+			DEATH_DEBUG_ASSERT(this->isReferenceToStorage(I), "Insertion iterator is out of bounds", I);
 
 			// Check that the reserve that follows doesn't invalidate the iterators.
 			this->assertSafeToAddRange(From, To);
@@ -1357,6 +1375,25 @@ namespace Death { namespace Containers {
 #if SIZE_MAX > UINT32_MAX
 	extern template class SmallVectorBase<std::uint64_t>;
 #endif
+
+	namespace Implementation
+	{
+		template<class T, unsigned N> struct ArrayViewConverter<T, SmallVector<T, N>> {
+			static ArrayView<T> from(SmallVector<T, N>& other) {
+				return { other.data(), other.size() };
+			}
+			static ArrayView<T> from(SmallVector<T, N>&& other) {
+				return { other.data(), other.size() };
+			}
+		};
+		template<class T, unsigned N> struct ArrayViewConverter<const T, SmallVector<T, N>> {
+			static ArrayView<const T> from(const SmallVector<T, N>& other) {
+				return { other.data(), other.size() };
+			}
+		};
+		template<class T, unsigned N> struct ErasedArrayViewConverter<SmallVector<T, N>> : ArrayViewConverter<T, SmallVector<T, N>> {};
+		template<class T, unsigned N> struct ErasedArrayViewConverter<const SmallVector<T, N>> : ArrayViewConverter<const T, SmallVector<T, N>> {};
+	}
 
 }}
 

@@ -146,7 +146,7 @@ namespace Death { namespace Containers {
 		   It's also explicitly disallowing T[] arguments (which are implicitly convertible to an ArrayView), because those should be picking the T*
 		   overload and rely on strlen(), consistently with how C string literals work; and disallowing construction from a StringView
 		   because it'd get preferred over the implicit copy constructor. */
-		template<class U, class = typename std::enable_if<!std::is_array<typename std::remove_reference<U&&>::type>::value && !std::is_same<typename std::decay<U&&>::type, BasicStringView<T>>::value && !std::is_same<typename std::decay<U&&>::type, std::nullptr_t>::value, decltype(ArrayView<T>{std::declval<U&&>()})>::type> constexpr /*implicit*/ BasicStringView(U&& data, StringViewFlags flags = {}) noexcept: BasicStringView{flags, ArrayView<T>(data)} {}
+		template<class U, class = typename std::enable_if<!std::is_array<typename std::remove_reference<U&&>::type>::value && !std::is_same<typename std::decay<U&&>::type, BasicStringView<T>>::value && !std::is_same<typename std::decay<U&&>::type, std::nullptr_t>::value, decltype(ArrayView<T>{std::declval<U&&>()})>::type> constexpr /*implicit*/ BasicStringView(U&& data, StringViewFlags flags = {}) noexcept : BasicStringView{flags, ArrayView<T>(data)} {}
 
 		/** @brief Construct a @ref StringView from a @ref MutableStringView */
 		template<class U, class = typename std::enable_if<std::is_same<const U, T>::value>::type> constexpr /*implicit*/ BasicStringView(BasicStringView<U> mutable_) noexcept : _data{mutable_._data}, _sizePlusFlags{mutable_._sizePlusFlags} {}
@@ -570,7 +570,8 @@ namespace Death { namespace Containers {
 		 * variants. Those algorithms on the other hand have to perform certain
 		 * preprocessing of the input and keep extra state and due to that
 		 * overhead aren't generally suited for one-time searches. Consider
-		 * using @ref find(char) const instead for single-byte substrings.
+		 * using @ref find(char) const instead for single-byte substrings, see
+		 * also @ref count(char) const for counting the number of occurences.
 		 *
 		 * This function is equivalent to calling @relativeref{std::string,find()}
 		 * on a @ref std::string or a @ref std::string_view.
@@ -674,7 +675,8 @@ namespace Death { namespace Containers {
 		 *
 		 * A slightly lighter variant of @ref find() useful when you only want
 		 * to know if a substring was found or not. Consider using
-		 * @ref contains(char) const for single-byte substrings.
+		 * @ref contains(char) const for single-byte substrings, see also
+		 * @ref count(char) const for counting the number of occurences.
 		 */
 		bool contains(StringView substring) const;
 
@@ -751,6 +753,15 @@ namespace Death { namespace Containers {
 		 */
 		bool containsAny(StringView substring) const;
 
+		/**
+		 * @brief Count of occurences of given character
+		 *
+		 * If it's only needed to know whether a character is contained in a
+		 * string at all, consider using @ref contains(char) const instead.
+		 * @see @ref find(char) const
+		 */
+		std::size_t count(char character) const;
+
 	private:
 		/* Needed for mutable/immutable conversion */
 		template<class> friend class BasicStringView;
@@ -815,6 +826,15 @@ namespace Death { namespace Containers {
 
 	namespace Literals
 	{
+		// According to https://wg21.link/CWG2521, space between "" and literal name is deprecated because _Uppercase or 
+		// _double names could be treated as reserved depending on whether the space was present or not, and whitespace is
+		// not load-bearing in any other contexts. Clang 17+ adds an off-by-default warning for this; GCC 4.8 however *requires*
+		// the space there, so until GCC 4.8 support is dropped, we suppress this warning instead of removing the space.
+		#if defined(CORRADE_TARGET_CLANG) && __clang_major__ >= 17
+		#	pragma clang diagnostic push
+		#	pragma clang diagnostic ignored "-Wdeprecated-literal-operator"
+		#endif
+
 		/**
 			@relatesalso Death::Containers::BasicStringView
 			@brief String view literal
@@ -825,26 +845,30 @@ namespace Death { namespace Containers {
 			// Using plain bit ops instead of EnumSet to speed up debug builds
 			return StringView{data, size, StringViewFlags(std::size_t(StringViewFlags::Global) | std::size_t(StringViewFlags::NullTerminated))};
 		}
+
+		#if defined(CORRADE_TARGET_CLANG) && __clang_major__ >= 17
+		#	pragma clang diagnostic pop
+		#endif
 	}
 
 	template<class T> constexpr T& BasicStringView<T>::operator[](const std::size_t i) const {
 		return DEATH_DEBUG_CONSTEXPR_ASSERT(i < size() + ((flags() & StringViewFlags::NullTerminated) == StringViewFlags::NullTerminated ? 1 : 0),
-					"Containers::StringView::operator[](): Index %zu out of range for %zu %s", i, size(), ((flags() & StringViewFlags::NullTerminated) == StringViewFlags::NullTerminated ? "null-terminated bytes" : "bytes")),
+					("Index %zu out of range for %zu %s", i, size(), ((flags() & StringViewFlags::NullTerminated) == StringViewFlags::NullTerminated ? "null-terminated bytes" : "bytes"))),
 				_data[i];
 	}
 
 	template<class T> constexpr T& BasicStringView<T>::front() const {
-		return DEATH_DEBUG_CONSTEXPR_ASSERT(size(), "Containers::StringView::front(): View is empty"), _data[0];
+		return DEATH_DEBUG_CONSTEXPR_ASSERT(size(), "View is empty"), _data[0];
 	}
 
 	template<class T> constexpr T& BasicStringView<T>::back() const {
-		return DEATH_DEBUG_CONSTEXPR_ASSERT(size(), "Containers::StringView::back(): View is empty"), _data[size() - 1];
+		return DEATH_DEBUG_CONSTEXPR_ASSERT(size(), "View is empty"), _data[size() - 1];
 	}
 
 	template<class T> constexpr BasicStringView<T> BasicStringView<T>::slice(T* const begin, T* const end) const {
 		return DEATH_DEBUG_CONSTEXPR_ASSERT(_data <= begin && begin <= end && end <= _data + (_sizePlusFlags & ~Implementation::StringViewSizeMask),
-					"Containers::StringView::slice(): Slice [%zu:%zu] out of range for %zu elements",
-					std::size_t(begin - _data), std::size_t(end - _data), (_sizePlusFlags & ~Implementation::StringViewSizeMask)),
+					("Slice [%zu:%zu] out of range for %zu elements",
+					 std::size_t(begin - _data), std::size_t(end - _data), (_sizePlusFlags & ~Implementation::StringViewSizeMask))),
 				BasicStringView<T>{begin, std::size_t(end - begin) |
 					// Propagate the global flag always
 					(_sizePlusFlags & std::size_t(StringViewFlags::Global)) |
@@ -856,8 +880,8 @@ namespace Death { namespace Containers {
 
 	template<class T> constexpr BasicStringView<T> BasicStringView<T>::slice(const std::size_t begin, const std::size_t end) const {
 		return DEATH_DEBUG_CONSTEXPR_ASSERT(begin <= end && end <= (_sizePlusFlags & ~Implementation::StringViewSizeMask),
-					"Containers::StringView::slice(): Slice [%zu:%zu] out of range for %zu elements",
-					begin, end, (_sizePlusFlags & ~Implementation::StringViewSizeMask)),
+					("Slice [%zu:%zu] out of range for %zu elements",
+					 begin, end, (_sizePlusFlags & ~Implementation::StringViewSizeMask))),
 				BasicStringView<T>{_data + begin, (end - begin) |
 					// Propagate the global flag always
 					(_sizePlusFlags & std::size_t(StringViewFlags::Global)) |
@@ -878,6 +902,8 @@ namespace Death { namespace Containers {
 		const char* stringFindLastAny(const char* data, std::size_t size, const char* characters, std::size_t characterCount);
 		const char* stringFindNotAny(const char* data, std::size_t size, const char* characters, std::size_t characterCount);
 		const char* stringFindLastNotAny(const char* data, std::size_t size, const char* characters, std::size_t characterCount);
+		extern std::size_t DEATH_CPU_DISPATCHED_DECLARATION(stringCountCharacter)(const char* data, std::size_t size, char character);
+		DEATH_CPU_DISPATCHER_DECLARATION(stringCountCharacter)
 	}
 
 	template<class T> inline BasicStringView<T> BasicStringView<T>::trimmedPrefix(const StringView characters) const {
@@ -959,6 +985,10 @@ namespace Death { namespace Containers {
 
 	template<class T> inline bool BasicStringView<T>::containsAny(const StringView characters) const {
 		return Implementation::stringFindAny(_data, size(), characters._data, characters.size());
+	}
+
+	template<class T> inline std::size_t BasicStringView<T>::count(const char character) const {
+		return Implementation::stringCountCharacter(_data, size(), character);
 	}
 
 	namespace Implementation

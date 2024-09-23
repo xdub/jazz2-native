@@ -16,23 +16,23 @@ namespace Jazz2::UI::Menu
 	class RemapControlsSection : public ScrollableMenuSection<RemapControlsItem>
 	{
 	public:
-		static constexpr int32_t MaxTargetCount = 6;
+		static constexpr std::int32_t MaxTargetCount = 6;
 
-		RemapControlsSection();
+		RemapControlsSection(std::int32_t playerIndex);
 		~RemapControlsSection() override;
 
 		void OnUpdate(float timeMult) override;
 		void OnDraw(Canvas* canvas) override;
 
 	private:
-		int32_t _selectedColumn;
-		int32_t _currentPlayerIndex;
-		bool _isDirty;
-		bool _waitForInput;
+		std::int32_t _selectedColumn;
+		std::int32_t _playerIndex;
 		float _timeout;
 		float _hintAnimation;
 		BitArray _keysPressedLast;
 		JoyMappedState _joyStatesLast[ControlScheme::MaxConnectedGamepads];
+		bool _isDirty;
+		bool _waitForInput;
 
 		void OnLayoutItem(Canvas* canvas, ListViewItem& item) override;
 		void OnDrawItem(Canvas* canvas, ListViewItem& item, std::int32_t& charOffset, bool isSelected) override;

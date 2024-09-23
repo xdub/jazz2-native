@@ -14,9 +14,7 @@ using namespace Jazz2::Tiles;
 namespace Jazz2::Actors::Weapons
 {
 	FreezerShot::FreezerShot()
-		:
-		_fired(0),
-		_particlesTime(1.0f)
+		: _fired(0), _particlesTime(1.0f)
 	{
 	}
 
@@ -110,7 +108,7 @@ namespace Jazz2::Actors::Weapons
 				debris.Pos = Vector2f(_pos.X + dx, _pos.Y + dy);
 				debris.Depth = _renderer.layer();
 				debris.Size = Vector2f(currentSize, currentSize);
-				debris.Acceleration = Vector2f(0.0f, _levelHandler->Gravity);
+				debris.Acceleration = Vector2f(0.0f, _levelHandler->Gravity());
 
 				debris.Scale = 1.2f,
 					debris.Alpha = 1.0f;

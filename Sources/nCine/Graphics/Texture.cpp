@@ -8,6 +8,8 @@
 #include "../ServiceLocator.h"
 #include "../tracy.h"
 
+#include <Containers/String.h>
+
 namespace nCine
 {
 	GLenum ncFormatToInternal(Texture::Format format)
@@ -98,12 +100,12 @@ namespace nCine
 		}
 	}*/
 
-	Texture::Texture(const StringView& filename)
+	Texture::Texture(StringView filename)
 		: Texture()
 	{
 		const bool hasLoaded = loadFromFile(filename);
 		if (!hasLoaded) {
-			LOGE("Texture \"%s\" cannot be loaded", filename);
+			LOGE("Texture \"%s\" cannot be loaded", String::nullTerminatedView(filename).data());
 		}
 	}
 
@@ -186,7 +188,7 @@ namespace nCine
 		return true;
 	}*/
 
-	bool Texture::loadFromFile(const StringView& filename)
+	bool Texture::loadFromFile(StringView filename)
 	{
 		ZoneScopedC(0x81A861);
 
@@ -364,7 +366,7 @@ namespace nCine
 
 	void Texture::initialize(const ITextureLoader& texLoader)
 	{
-		const IGfxCapabilities& gfxCaps = theServiceLocator().gfxCapabilities();
+		const IGfxCapabilities& gfxCaps = theServiceLocator().GetGfxCapabilities();
 		const int maxTextureSize = gfxCaps.value(IGfxCapabilities::GLIntValues::MAX_TEXTURE_SIZE);
 		FATAL_ASSERT_MSG(texLoader.width() <= maxTextureSize, "Texture width %d is bigger than device maximum %d", texLoader.width(), maxTextureSize);
 		FATAL_ASSERT_MSG(texLoader.height() <= maxTextureSize, "Texture height %d is bigger than device maximum %d", texLoader.height(), maxTextureSize);
@@ -435,7 +437,7 @@ namespace nCine
 #if (defined(WITH_OPENGLES) && GL_ES_VERSION_3_0) || defined(DEATH_TARGET_EMSCRIPTEN)
 		const bool withTexStorage = true;
 #else
-		const IGfxCapabilities& gfxCaps = theServiceLocator().gfxCapabilities();
+		const IGfxCapabilities& gfxCaps = theServiceLocator().GetGfxCapabilities();
 		const bool withTexStorage = gfxCaps.hasExtension(IGfxCapabilities::GLExtensions::ARB_TEXTURE_STORAGE);
 #endif
 

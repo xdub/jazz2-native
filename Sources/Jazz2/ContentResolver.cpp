@@ -38,12 +38,12 @@ static Vector2i GetVector2iFromJson(simdjson_result<T> value, Vector2i defaultVa
 	ondemand::array itemArray;
 	ondemand::array_iterator itemIterator;
 	if (value.get(itemArray) == SUCCESS && itemArray.begin().get(itemIterator) == SUCCESS) {
-		int64_t x = 0, y = 0;
+		std::int64_t x = 0, y = 0;
 		bool xf = (*itemIterator).get(x) == SUCCESS;
 		++itemIterator;
 		bool yf = (*itemIterator).get(y) == SUCCESS;
 		if (xf && yf) {
-			return Vector2i((int32_t)x, (int32_t)y);
+			return Vector2i((std::int32_t)x, (std::int32_t)y);
 		}
 	}
 	return defaultValue;
@@ -58,7 +58,11 @@ namespace Jazz2
 	}
 
 	ContentResolver::ContentResolver()
-		: _isHeadless(false), _isLoading(false), _cachedMetadata(64), _cachedGraphics(256), _cachedSounds(192), _palettes{}
+		: _isHeadless(false), _isLoading(false), _cachedMetadata(64), _cachedGraphics(256),
+#if defined(WITH_AUDIO)
+			_cachedSounds(192),
+#endif
+			_palettes {}
 	{
 		InitializePaths();
 	}
@@ -71,13 +75,15 @@ namespace Jazz2
 	{
 		_cachedMetadata.clear();
 		_cachedGraphics.clear();
+#if defined(WITH_AUDIO)
 		_cachedSounds.clear();
+#endif
 
-		for (int32_t i = 0; i < (int32_t)FontType::Count; i++) {
+		for (std::int32_t i = 0; i < (std::int32_t)FontType::Count; i++) {
 			_fonts[i] = nullptr;
 		}
 
-		for (int32_t i = 0; i < (int32_t)PrecompiledShader::Count; i++) {
+		for (std::int32_t i = 0; i < (std::int32_t)PrecompiledShader::Count; i++) {
 			_precompiledShaders[i] = nullptr;
 		}
 	}
@@ -186,7 +192,7 @@ namespace Jazz2
 			}
 		} else {
 			auto& app = static_cast<AndroidApplication&>(theApplication());
-			StringView dataPath = app.externalDataPath();
+			StringView dataPath = app.GetExternalDataPath();
 			_sourcePath = fs::CombinePath(dataPath, "Source/"_s);
 			_cachePath = fs::CombinePath(dataPath, "Cache/"_s);
 		}
@@ -335,14 +341,14 @@ namespace Jazz2
 
 		String fullPath = fs::CombinePath(GetContentPath(), path);
 		if (fs::IsReadableFile(fullPath)) {
-			auto realFile = fs::Open(fullPath, FileAccessMode::Read);
+			auto realFile = fs::Open(fullPath, FileAccess::Read);
 			if (realFile->IsValid()) {
 				return realFile;
 			}
 		}
 
 		fullPath = fs::CombinePath(GetCachePath(), path);
-		return fs::Open(fullPath, FileAccessMode::Read);
+		return fs::Open(fullPath, FileAccess::Read);
 	}
 
 	void ContentResolver::BeginLoading()
@@ -356,9 +362,11 @@ namespace Jazz2
 		for (auto& resource : _cachedGraphics) {
 			resource.second->Flags &= ~GenericGraphicResourceFlags::Referenced;
 		}
+#if defined(WITH_AUDIO)
 		for (auto& resource : _cachedSounds) {
 			resource.second->Flags &= ~GenericSoundResourceFlags::Referenced;
 		}
+#endif
 	}
 
 	void ContentResolver::EndLoading()
@@ -405,23 +413,25 @@ namespace Jazz2
 			}
 		}
 
+#if defined(WITH_AUDIO)
 		// Released unreferenced sounds
 		{
 			auto it = _cachedSounds.begin();
 			while (it != _cachedSounds.end()) {
 				if ((it->second->Flags & GenericSoundResourceFlags::Referenced) != GenericSoundResourceFlags::Referenced) {
 					it = _cachedSounds.erase(it);
-#if defined(DEATH_DEBUG)
+#	if defined(DEATH_DEBUG)
 					soundsReleased++;
-#endif
+#	endif
 				} else {
 					++it;
-#if defined(DEATH_DEBUG)
+#	if defined(DEATH_DEBUG)
 					soundsKept++;
-#endif
+#	endif
 				}
 			}
 		}
+#endif
 
 #if defined(DEATH_DEBUG)
 		LOGW("Metadata: %i|%i, Animations: %i|%i, Sounds: %i|%i", metadataKept, metadataReleased,
@@ -433,7 +443,7 @@ namespace Jazz2
 
 	void ContentResolver::PreloadMetadataAsync(const StringView path)
 	{
-		// TODO: reimplement async preloading
+		// TODO: Reimplement async preloading
 		RequestMetadata(path);
 	}
 
@@ -449,17 +459,19 @@ namespace Jazz2
 				resource.Base->Flags |= GenericGraphicResourceFlags::Referenced;
 			}
 
+#if defined(WITH_AUDIO)
 			for (const auto& [key, resource] : it->second->Sounds) {
 				for (const auto& base : resource.Buffers) {
 					base->Flags |= GenericSoundResourceFlags::Referenced;
 				}
 			}
+#endif
 
 			return it->second.get();
 		}
 
 		// Try to load it
-		auto s = fs::Open(fs::CombinePath({ GetContentPath(), "Metadata"_s, String(pathNormalized + ".res"_s) }), FileAccessMode::Read);
+		auto s = fs::Open(fs::CombinePath({ GetContentPath(), "Metadata"_s, String(pathNormalized + ".res"_s) }), FileAccess::Read);
 		auto fileSize = s->GetSize();
 		if (fileSize < 4 || fileSize > 64 * 1024 * 1024) {
 			// 64 MB file size limit
@@ -483,7 +495,7 @@ namespace Jazz2
 
 			ondemand::object animations;
 			if (doc["Animations"].get(animations) == SUCCESS) {
-				size_t count;
+				std::size_t count;
 				if (animations.count_fields().get(count) == SUCCESS) {
 					metadata->Animations.reserve(count);
 				}
@@ -583,11 +595,12 @@ namespace Jazz2
 				sort(metadata->Animations.begin(), metadata->Animations.end());
 			}
 
+#if defined(WITH_AUDIO)
 			if (!_isHeadless) {
 				// Don't load sounds in headless mode
 				ondemand::object sounds;
 				if (doc["Sounds"].get(sounds) == SUCCESS) {
-					size_t count;
+					std::size_t count;
 					if (sounds.count_fields().get(count) == SUCCESS) {
 						metadata->Sounds.reserve(count);
 					}
@@ -626,6 +639,7 @@ namespace Jazz2
 					}
 				}
 			}
+#endif
 		}
 
 		return _cachedMetadata.emplace(metadata->Path, std::move(metadata)).first->second.get();
@@ -648,7 +662,7 @@ namespace Jazz2
 			return RequestGraphicsAura(pathNormalized, paletteOffset);
 		}
 
-		auto s = fs::Open(fs::CombinePath({ GetContentPath(), "Animations"_s, String(pathNormalized + ".res"_s) }), FileAccessMode::Read);
+		auto s = fs::Open(fs::CombinePath({ GetContentPath(), "Animations"_s, String(pathNormalized + ".res"_s) }), FileAccess::Read);
 		auto fileSize = s->GetSize();
 		if (fileSize < 4 || fileSize > 64 * 1024 * 1024) {
 			// 64 MB file size limit, also if not found try to use cache
@@ -657,7 +671,7 @@ namespace Jazz2
 
 		auto buffer = std::make_unique<char[]>(fileSize + simdjson::SIMDJSON_PADDING);
 		s->Read(buffer.get(), fileSize);
-		s->Close();
+		s->Dispose();
 		buffer[fileSize] = '\0';
 
 		ondemand::parser parser;
@@ -675,14 +689,14 @@ namespace Jazz2
 					return nullptr;
 				}
 
-				int32_t w = texLoader->width();
-				int32_t h = texLoader->height();
-				uint32_t* pixels = (uint32_t*)texLoader->pixels();
-				const uint32_t* palette = _palettes + paletteOffset;
+				std::int32_t w = texLoader->width();
+				std::int32_t h = texLoader->height();
+				std::uint32_t* pixels = (std::uint32_t*)texLoader->pixels();
+				const std::uint32_t* palette = _palettes + paletteOffset;
 				bool linearSampling = false;
 				bool needsMask = true;
 
-				uint64_t flags;
+				std::uint64_t flags;
 				if (doc["Flags"].get(flags) == SUCCESS) {
 					// Palette already applied, keep as is
 					if ((flags & 0x01) != 0x01) {
@@ -698,19 +712,19 @@ namespace Jazz2
 				}
 
 				if (needsMask) {
-					graphics->Mask = std::make_unique<uint8_t[]>(w * h);
+					graphics->Mask = std::make_unique<std::uint8_t[]>(w * h);
 
-					for (int32_t i = 0; i < w * h; i++) {
+					for (std::int32_t i = 0; i < w * h; i++) {
 						// Save original alpha value for collision checking
 						graphics->Mask[i] = ((pixels[i] >> 24) & 0xff);
 						if (palette != nullptr) {
-							uint32_t color = palette[pixels[i] & 0xff];
+							std::uint32_t color = palette[pixels[i] & 0xff];
 							pixels[i] = (color & 0xffffff) | ((((color >> 24) & 0xff) * ((pixels[i] >> 24) & 0xff) / 255) << 24);
 						}
 					}
 				} else if (palette != nullptr) {
-					for (int32_t i = 0; i < w * h; i++) {
-						uint32_t color = palette[pixels[i] & 0xff];
+					for (std::int32_t i = 0; i < w * h; i++) {
+						std::uint32_t color = palette[pixels[i] & 0xff];
 						pixels[i] = (color & 0xffffff) | ((((color >> 24) & 0xff) * ((pixels[i] >> 24) & 0xff) / 255) << 24);
 					}
 				}
@@ -729,11 +743,11 @@ namespace Jazz2
 				}
 				graphics->AnimDuration = (float)animDuration;
 
-				int64_t frameCount;
+				std::int64_t frameCount;
 				if (doc["FrameCount"].get(frameCount) != SUCCESS) {
 					frameCount = 0;
 				}
-				graphics->FrameCount = (int32_t)frameCount;
+				graphics->FrameCount = (std::int32_t)frameCount;
 
 				graphics->FrameDimensions = GetVector2iFromJson(doc["FrameSize"]);
 				graphics->FrameConfiguration = GetVector2iFromJson(doc["FrameConfiguration"]);
@@ -752,7 +766,7 @@ namespace Jazz2
 		return nullptr;
 	}
 
-	GenericGraphicResource* ContentResolver::RequestGraphicsAura(const StringView path, uint16_t paletteOffset)
+	GenericGraphicResource* ContentResolver::RequestGraphicsAura(const StringView path, std::uint16_t paletteOffset)
 	{
 		auto s = OpenContentFile(fs::CombinePath("Animations"_s, path));
 
@@ -762,44 +776,44 @@ namespace Jazz2
 			return nullptr;
 		}
 
-		uint64_t signature1 = s->ReadValue<uint64_t>();
-		uint32_t signature2 = s->ReadValue<uint16_t>();
-		uint8_t version = s->ReadValue<uint8_t>();
-		uint8_t flags = s->ReadValue<uint8_t>();
+		std::uint64_t signature1 = s->ReadValue<std::uint64_t>();
+		std::uint32_t signature2 = s->ReadValue<std::uint16_t>();
+		std::uint8_t version = s->ReadValue<std::uint8_t>();
+		std::uint8_t flags = s->ReadValue<std::uint8_t>();
 
 		if (signature1 != 0xB8EF8498E2BFBBEF || signature2 != 0x208F || version != 2 || (flags & 0x80) != 0x80) {
 			return nullptr;
 		}
 
-		uint8_t channelCount = s->ReadValue<uint8_t>();
-		uint32_t frameDimensionsX = s->ReadValue<uint32_t>();
-		uint32_t frameDimensionsY = s->ReadValue<uint32_t>();
+		std::uint8_t channelCount = s->ReadValue<std::uint8_t>();
+		std::uint32_t frameDimensionsX = s->ReadValue<std::uint32_t>();
+		std::uint32_t frameDimensionsY = s->ReadValue<std::uint32_t>();
 
-		uint8_t frameConfigurationX = s->ReadValue<uint8_t>();
-		uint8_t frameConfigurationY = s->ReadValue<uint8_t>();
-		uint16_t frameCount = s->ReadValue<uint16_t>();
-		uint16_t animDuration = s->ReadValue<uint16_t>();
+		std::uint8_t frameConfigurationX = s->ReadValue<std::uint8_t>();
+		std::uint8_t frameConfigurationY = s->ReadValue<std::uint8_t>();
+		std::uint16_t frameCount = s->ReadValue<std::uint16_t>();
+		std::uint16_t animDuration = s->ReadValue<std::uint16_t>();
 
-		uint16_t hotspotX = s->ReadValue<uint16_t>();
-		uint16_t hotspotY = s->ReadValue<uint16_t>();
+		std::uint16_t hotspotX = s->ReadValue<std::uint16_t>();
+		std::uint16_t hotspotY = s->ReadValue<std::uint16_t>();
 
-		uint16_t coldspotX = s->ReadValue<uint16_t>();
-		uint16_t coldspotY = s->ReadValue<uint16_t>();
+		std::uint16_t coldspotX = s->ReadValue<std::uint16_t>();
+		std::uint16_t coldspotY = s->ReadValue<std::uint16_t>();
 
-		uint16_t gunspotX = s->ReadValue<uint16_t>();
-		uint16_t gunspotY = s->ReadValue<uint16_t>();
+		std::uint16_t gunspotX = s->ReadValue<std::uint16_t>();
+		std::uint16_t gunspotY = s->ReadValue<std::uint16_t>();
 
-		uint32_t width = frameDimensionsX * frameConfigurationX;
-		uint32_t height = frameDimensionsY * frameConfigurationY;
+		std::uint32_t width = frameDimensionsX * frameConfigurationX;
+		std::uint32_t height = frameDimensionsY * frameConfigurationY;
 
-		std::unique_ptr<uint32_t[]> pixels = std::make_unique<uint32_t[]>(width * height);
+		std::unique_ptr<std::uint32_t[]> pixels = std::make_unique<std::uint32_t[]>(width * height);
 
-		ReadImageFromFile(s, (uint8_t*)pixels.get(), width, height, channelCount);
+		ReadImageFromFile(s, (std::uint8_t*)pixels.get(), width, height, channelCount);
 
 		std::unique_ptr<GenericGraphicResource> graphics = std::make_unique<GenericGraphicResource>();
 		graphics->Flags |= GenericGraphicResourceFlags::Referenced;
 
-		const uint32_t* palette = _palettes + paletteOffset;
+		const std::uint32_t* palette = _palettes + paletteOffset;
 		bool linearSampling = false;
 		bool needsMask = true;
 		if ((flags & 0x01) == 0x01) {
@@ -811,19 +825,19 @@ namespace Jazz2
 		}
 
 		if (needsMask) {
-			graphics->Mask = std::make_unique<uint8_t[]>(width * height);
+			graphics->Mask = std::make_unique<std::uint8_t[]>(width * height);
 
-			for (uint32_t i = 0; i < width * height; i++) {
+			for (std::uint32_t i = 0; i < width * height; i++) {
 				// Save original alpha value for collision checking
 				graphics->Mask[i] = ((pixels[i] >> 24) & 0xff);
 				if (palette != nullptr) {
-					uint32_t color = palette[pixels[i] & 0xff];
+					std::uint32_t color = palette[pixels[i] & 0xff];
 					pixels[i] = (color & 0xffffff) | ((((color >> 24) & 0xff) * ((pixels[i] >> 24) & 0xff) / 255) << 24);
 				}
 			}
 		} else if (palette != nullptr) {
-			for (uint32_t i = 0; i < width * height; i++) {
-				uint32_t color = palette[pixels[i] & 0xff];
+			for (std::uint32_t i = 0; i < width * height; i++) {
+				std::uint32_t color = palette[pixels[i] & 0xff];
 				pixels[i] = (color & 0xffffff) | ((((color >> 24) & 0xff) * ((pixels[i] >> 24) & 0xff) / 255) << 24);
 			}
 		}
@@ -863,7 +877,7 @@ namespace Jazz2
 		return _cachedGraphics.emplace(Pair(String(path), paletteOffset), std::move(graphics)).first->second.get();
 	}
 
-	void ContentResolver::ReadImageFromFile(std::unique_ptr<Stream>& s, uint8_t* data, int32_t width, int32_t height, int32_t channelCount)
+	void ContentResolver::ReadImageFromFile(std::unique_ptr<Stream>& s, std::uint8_t* data, std::int32_t width, std::int32_t height, std::int32_t channelCount)
 	{
 		typedef union {
 			struct {
@@ -885,29 +899,29 @@ namespace Jazz2
 
 		rgba_t index[64] { };
 		rgba_t px;
-		int32_t run = 0;
-		int32_t px_len = width * height * channelCount;
+		std::int32_t run = 0;
+		std::int32_t px_len = width * height * channelCount;
 
 		px.rgba.r = 0;
 		px.rgba.g = 0;
 		px.rgba.b = 0;
 		px.rgba.a = 255;
 
-		for (int32_t px_pos = 0; px_pos < px_len; px_pos += channelCount) {
+		for (std::int32_t px_pos = 0; px_pos < px_len; px_pos += channelCount) {
 			if (run > 0) {
 				run--;
 			} else {
-				int32_t b1 = s->ReadValue<uint8_t>();
+				std::int32_t b1 = s->ReadValue<std::uint8_t>();
 
 				if (b1 == QOI_OP_RGB) {
-					px.rgba.r = s->ReadValue<uint8_t>();
-					px.rgba.g = s->ReadValue<uint8_t>();
-					px.rgba.b = s->ReadValue<uint8_t>();
+					px.rgba.r = s->ReadValue<std::uint8_t>();
+					px.rgba.g = s->ReadValue<std::uint8_t>();
+					px.rgba.b = s->ReadValue<std::uint8_t>();
 				} else if (b1 == QOI_OP_RGBA) {
-					px.rgba.r = s->ReadValue<uint8_t>();
-					px.rgba.g = s->ReadValue<uint8_t>();
-					px.rgba.b = s->ReadValue<uint8_t>();
-					px.rgba.a = s->ReadValue<uint8_t>();
+					px.rgba.r = s->ReadValue<std::uint8_t>();
+					px.rgba.g = s->ReadValue<std::uint8_t>();
+					px.rgba.b = s->ReadValue<std::uint8_t>();
+					px.rgba.a = s->ReadValue<std::uint8_t>();
 				} else if ((b1 & QOI_MASK_2) == QOI_OP_INDEX) {
 					px = index[b1];
 				} else if ((b1 & QOI_MASK_2) == QOI_OP_DIFF) {
@@ -915,8 +929,8 @@ namespace Jazz2
 					px.rgba.g += ((b1 >> 2) & 0x03) - 2;
 					px.rgba.b += (b1 & 0x03) - 2;
 				} else if ((b1 & QOI_MASK_2) == QOI_OP_LUMA) {
-					int32_t b2 = s->ReadValue<uint8_t>();
-					int32_t vg = (b1 & 0x3f) - 32;
+					std::int32_t b2 = s->ReadValue<std::uint8_t>();
+					std::int32_t vg = (b1 & 0x3f) - 32;
 					px.rgba.r += vg - 8 + ((b2 >> 4) & 0x0f);
 					px.rgba.g += vg;
 					px.rgba.b += vg - 8 + (b2 & 0x0f);
@@ -931,7 +945,7 @@ namespace Jazz2
 		}
 	}
 
-	std::unique_ptr<Tiles::TileSet> ContentResolver::RequestTileSet(const StringView path, uint16_t captionTileId, bool applyPalette, const uint8_t* paletteRemapping)
+	std::unique_ptr<Tiles::TileSet> ContentResolver::RequestTileSet(const StringView path, std::uint16_t captionTileId, bool applyPalette, const std::uint8_t* paletteRemapping)
 	{
 		// Try "Content" directory first, then "Cache" directory
 		String fullPath = fs::CombinePath({ GetContentPath(), "Tilesets"_s, String(path + ".j2t"_s) });
@@ -939,7 +953,7 @@ namespace Jazz2
 			fullPath = fs::CombinePath({ GetCachePath(), "Tilesets"_s, String(path + ".j2t"_s) });
 		}
 
-		auto s = fs::Open(fullPath, FileAccessMode::Read);
+		auto s = fs::Open(fullPath, FileAccess::Read);
 		if (!s->IsValid()) {
 			return nullptr;
 		}
@@ -1139,7 +1153,7 @@ namespace Jazz2
 			descriptor.FullPath = fs::CombinePath({ GetCachePath(), "Episodes"_s, String(pathNormalized + ".j2l"_s) });
 		}
 
-		auto s = fs::Open(descriptor.FullPath, FileAccessMode::Read);
+		auto s = fs::Open(descriptor.FullPath, FileAccess::Read);
 		RETURNF_ASSERT_MSG(s->IsValid(), "Cannot open file for reading");
 
 		std::uint64_t signature = s->ReadValue<std::uint64_t>();
@@ -1305,7 +1319,7 @@ namespace Jazz2
 
 	std::optional<Episode> ContentResolver::GetEpisodeByPath(const StringView path, bool withImages)
 	{
-		auto s = fs::Open(path, FileAccessMode::Read);
+		auto s = fs::Open(path, FileAccess::Read);
 		if (s->GetSize() < 16) {
 			return std::nullopt;
 		}
@@ -1370,6 +1384,7 @@ namespace Jazz2
 
 	std::unique_ptr<AudioStreamPlayer> ContentResolver::GetMusic(const StringView path)
 	{
+#if defined(WITH_AUDIO)
 		// Don't load sounds in headless mode
 		if (_isHeadless) {
 			return nullptr;
@@ -1384,6 +1399,9 @@ namespace Jazz2
 			return nullptr;
 		}
 		return std::make_unique<AudioStreamPlayer>(fullPath);
+#else
+		return nullptr;
+#endif
 	}
 
 	UI::Font* ContentResolver::GetFont(FontType fontType)
@@ -1482,8 +1500,8 @@ namespace Jazz2
 			return shader;
 		}
 
-		const AppConfiguration& appCfg = theApplication().appConfiguration();
-		const IGfxCapabilities& gfxCaps = theServiceLocator().gfxCapabilities();
+		const AppConfiguration& appCfg = theApplication().GetAppConfiguration();
+		const IGfxCapabilities& gfxCaps = theServiceLocator().GetGfxCapabilities();
 		// Clamping the value as some drivers report a maximum size similar to SSBO one
 		const std::int32_t maxUniformBlockSize = std::clamp(gfxCaps.value(IGfxCapabilities::GLIntValues::MAX_UNIFORM_BLOCK_SIZE), 0, 64 * 1024);
 
@@ -1540,15 +1558,15 @@ namespace Jazz2
 			return shader;
 		}
 
-		const AppConfiguration& appCfg = theApplication().appConfiguration();
-		const IGfxCapabilities& gfxCaps = theServiceLocator().gfxCapabilities();
+		const AppConfiguration& appCfg = theApplication().GetAppConfiguration();
+		const IGfxCapabilities& gfxCaps = theServiceLocator().GetGfxCapabilities();
 		// Clamping the value as some drivers report a maximum size similar to SSBO one
 		const std::int32_t maxUniformBlockSize = std::clamp(gfxCaps.value(IGfxCapabilities::GLIntValues::MAX_UNIFORM_BLOCK_SIZE), 0, 64 * 1024);
 
 		// If the UBO is smaller than 64kb and fixed batch size is disabled, batched shaders need to be compiled twice to determine safe `BATCH_SIZE` define value
 		const bool compileTwice = (maxUniformBlockSize < 64 * 1024 && appCfg.fixedBatchSize <= 0 && introspection == Shader::Introspection::NoUniformsInBlocks);
 
-		int32_t batchSize;
+		std::int32_t batchSize;
 		if (appCfg.fixedBatchSize > 0 && introspection == Shader::Introspection::NoUniformsInBlocks) {
 			batchSize = appCfg.fixedBatchSize;
 		} else if (compileTwice) {
@@ -1595,7 +1613,7 @@ namespace Jazz2
 	{
 		std::uint32_t texels[64 * 64];
 
-		for (std::uint32_t i = 0; i < countof(texels); i++) {
+		for (std::uint32_t i = 0; i < static_cast<std::uint32_t>(arraySize(texels)); i++) {
 			texels[i] = Random().Fast(0, INT32_MAX) | 0xff000000;
 		}
 
@@ -1619,7 +1637,7 @@ namespace Jazz2
 			95, 92, 88, 15, 15
 		};
 
-		constexpr std::int32_t StopsPerGem = (countof(PaletteStops) / GemColorCount) - 1;
+		constexpr std::int32_t StopsPerGem = (static_cast<std::int32_t>(arraySize(PaletteStops)) / GemColorCount) - 1;
 
 		// Start to fill palette texture from the second row (right after base palette)
 		std::int32_t src = 0, dst = ColorsPerPalette;
@@ -1654,7 +1672,7 @@ namespace Jazz2
 			return;
 		}
 
-		auto s = fs::Open(fs::CombinePath({ GetContentPath(), "Animations"_s, String(path + ".res"_s) }), FileAccessMode::Read);
+		auto s = fs::Open(fs::CombinePath({ GetContentPath(), "Animations"_s, String(path + ".res"_s) }), FileAccess::Read);
 		auto fileSize = s->GetSize();
 		if (fileSize < 4 || fileSize > 64 * 1024 * 1024) {
 			// 64 MB file size limit, also if not found try to use cache
@@ -1664,7 +1682,7 @@ namespace Jazz2
 
 		auto buffer = std::make_unique<char[]>(fileSize + simdjson::SIMDJSON_PADDING);
 		s->Read(buffer.get(), fileSize);
-		s->Close();
+		s->Dispose();
 		buffer[fileSize] = '\0';
 
 		ondemand::parser parser;
@@ -1713,7 +1731,7 @@ namespace Jazz2
 				Vector2i gunspot = GetVector2iFromJson(doc["Gunspot"], Vector2i(InvalidValue, InvalidValue));
 
 				// Write to .aura file
-				auto so = fs::Open(auraPath, FileAccessMode::Write);
+				auto so = fs::Open(auraPath, FileAccess::Write);
 				ASSERT_MSG(so->IsValid(), "Cannot open file for writing");
 
 				std::uint8_t flags = 0x80;

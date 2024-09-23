@@ -2,6 +2,11 @@
 
 #include "../Base/TimeStamp.h"
 
+#include <Asserts.h>
+#include <Containers/StringView.h>
+
+using namespace Death::Containers;
+
 namespace nCine
 {
 	/// Interface for debug overlays
@@ -28,6 +33,10 @@ namespace nCine
 		}
 		virtual void update() = 0;
 		virtual void updateFrameTimings() = 0;
+
+#if defined(DEATH_TRACE)
+		virtual void log(TraceLevel level, StringView time, std::uint32_t threadId, StringView message) = 0;
+#endif
 
 	protected:
 		DisplaySettings settings_;

@@ -12,24 +12,17 @@
 #endif
 
 #include "../Common.h"
+#include "../Base/IDisposable.h"
 
-#include <cstdio>		// For FILE
+#include <cstdio>		// for FILE
 #include <memory>
 
 namespace Death { namespace IO {
 //###==##====#=====--==~--~=~- --- -- -  -  -   -
 
-	/** @brief Defines constants for read, write, or read/write access to a file */
-	enum struct FileAccessMode {
-		None = 0,
-		Read = 0x01,
-		Write = 0x02,
-		Exclusive = 0x08
-	};
-
-	DEFINE_ENUM_OPERATORS(FileAccessMode);
-
-	/** @brief Specifies the position in a stream to use for seeking */
+	/**
+		@brief Specifies the position in a stream to use for seeking
+	*/
 	enum class SeekOrigin {
 		Begin = SEEK_SET,
 		Current = SEEK_CUR,
@@ -39,21 +32,22 @@ namespace Death { namespace IO {
 	/**
 		@brief Provides a generic view of a sequence of bytes
 	*/
-	class Stream
+	class Stream : public IDisposable
 	{
 	public:
-		/** @brief Returned if @ref Stream doesn't point to valid source */
-		static constexpr std::int32_t ErrorInvalidStream = -1;
-		/** @brief Returned if one of the parameters provided to a method is not valid */
-		static constexpr std::int32_t ErrorInvalidParameter = -2;
-		/** @brief Returned if seek operation is not supported by @ref Stream or the stream length is unknown */
-		static constexpr std::int32_t ErrorNotSeekable = -3;
+		enum {
+			/** @brief Returned if @ref Stream doesn't point to valid source */
+			Invalid = -1,
+			/** @brief Returned if one of the parameters provided to a method is not valid */
+			OutOfRange = -2,
+			/** @brief Returned if seek operation is not supported by @ref Stream or the stream length is unknown */
+			NotSeekable = -3
+		};
 
-		Stream() : _size(ErrorInvalidStream) { }
-		virtual ~Stream() { }
+		Stream();
 
-		/** @brief Closes the stream */
-		virtual void Close() = 0;
+		/** @brief Closes the stream and releases all assigned resources */
+		virtual void Dispose() = 0;
 		/** @brief Seeks in an opened stream */
 		virtual std::int64_t Seek(std::int64_t offset, SeekOrigin origin) = 0;
 		/** @brief Tells the seek position of an opened stream */
@@ -62,15 +56,13 @@ namespace Death { namespace IO {
 		virtual std::int32_t Read(void* buffer, std::int32_t bytes) = 0;
 		/** @brief Writes a certain amount of bytes from a buffer to the stream */
 		virtual std::int32_t Write(const void* buffer, std::int32_t bytes) = 0;
+		/** @brief Clears all buffers for this stream and causes any buffered data to be written to the underlying device */
+		virtual bool Flush() = 0;
 		/** @brief Returns true if the stream has been sucessfully opened */
 		virtual bool IsValid() = 0;
 
 		/** @brief Returns stream size in bytes */
-		DEATH_ALWAYS_INLINE std::int64_t GetSize() const {
-			return _size;
-		}
-
-		virtual void SetCloseOnDestruction(bool shouldCloseOnDestruction) { }
+		virtual std::int64_t GetSize() const = 0;
 
 		/** @brief Reads the bytes from the current stream and writes them to the target stream */
 		std::int64_t CopyTo(Stream& targetStream);
@@ -154,8 +146,6 @@ namespace Death { namespace IO {
 				((value << 8) & 0x000000FF00000000ULL) | ((value >> 8) & 0x00000000FF000000ULL) |
 				((value >> 24) & 0x0000000000FF0000ULL) | ((value >> 40) & 0x000000000000FF00ULL) | (value << 56);
 		}
-
-	protected:
-		std::int64_t _size;
 	};
+
 }}

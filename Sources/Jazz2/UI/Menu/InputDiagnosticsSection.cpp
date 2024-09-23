@@ -28,12 +28,12 @@ namespace Jazz2::UI::Menu
 			_animation = std::min(_animation + timeMult * 0.016f, 1.0f);
 		}
 
-		auto& input = theApplication().inputManager();
+		auto& input = theApplication().GetInputManager();
 
 		bool shouldExit = false;
 		const JoyMappedState* joyStates[ControlScheme::MaxConnectedGamepads];
-		int32_t jc = 0;
-		for (int32_t i = 0; i < IInputManager::MaxNumJoysticks && jc < countof(joyStates); i++) {
+		std::int32_t jc = 0;
+		for (std::int32_t i = 0; i < IInputManager::MaxNumJoysticks && jc < static_cast<std::int32_t>(arraySize(joyStates)); i++) {
 			if (input.isJoyMapped(i)) {
 				joyStates[jc] = &input.joyMappedState(i);
 				if (joyStates[jc]->isButtonPressed(ButtonName::Start) && joyStates[jc]->isButtonPressed(ButtonName::Back)) {
@@ -73,11 +73,11 @@ namespace Jazz2::UI::Menu
 			Alignment::Center, Colorf(0.46f, 0.46f, 0.46f, 0.5f), 0.9f, 0.7f, 1.1f, 1.1f, 0.4f, 0.9f);
 
 		// Show gamepad info
-		auto& input = theApplication().inputManager();
+		auto& input = theApplication().GetInputManager();
 
 		const JoyMappedState* joyStates[ControlScheme::MaxConnectedGamepads];
-		int32_t jc = 0;
-		for (int32_t i = 0; i < IInputManager::MaxNumJoysticks && jc < countof(joyStates); i++) {
+		std::int32_t jc = 0;
+		for (std::int32_t i = 0; i < IInputManager::MaxNumJoysticks && jc < static_cast<std::int32_t>(arraySize(joyStates)); i++) {
 			if (input.isJoyPresent(i)) {
 				jc++;
 			}
@@ -101,14 +101,14 @@ namespace Jazz2::UI::Menu
 		const JoystickState& rawState = input.joystickState(_selectedIndex);
 		const JoyMappedState& mappedState = input.joyMappedState(_selectedIndex);
 		const char* joyName = input.joyName(_selectedIndex);
-		int32_t numAxes = input.joyNumAxes(_selectedIndex);
-		int32_t numButtons = input.joyNumButtons(_selectedIndex);
-		int32_t numHats = input.joyNumHats(_selectedIndex);
+		std::int32_t numAxes = input.joyNumAxes(_selectedIndex);
+		std::int32_t numButtons = input.joyNumButtons(_selectedIndex);
+		std::int32_t numHats = input.joyNumHats(_selectedIndex);
 
 		char buffer[128];
 		formatString(buffer, sizeof(buffer), "%s (%i axes, %i buttons, %i hats)", joyName, numAxes, numButtons, numHats);
 
-		size_t joyNameStringLength = Utf8::GetLength(buffer);
+		std::size_t joyNameStringLength = Utf8::GetLength(buffer);
 		float xMultiplier = joyNameStringLength * 0.5f;
 		float easing = IMenuContainer::EaseOutElastic(_animation);
 		float x = center.X * 0.4f + xMultiplier - easing * xMultiplier;
@@ -127,9 +127,10 @@ namespace Jazz2::UI::Menu
 		} else if (joyGuid == JoystickGuidType::Xinput) {
 			formatString(buffer, sizeof(buffer), "GUID: xinput");
 		} else {
+			const std::uint8_t* g = joyGuid.data;
 			formatString(buffer, sizeof(buffer), "GUID: %02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%s",
-				joyGuid.data[0], joyGuid.data[1], joyGuid.data[2], joyGuid.data[3], joyGuid.data[4], joyGuid.data[5], joyGuid.data[6], joyGuid.data[7],
-				joyGuid.data[8], joyGuid.data[9], joyGuid.data[10], joyGuid.data[11], joyGuid.data[12], joyGuid.data[13], joyGuid.data[14], joyGuid.data[15],
+				g[0], g[1], g[2], g[3], g[4], g[5], g[6], g[7],
+				g[8], g[9], g[10], g[11], g[12], g[13], g[14], g[15],
 				input.hasMappingByGuid(joyGuid) ? "" : (input.hasMappingByName(joyName) ? " (similar mapping)" : " (no mapping)"));
 		}
 
@@ -146,7 +147,7 @@ namespace Jazz2::UI::Menu
 		PrintAxisValue("LT", mappedState.axisValue(AxisName::LeftTrigger), center.X * 0.4f, topLine + 90.0f);
 		PrintAxisValue("RT", mappedState.axisValue(AxisName::RightTrigger), center.X * 0.4f + 110.0f, topLine + 90.0f);
 
-		int32_t buttonsLength = 0;
+		std::int32_t buttonsLength = 0;
 		buffer[0] = '\0';
 		if (mappedState.isButtonPressed(ButtonName::A)) buttonsLength += formatString(buffer + buttonsLength, sizeof(buffer) - buttonsLength, "A ");
 		if (mappedState.isButtonPressed(ButtonName::B)) buttonsLength += formatString(buffer + buttonsLength, sizeof(buffer) - buttonsLength, "B ");
@@ -168,6 +169,7 @@ namespace Jazz2::UI::Menu
 		if (mappedState.isButtonPressed(ButtonName::Paddle2)) buttonsLength += formatString(buffer + buttonsLength, sizeof(buffer) - buttonsLength, "Paddle2 ");
 		if (mappedState.isButtonPressed(ButtonName::Paddle3)) buttonsLength += formatString(buffer + buttonsLength, sizeof(buffer) - buttonsLength, "Paddle3 ");
 		if (mappedState.isButtonPressed(ButtonName::Paddle4)) buttonsLength += formatString(buffer + buttonsLength, sizeof(buffer) - buttonsLength, "Paddle4 ");
+		if (mappedState.isButtonPressed(ButtonName::Touchpad)) buttonsLength += formatString(buffer + buttonsLength, sizeof(buffer) - buttonsLength, "Touchpad ");
 
 		_root->DrawStringShadow(buffer, charOffset, center.X * 0.4f, topLine + 105.0f, IMenuContainer::FontLayer,
 			Alignment::Left, Font::DefaultColor, 0.8f, 0.0f, 4.0f, 4.0f, 0.4f, 0.88f);
@@ -177,7 +179,7 @@ namespace Jazz2::UI::Menu
 			Alignment::Left, Colorf(0.62f, 0.44f, 0.34f, 0.5f), 0.8f, 0.0f, 4.0f, 4.0f, 0.4f, 0.88f);
 
 		float sx = 0, sy = 0;
-		for (int32_t i = 0; i < numAxes; i++) {
+		for (std::int32_t i = 0; i < numAxes; i++) {
 			formatString(buffer, sizeof(buffer), "a%i", i);
 			PrintAxisValue(buffer, rawState.axisValue(i), center.X * 0.4f + sx, topLine + 140.0f + sy);
 			sx += 110.0f;
@@ -192,7 +194,7 @@ namespace Jazz2::UI::Menu
 			sy += 15.0f;
 		}
 
-		for (int32_t i = 0; i < numButtons; i++) {
+		for (std::int32_t i = 0; i < numButtons; i++) {
 			formatString(buffer, sizeof(buffer), "b%i: %i", i, rawState.isButtonPressed(i) ? 1 : 0);
 			_root->DrawStringShadow(buffer, charOffset, center.X * 0.4f + sx, topLine + 140.0f + sy, IMenuContainer::FontLayer,
 				Alignment::Left, Font::DefaultColor, 0.8f, 0.0f, 4.0f, 4.0f, 0.4f, 0.88f);
@@ -208,7 +210,7 @@ namespace Jazz2::UI::Menu
 			sy += 15.0f;
 		}
 
-		for (int32_t i = 0; i < numHats; i++) {
+		for (std::int32_t i = 0; i < numHats; i++) {
 			formatString(buffer, sizeof(buffer), "h%i: %i", i, rawState.hatState(i));
 			_root->DrawStringShadow(buffer, charOffset, center.X * 0.4f + sx, topLine + 140.0f + sy, IMenuContainer::FontLayer,
 				Alignment::Left, Font::DefaultColor, 0.8f, 0.0f, 4.0f, 4.0f, 0.4f, 0.88f);
@@ -219,10 +221,10 @@ namespace Jazz2::UI::Menu
 			}
 		}
 
-		_root->DrawElement(GetResourceForButtonName(ButtonName::Back), 0, center.X - 37.0f, contentBounds.Y + contentBounds.H - 18.0f, IMenuContainer::MainLayer, Alignment::Center, Colorf::White, 0.9f, 0.9f);
+		_root->DrawElement(GetResourceForButtonName(ButtonName::Back), 0, center.X - 37.0f, contentBounds.Y + contentBounds.H - 17.0f, IMenuContainer::MainLayer, Alignment::Center, Colorf::White, 0.9f, 0.9f);
 		_root->DrawStringShadow("+"_s, charOffset, center.X - 28.0f, contentBounds.Y + contentBounds.H - 18.0f, IMenuContainer::FontLayer,
 			Alignment::Left, Font::DefaultColor, 0.6f, 0.4f, 0.0f, 0.0f, 0.46f, 0.88f);
-		_root->DrawElement(GetResourceForButtonName(ButtonName::Start), 0, center.X - 11.0f, contentBounds.Y + contentBounds.H - 18.0f, IMenuContainer::MainLayer, Alignment::Center, Colorf::White, 0.9f, 0.9f);
+		_root->DrawElement(GetResourceForButtonName(ButtonName::Start), 0, center.X - 11.0f, contentBounds.Y + contentBounds.H - 17.0f, IMenuContainer::MainLayer, Alignment::Center, Colorf::White, 0.9f, 0.9f);
 		_root->DrawStringShadow("to exit"_s, charOffset, center.X, contentBounds.Y + contentBounds.H - 17.0f, IMenuContainer::FontLayer,
 			Alignment::Left, Font::DefaultColor, 0.8f, 0.4f, 0.0f, 0.0f, 0.46f, 0.8f);
 	}
@@ -258,7 +260,7 @@ namespace Jazz2::UI::Menu
 	void InputDiagnosticsSection::OnTouchEvent(const nCine::TouchEvent& event, const Vector2i& viewSize)
 	{
 		if (event.type == TouchEventType::Down) {
-			int32_t pointerIndex = event.findPointerIndex(event.actionIndex);
+			std::int32_t pointerIndex = event.findPointerIndex(event.actionIndex);
 			if (pointerIndex != -1) {
 				float x = event.pointers[pointerIndex].x;
 				float y = event.pointers[pointerIndex].y * (float)viewSize.Y;
@@ -292,7 +294,7 @@ namespace Jazz2::UI::Menu
 		char text[64];
 		formatString(text, sizeof(text), "%s: %0.2f", name, value);
 
-		int32_t charOffset = 0;
+		std::int32_t charOffset = 0;
 		_root->DrawStringShadow(text, charOffset, x, y, IMenuContainer::FontLayer,
 			Alignment::Left, Font::DefaultColor, 0.8f, 0.0f, 4.0f, 4.0f, 0.4f, 0.88f);
 	}

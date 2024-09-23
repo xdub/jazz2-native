@@ -40,6 +40,9 @@ namespace nCine
 		/// Creates a rectangle from minimum and maximum coordinates as two `Vector2`
 		static Rect FromMinMax(const Vector2<T>& min, const Vector2<T>& max);
 
+		Vector2<T> GetSize() const;
+		Vector2<T> GetLocation() const;
+
 		/// Calculates the center of the rectangle
 		Vector2<T> Center() const;
 		/// Calculates the minimum coordinates of the rectangle
@@ -91,6 +94,9 @@ namespace nCine
 		/// Intersects this rectangle with the other rectangle
 		void Intersect(const Rect<T>& rect);
 
+		/// Unions this rectangle with the other rectangle
+		void Union(const Rect<T>& rect);
+
 		/// Eqality operator
 		bool operator==(const Rect& rect) const;
 		bool operator!=(const Rect& rect) const;
@@ -128,6 +134,18 @@ namespace nCine
 	inline Rect<T> Rect<T>::FromMinMax(const Vector2<T>& min, const Vector2<T>& max)
 	{
 		return Rect(min.X, min.Y, max.X - min.X, max.Y - min.Y);
+	}
+
+	template<class T>
+	inline Vector2<T> Rect<T>::GetSize() const
+	{
+		return Vector2<T>(W, H);
+	}
+
+	template<class T>
+	inline Vector2<T> Rect<T>::GetLocation() const
+	{
+		return Vector2<T>(X, Y);
 	}
 
 	template<class T>
@@ -256,8 +274,8 @@ namespace nCine
 	template<class T>
 	inline bool Rect<T>::Contains(const Rect& rect) const
 	{
-		const bool containsMin = Contains(rect.min());
-		const bool containsMax = Contains(rect.max());
+		const bool containsMin = Contains(rect.Min());
+		const bool containsMax = Contains(rect.Max());
 		return (containsMin && containsMax);
 	}
 
@@ -282,13 +300,38 @@ namespace nCine
 
 		Vector2<T> newMin = Min();
 		Vector2<T> newMax = Max();
-		if (rectMin.X > newMin.X)
+		if (newMin.X < rectMin.X)
 			newMin.X = rectMin.X;
-		if (rectMin.Y > newMin.Y)
+		if (newMin.Y < rectMin.Y)
 			newMin.Y = rectMin.Y;
 		if (rectMax.X < newMax.X)
 			newMax.X = rectMax.X;
 		if (rectMax.Y < newMax.Y)
+			newMax.Y = rectMax.Y;
+
+		if (W < T(0))
+			std::swap(newMin.X, newMax.X);
+		if (H < T(0))
+			std::swap(newMin.Y, newMax.Y);
+
+		SetMinMax(newMin, newMax);
+	}
+
+	template<class T>
+	inline void Rect<T>::Union(const Rect& rect)
+	{
+		const Vector2<T> rectMin = rect.Min();
+		const Vector2<T> rectMax = rect.Max();
+
+		Vector2<T> newMin = Min();
+		Vector2<T> newMax = Max();
+		if (rectMin.X < newMin.X)
+			newMin.X = rectMin.X;
+		if (rectMin.Y < newMin.Y)
+			newMin.Y = rectMin.Y;
+		if (newMax.X < rectMax.X)
+			newMax.X = rectMax.X;
+		if (newMax.Y < rectMax.Y)
 			newMax.Y = rectMax.Y;
 
 		if (W < T(0))
