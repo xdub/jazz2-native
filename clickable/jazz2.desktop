@@ -4,7 +4,7 @@ Version=1.0
 Name=Jazz2 Resurrection
 GenericName=Jazz2
 Comment=Jazz2
-Exec=sh -c "SDL_VIDEODRIVER=wayland jazz2 /fullscreen"
+Exec=jazz2
 Icon=jazz2.png
 Terminal=false
 Categories=Game;

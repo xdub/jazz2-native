@@ -1,0 +1,35 @@
+clickable_minimum_required: '8.1.0'
+framework: ubuntu-sdk-20.04
+builder: cmake
+
+build_args:
+- -D NCINE_STRIP_BINARIES=ON
+- -D NCINE_PREFERRED_BACKEND=GLFW
+- -D NCINE_LINUX_PACKAGE=jazz2.dubix
+- -D NCINE_PACKAGED_CONTENT_PATH=ON
+- -D NCINE_WITH_GLEW=OFF
+
+dependencies_target:
+- libopenal-dev
+- libdw-dev
+- libdwarf-dev
+- libglfw3-dev
+- libvorbisfile3
+- libopenmpt-dev
+- libgles-dev
+
+install_lib:
+- libglfw.so*
+- libdw*.so*
+
+install_root_data:
+- clickable/jazz2.apparmor
+- clickable/jazz2.desktop
+- clickable/jazz2.png
+- clickable/manifest.json
+
+postbuild:
+- mkdir -p ${CLICK_PATH}
+- mv ${INSTALL_DIR}/bin/* ${CLICK_PATH}/
+- mv ${INSTALL_DIR}/share/jazz2.dubix/Content/ ${INSTALL_DIR}/
+- rm -r ${INSTALL_DIR}/bin ${INSTALL_DIR}/share
