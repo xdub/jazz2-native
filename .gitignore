@@ -367,3 +367,8 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Clickable build output and local scratch files
+/.clickable/
+/build/
+.tmp/
