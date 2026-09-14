@@ -1,0 +1,32 @@
+name: 'Ubuntu Touch (Clickable)'
+
+on:
+  push:
+    branches:
+      - '*'
+  pull_request:
+    types: [ opened, synchronize ]
+  workflow_dispatch:
+
+jobs:
+  Build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 'Checkout Repository'
+      uses: actions/checkout@v4
+
+    - name: 'Install Clickable'
+      run: |
+        sudo apt-get update -y
+        sudo apt-get install -y podman
+        pipx install clickable-ut
+
+    - name: 'Build click package'
+      run: clickable build --arch arm64
+
+    - name: 'Upload click package'
+      uses: actions/upload-artifact@v4
+      with:
+        name: jazz2-ubuntu-touch-arm64
+        path: build/aarch64-linux-gnu/app/*.click
