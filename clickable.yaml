@@ -9,7 +9,7 @@ build_args:
 - -D NCINE_PREFERRED_BACKEND=SDL2
 - -D NCINE_DOWNLOAD_DEPENDENCIES=OFF
 - -D NCINE_RHI_GL_PROFILE=ES3
-- -D NCINE_LINUX_PACKAGE=jazz2.dubix
+- -D NCINE_LINUX_PACKAGE=jazz2.deathkiller
 - -D NCINE_PACKAGED_CONTENT_PATH=ON
 - -D NCINE_WITH_GLEW=OFF
 
@@ -36,5 +36,5 @@ install_root_data:
 postbuild:
 - mkdir -p ${CLICK_PATH}
 - mv ${INSTALL_DIR}/bin/* ${CLICK_PATH}/
-- mv ${INSTALL_DIR}/share/jazz2.dubix/Content/ ${INSTALL_DIR}/
+- mv ${INSTALL_DIR}/share/jazz2.deathkiller/Content/ ${INSTALL_DIR}/
 - rm -r ${INSTALL_DIR}/bin ${INSTALL_DIR}/share

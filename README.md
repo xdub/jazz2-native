@@ -265,9 +265,9 @@ This section contains only a brief explanation of the build process. For a more 
   ```bash
   clickable build --arch arm64
   ```
-* Copy contents of original *Jazz Jackrabbit 2* directory to `~/.local/share/jazz2.dubix/Source/` on the device
+* Copy contents of original *Jazz Jackrabbit 2* directory to `~/.local/share/jazz2.deathkiller/Source/` on the device
 
-*Experimental, work in progress. Touch input isn't wired up yet — the `GLFW` backend (currently the stable default) has no touch support at all, and the `SDL2` backend (which does) hits a broken/zero-capability GL context on at least one tested device. Until that's resolved the game can only be navigated with an external keyboard or gamepad. See [the developer documentation](https://de4th.dev/jazz2/docs/) for the general build configuration parameters that also apply here.*
+*Experimental, work in progress. Touch input and real GPU acceleration both work (the `SDL2` backend with an explicit `NCINE_RHI_GL_PROFILE=ES3` - Lomiri's cross-compile setup otherwise misdetects the target as x86_64 and falls back to a desktop GL profile the mobile GPU driver can't serve, see `clickable.yaml`), confirmed on several Adreno-based devices. Menu navigation and touch work, but the app still doesn't run fullscreen under Lomiri, which appears to throw off touch coordinate mapping enough that actually starting a level isn't reliable yet. See [the developer documentation](https://de4th.dev/jazz2/docs/) for the general build configuration parameters that also apply here.*
 
 ### iOS
 * Install **Xcode** (the Command Line Tools alone have no iOS SDK) on a Mac
