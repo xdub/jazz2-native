@@ -259,6 +259,16 @@ This section contains only a brief explanation of the build process. For a more 
   * Can be disabled with `NCINE_DOWNLOAD_DEPENDENCIES` option, then download [build dependencies](https://github.com/deathkiller/jazz2-libraries/tree/macos) manually to `./Libs/`
 * Build the project with *CMake*
 
+### Ubuntu Touch
+* Install [Clickable](https://clickable-ut.dev/en/latest/install.html)
+* Build the click package
+  ```bash
+  clickable build --arch arm64
+  ```
+* Copy contents of original *Jazz Jackrabbit 2* directory to `~/.local/share/jazz2.dubix/Source/` on the device
+
+*Experimental, work in progress. Touch input isn't wired up yet — the `GLFW` backend (currently the stable default) has no touch support at all, and the `SDL2` backend (which does) hits a broken/zero-capability GL context on at least one tested device. Until that's resolved the game can only be navigated with an external keyboard or gamepad. See [the developer documentation](https://de4th.dev/jazz2/docs/) for the general build configuration parameters that also apply here.*
+
 ### iOS
 * Install **Xcode** (the Command Line Tools alone have no iOS SDK) on a Mac
 * Build dependencies (SDL2, OpenAL Soft, Ogg/Vorbis and libcurl) will be downloaded and compiled from source automatically by *CMake*
