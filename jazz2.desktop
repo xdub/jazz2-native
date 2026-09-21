@@ -9,4 +9,5 @@ Icon=jazz2.png
 Terminal=false
 Categories=Game;
 X-Ubuntu-Touch=true
+X-Ubuntu-Supported-Orientations=landscape
 Name[cs]=Jazz2 Resurrection

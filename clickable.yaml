@@ -6,7 +6,9 @@ build_args:
 - -D DEATH_DEBUG_SYMBOLS=ON
 - -D CMAKE_CXX_FLAGS=-ffile-prefix-map=${SRC_DIR}=jazz2-native
 - -D CMAKE_C_FLAGS=-ffile-prefix-map=${SRC_DIR}=jazz2-native
-- -D NCINE_PREFERRED_BACKEND=GLFW
+- -D NCINE_PREFERRED_BACKEND=SDL2
+- -D NCINE_DOWNLOAD_DEPENDENCIES=OFF
+- -D NCINE_RHI_GL_PROFILE=ES3
 - -D NCINE_LINUX_PACKAGE=jazz2.dubix
 - -D NCINE_PACKAGED_CONTENT_PATH=ON
 - -D NCINE_WITH_GLEW=OFF
@@ -15,14 +17,15 @@ dependencies_target:
 - libopenal-dev
 - libdw-dev
 - libdwarf-dev
-- libglfw3-dev
+- libsdl2-dev
 - libvorbisfile3
 - libopenmpt-dev
 - libgles-dev
 
 install_lib:
-- libglfw.so*
 - libdw*.so*
+- libssl.so*
+- libcrypto.so*
 
 install_root_data:
 - jazz2.apparmor
