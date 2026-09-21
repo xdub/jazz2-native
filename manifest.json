@@ -11,5 +11,5 @@
     },
     "version": "2024.05-r645-6dfdab3",
     "maintainer": "Vojtěch Dubský <dub@dubix.eu>",
-    "framework" : "ubuntu-sdk-24.04"
+    "framework" : "@CLICK_FRAMEWORK@"
 }
