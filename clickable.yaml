@@ -1,5 +1,5 @@
 clickable_minimum_required: '8.1.0'
-framework: ubuntu-sdk-20.04
+framework: ubuntu-sdk-24.04
 builder: cmake
 
 build_args:
